@@ -127,6 +127,17 @@ export function useScreencast({
           isLastWorkflow,
           allComputerUseTasksLength: allComputerUseTasks.length,
         });
+
+        // If this token was previously marked as failed but now appears in a task,
+        // give it another chance (e.g., after page refresh or backend reconnection)
+        if (failedScreencastTokens.has(computerUseTask.debug_url_token)) {
+          console.log('[useScreencast] Removing token from failed list (giving it another chance):', computerUseTask.debug_url_token.substring(0, 8));
+          setFailedScreencastTokens(prev => {
+            const next = new Set(prev);
+            next.delete(computerUseTask.debug_url_token!);
+            return next;
+          });
+        }
       }
 
       // A computer_use task is "done" if there's a NEWER computer_use task (not just any newer workflow)
