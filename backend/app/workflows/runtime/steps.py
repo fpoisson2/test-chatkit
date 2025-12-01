@@ -10,7 +10,8 @@ from datetime import datetime
 from typing import Any
 
 from agents import Agent, TResponseInputItem
-from chatkit.agents import AgentContext
+from agents.tool import ComputerTool
+from chatkit.agents import AgentContext, set_current_computer_tool
 from chatkit.types import (
     AssistantMessageContent,
     AssistantMessageItem,
@@ -169,6 +170,15 @@ async def process_agent_step(
         display_response_in_chat = (
             raw_display_response if isinstance(raw_display_response, bool) else True
         )
+
+    # Inject the computer tool into the thread-local state if it exists on this agent
+    # This ensures that when chatkit agents.py creates the ComputerUseTask, it can find the debug_url
+    if agent.tools:
+        for tool in agent.tools:
+            if isinstance(tool, ComputerTool):
+                logger.debug(f"Setting thread-local computer tool for step {current_slug}")
+                set_current_computer_tool(tool)
+                break
 
     result_stream = await run_agent_step(
         step_identifier,
