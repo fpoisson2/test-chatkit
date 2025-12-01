@@ -18,6 +18,7 @@ interface TaskRendererProps {
   task: Task;
   className?: string;
   theme?: 'light' | 'dark';
+  hideComputerUseScreenshot?: boolean;
 }
 
 type IconKey = Exclude<Task['type'], 'custom'>;
@@ -78,7 +79,12 @@ function getTaskIcon(task: Task): React.ReactNode | null {
   return taskTypeIcons[task.type] || null;
 }
 
-export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRendererProps): JSX.Element {
+export function TaskRenderer({
+  task,
+  className = '',
+  theme = 'light',
+  hideComputerUseScreenshot = false,
+}: TaskRendererProps): JSX.Element {
   const { t } = useI18n();
   // Ne pas ajouter la classe --loading
   const statusClass = task.status_indicator && task.status_indicator !== 'loading'
@@ -94,7 +100,14 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
       {task.type === 'thought' && <ThoughtTaskRenderer task={task} theme={theme} icon={icon} />}
       {task.type === 'file' && <FileTaskRenderer task={task} icon={icon} />}
       {task.type === 'image' && <ImageTaskRenderer task={task} t={t} icon={icon} />}
-      {task.type === 'computer_use' && <ComputerUseTaskRenderer task={task} t={t} icon={icon} />}
+      {task.type === 'computer_use' && (
+        <ComputerUseTaskRenderer
+          task={task}
+          t={t}
+          icon={icon}
+          hideScreenshot={hideComputerUseScreenshot}
+        />
+      )}
     </div>
   );
 }
@@ -214,35 +227,45 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
   );
 }
 
-function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
-  // If we have a debug_url_token, the screencast is displayed in ChatKit.tsx
-  // Don't render anything here to avoid duplication
-  if (task.debug_url_token) {
-    return <></>;
-  }
-
-  // Fallback: show static screenshots in a card
+function ComputerUseTaskRenderer({
+  task,
+  t,
+  icon,
+  hideScreenshot = false,
+}: {
+  task: ComputerUseTask;
+  t: (key: string) => string;
+  icon?: React.ReactNode | null;
+  hideScreenshot?: boolean;
+}): JSX.Element {
+  // Show static screenshots in a card
   const latestScreenshot = task.screenshots && task.screenshots.length > 0
     ? task.screenshots[task.screenshots.length - 1]
     : null;
 
-  const imageSrc = latestScreenshot
+  const imageSrc = !hideScreenshot && latestScreenshot
     ? (latestScreenshot.data_url || (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : null))
     : null;
 
   const actionTitle = task.current_action || latestScreenshot?.action_description || task.title;
+
+  if (!actionTitle && !imageSrc) {
+    return <></>;
+  }
 
   return (
     <div className="chatkit-task-computer-use">
       <TaskLayout icon={icon}>
         {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
         {imageSrc && (
-          <div className="chatkit-task-browser-screenshot">
-            <ImageWithBlobUrl
-              src={imageSrc}
-              alt={actionTitle || t('chatkit.task.browserScreenshot')}
-              className="chatkit-browser-screenshot-image"
-            />
+          <div className="chatkit-task-content">
+            <div className="chatkit-task-browser-screenshot">
+              <ImageWithBlobUrl
+                src={imageSrc}
+                alt={actionTitle || t('chatkit.task.browserScreenshot')}
+                className="chatkit-browser-screenshot-image"
+              />
+            </div>
           </div>
         )}
       </TaskLayout>

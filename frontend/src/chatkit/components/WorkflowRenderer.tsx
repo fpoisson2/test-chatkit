@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Workflow, WorkflowSummary, CustomSummary, DurationSummary, Task } from '../types';
+import type { Workflow, WorkflowSummary, CustomSummary, DurationSummary, Task, ComputerUseTask } from '../types';
 import { TaskRenderer } from './TaskRenderer';
 import { useI18n } from '../../i18n/I18nProvider';
 
@@ -12,9 +12,9 @@ interface WorkflowRendererProps {
 export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: WorkflowRendererProps): JSX.Element {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
-  const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
+  const [displayedTaskIndex, setDisplayedTaskIndex] = useState<number | null>(null);
   const [fadeKey, setFadeKey] = useState(0);
-  const taskQueueRef = useRef<Array<{ task: Task; index: number }>>([]);
+  const taskQueueRef = useRef<Array<{ index: number }>>([]);
   const isProcessingRef = useRef(false);
   const displayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastCompletedIndexRef = useRef<number>(-1);
@@ -39,6 +39,25 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
+  const hasRenderableContent = (task: Task): boolean => {
+    if (task.type !== 'computer_use') {
+      return true;
+    }
+
+    const computerUseTask = task as ComputerUseTask;
+
+    const screenshots = computerUseTask.screenshots || [];
+    const latestScreenshot = screenshots.length > 0 ? screenshots[screenshots.length - 1] : null;
+
+    const imageSrc = latestScreenshot
+      ? (latestScreenshot.data_url || (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : null))
+      : null;
+
+    const actionTitle = computerUseTask.current_action || latestScreenshot?.action_description || computerUseTask.title;
+
+    return Boolean(actionTitle || imageSrc);
+  };
+
   // Synchroniser isCompletedRef avec isCompleted pour l'utiliser dans les callbacks
   isCompletedRef.current = isCompleted;
 
@@ -54,6 +73,9 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const streamingTask = isStreamingFirstThought ? workflow.tasks[0] : null;
 
   // Obtenir le type de la tâche actuelle ou de la dernière tâche
+  const displayedTask =
+    displayedTaskIndex !== null ? workflow.tasks[displayedTaskIndex] || null : null;
+
   const getCurrentTaskType = (): string | null => {
     if (displayedTask) {
       return displayedTask.type;
@@ -84,10 +106,17 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     }
 
     isProcessingRef.current = true;
-    const { task, index } = taskQueueRef.current.shift()!;
+    const { index } = taskQueueRef.current.shift()!;
+    const task = workflow.tasks[index];
+
+    if (!task) {
+      isProcessingRef.current = false;
+      processQueue();
+      return;
+    }
 
     // Afficher la tâche
-    setDisplayedTask(task);
+    setDisplayedTaskIndex(index);
     setFadeKey(prev => prev + 1);
     minDisplayTimeRef.current = Date.now();
 
@@ -102,8 +131,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         minDisplayTimeRef.current = null;
         processQueue();
       } else if (isCompletedRef.current) {
-        // Workflow terminé et pas de tâche en attente, masquer la tâche
-        setDisplayedTask(null);
+        // Workflow terminé et pas de tâche en attente, conserver la dernière tâche affichée
         isProcessingRef.current = false;
         minDisplayTimeRef.current = null;
       }
@@ -112,11 +140,11 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   };
 
   // Ajouter une tâche à la file d'attente
-  const enqueueTask = (task: Task, index: number) => {
+  const enqueueTask = (index: number) => {
     // Vérifier si déjà dans la queue
     const alreadyQueued = taskQueueRef.current.some(item => item.index === index);
     if (!alreadyQueued && index > lastCompletedIndexRef.current) {
-      taskQueueRef.current.push({ task, index });
+      taskQueueRef.current.push({ index });
       lastCompletedIndexRef.current = index;
 
       // Si on affiche déjà une tâche
@@ -151,21 +179,13 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     // Cas 1: Nouvelle tâche ajoutée → la précédente est "done"
     if (currentTaskCount > previousTaskCountRef.current && previousTaskCountRef.current > 0) {
       const completedIndex = previousTaskCountRef.current - 1;
-      const completedTask = workflow.tasks[completedIndex];
-
-      if (completedTask) {
-        enqueueTask(completedTask, completedIndex);
-      }
+      enqueueTask(completedIndex);
     }
 
     // Cas 2: Workflow complété → la dernière tâche est "done"
     if (isCompleted && currentTaskCount > 0) {
       const lastIndex = currentTaskCount - 1;
-      const lastTask = workflow.tasks[lastIndex];
-
-      if (lastTask) {
-        enqueueTask(lastTask, lastIndex);
-      }
+      enqueueTask(lastIndex);
     }
 
     previousTaskCountRef.current = currentTaskCount;
@@ -179,27 +199,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       }
     };
   }, []);
-
-  // Masquer la dernière tâche affichée lorsque le workflow est terminé
-  useEffect(() => {
-    if (!isCompleted) {
-      return;
-    }
-
-    const elapsed =
-      minDisplayTimeRef.current !== null
-        ? Date.now() - minDisplayTimeRef.current
-        : 2000;
-    const remaining = Math.max(0, 2000 - elapsed);
-
-    const timeout = setTimeout(() => {
-      setDisplayedTask(null);
-      isProcessingRef.current = false;
-      minDisplayTimeRef.current = null;
-    }, remaining);
-
-    return () => clearTimeout(timeout);
-  }, [isCompleted]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
@@ -233,14 +232,25 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       {/* Afficher le premier thought en streaming (sans animation de fade) */}
       {!expanded && streamingTask && !displayedTask && (
         <div className="chatkit-workflow-last-task chatkit-workflow-streaming-task">
-          <TaskRenderer task={streamingTask} theme={theme} />
+          <TaskRenderer task={streamingTask} theme={theme} hideComputerUseScreenshot />
         </div>
       )}
 
       {/* Afficher la dernière tâche complète (avec animation) */}
       {!expanded && displayedTask && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
-          <TaskRenderer task={displayedTask} theme={theme} />
+          <TaskRenderer task={displayedTask} theme={theme} hideComputerUseScreenshot />
+        </div>
+      )}
+
+      {/* Afficher la dernière tâche si rien n'est en cours de streaming */}
+      {!expanded && !streamingTask && !displayedTask && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
+        <div className="chatkit-workflow-last-task">
+          <TaskRenderer
+            task={workflow.tasks[currentTaskCount - 1]}
+            theme={theme}
+            hideComputerUseScreenshot
+          />
         </div>
       )}
 
