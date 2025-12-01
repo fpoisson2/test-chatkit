@@ -237,10 +237,21 @@ export function useScreencast({
     return () => clearTimeout(retryTimeout);
   }, [failedScreencastTokens, threadItems]);
 
-  // Callback for last frame (screenshots now handled by backend)
+  // Callback for last frame (used to display a fallback screenshot after closing)
   const handleScreencastLastFrame = useCallback((itemId: string) => {
     return (_frameDataUrl: string) => {
-      // Screenshot is now emitted by backend, no need to store it here
+      if (!_frameDataUrl) return;
+
+      setLastScreencastScreenshot(prev => {
+        if (prev?.itemId === itemId && prev.src === _frameDataUrl) {
+          return prev;
+        }
+
+        return {
+          itemId,
+          src: _frameDataUrl,
+        };
+      });
     };
   }, []);
 
