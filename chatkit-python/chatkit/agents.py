@@ -1570,6 +1570,15 @@ async def stream_agent_response(
         # Return True if either the task was updated OR a token was added
         return updated or token_added
 
+    def _is_shell_call(candidate: Any) -> bool:
+        return _get_value(candidate, "type") in {"local_shell_call", "shell_call"}
+
+    def _is_shell_call_output(candidate: Any) -> bool:
+        return _get_value(candidate, "type") in {
+            "local_shell_call_output",
+            "shell_call_output",
+        }
+
     def _shell_command_from_action(action: Any) -> str | None:
         if action is None:
             return None
@@ -1852,7 +1861,7 @@ async def stream_agent_response(
                                     task_index=task_index,
                                 ),
                             )
-                    elif _get_value(raw_item, "type") == "local_shell_call":
+                    elif _is_shell_call(raw_item):
                         call_id = _get_value(raw_item, "call_id") or _get_value(
                             raw_item, "id"
                         )
@@ -1891,7 +1900,9 @@ async def stream_agent_response(
                     and event_item.type == "tool_call_output_item"
                 ):
                     raw_item = event_item.raw_item
-                    call_id = _get_value(raw_item, "call_id")
+                    call_id = _get_value(raw_item, "call_id") or getattr(
+                        event_item, "call_id", None
+                    )
                     tracker = get_function_task_by_call_id(call_id)
                     if tracker is not None:
                         status = _get_value(raw_item, "status")
@@ -1933,14 +1944,18 @@ async def stream_agent_response(
                                         task_index=task_index,
                                     ),
                                 )
-                    elif _get_value(raw_item, "type") == "local_shell_call_output":
-                        call_id = _get_value(raw_item, "call_id") or _get_value(
-                            raw_item, "id"
+                    elif _is_shell_call_output(raw_item) or get_shell_task_by_call_id(
+                        call_id
+                    ):
+                        shell_call_id = (
+                            _get_value(raw_item, "call_id")
+                            or _get_value(raw_item, "id")
+                            or call_id
                         )
-                        tracker = get_shell_task_by_call_id(call_id)
-                        if tracker is None and call_id:
+                        tracker = get_shell_task_by_call_id(shell_call_id)
+                        if tracker is None and shell_call_id:
                             tracker, task_added, workflow_events = ensure_shell_task(
-                                call_id, call_id=call_id
+                                shell_call_id, call_id=shell_call_id
                             )
                             for workflow_event in workflow_events:
                                 yield workflow_event
@@ -2128,7 +2143,7 @@ async def stream_agent_response(
                                     task_index=task_index,
                                 ),
                             )
-                elif item.type == "local_shell_call":
+                elif _is_shell_call(item):
                     call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
                     tracker, task_added, workflow_events = ensure_shell_task(
                         item.id or call_id or "",
@@ -2149,7 +2164,9 @@ async def stream_agent_response(
                             update=update_cls(task=tracker.task, task_index=task_index),
                         )
                     produced_items.add(item.id)
-                elif item.type == "local_shell_call_output":
+                elif _is_shell_call_output(item) or get_shell_task_by_call_id(
+                    getattr(item, "call_id", None)
+                ):
                     call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
                     tracker = get_shell_task_by_call_id(call_id)
                     task_added = False
@@ -2542,7 +2559,7 @@ async def stream_agent_response(
                                     task_index=task_index,
                                 ),
                             )
-                elif item.type == "local_shell_call":
+                elif _is_shell_call(item):
                     call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
                     tracker, task_added, workflow_events = ensure_shell_task(
                         item.id or call_id or "",
@@ -2563,7 +2580,9 @@ async def stream_agent_response(
                             update=update_cls(task=tracker.task, task_index=task_index),
                         )
                     produced_items.add(item.id)
-                elif item.type == "local_shell_call_output":
+                elif _is_shell_call_output(item) or get_shell_task_by_call_id(
+                    getattr(item, "call_id", None)
+                ):
                     call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
                     tracker = get_shell_task_by_call_id(call_id)
                     task_added = False
