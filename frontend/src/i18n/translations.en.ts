@@ -808,6 +808,7 @@ export const en: TranslationDictionary = {
   "workflows.recentSectionTitle": "Recent",
   "workflows.showAll": "Show all",
   "workflows.showLess": "Show less",
+  "workflows.searchEmptyState": "No workflows match your search.",
   "sidebar.searchPlaceholder": "Search…",
   "sidebar.searchAriaLabel": "Search workflows and conversations",
   "sidebar.conversationsTitle": "Conversations",
