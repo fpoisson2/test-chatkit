@@ -265,6 +265,16 @@ function handleWorkflowTaskUpdated(
   taskIndex: number,
   task: any
 ): Thread {
+  // Debug logging
+  if (task.type === 'computer_use') {
+    console.log('[deltas] workflow.task.updated for computer_use:', {
+      itemId,
+      taskIndex,
+      hasDebugToken: !!task.debug_url_token,
+      status: task.status_indicator,
+    });
+  }
+
   const items = thread.items.map((item) => {
     if (item.id === itemId && item.type === 'workflow') {
       const tasks = [...item.workflow.tasks];
