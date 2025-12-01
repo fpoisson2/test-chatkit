@@ -1603,6 +1603,8 @@ export const WorkflowBuilderSidebar = ({
     openWorkflowMenuId,
   } = useUIContext();
 
+  const [searchQuery, setSearchQuery] = useState("");
+
   const selectedWorkflow = useMemo(
     () => workflows.find((w) => w.id === selectedWorkflowId) || null,
     [workflows, selectedWorkflowId]
@@ -1630,6 +1632,30 @@ export const WorkflowBuilderSidebar = ({
     () => hostedWorkflows.filter((workflow) => workflow.managed),
     [hostedWorkflows],
   );
+
+  const filteredWorkflows = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return workflows;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return workflows.filter((workflow) =>
+      workflow.display_name.toLowerCase().includes(query) ||
+      workflow.slug.toLowerCase().includes(query) ||
+      (workflow.description?.toLowerCase().includes(query) ?? false)
+    );
+  }, [workflows, searchQuery]);
+
+  const filteredHostedWorkflows = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return managedHosted;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return managedHosted.filter((hosted) =>
+      hosted.label.toLowerCase().includes(query) ||
+      hosted.slug.toLowerCase().includes(query) ||
+      (hosted.description?.toLowerCase().includes(query) ?? false)
+    );
+  }, [managedHosted, searchQuery]);
 
   const hostedMenuItems = useCallback(
     ({
@@ -1793,8 +1819,8 @@ export const WorkflowBuilderSidebar = ({
   );
 
   const sidebarEntries = useWorkflowSidebarEntries({
-    workflows,
-    hostedWorkflows: managedHosted,
+    workflows: filteredWorkflows,
+    hostedWorkflows: filteredHostedWorkflows,
     lastUsedAt,
     pinnedLookup,
     workflowCollator: orderingCollator,
@@ -1883,7 +1909,9 @@ export const WorkflowBuilderSidebar = ({
     } else if (sidebarEntries.length === 0) {
       emptyContent = (
         <p className="chatkit-sidebar__section-text" aria-live="polite">
-          Aucun workflow disponible pour le moment.
+          {searchQuery.trim()
+            ? t("workflows.searchEmptyState")
+            : "Aucun workflow disponible pour le moment."}
         </p>
       );
     }
@@ -1907,22 +1935,33 @@ export const WorkflowBuilderSidebar = ({
         : null;
 
     return (
-      <WorkflowSidebarSection
-        sectionId={sectionId}
-        title={t("workflows.defaultSectionTitle")}
-        entries={entriesForSection}
-        pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
-        defaultSectionTitle={t("workflows.defaultSectionTitle")}
-        floatingAction={{
-          label: t("workflowBuilder.createWorkflow.openModal"),
-          onClick: onOpenCreateModal,
-          disabled: isCreatingWorkflow,
-        }}
-        beforeGroups={beforeGroupsContent}
-        emptyState={emptyContent}
-        footerContent={footerContent}
-        variant={sectionVariant}
-      />
+      <div className="chatkit-sidebar__content-wrapper">
+        <div className="chatkit-sidebar__search-wrapper">
+          <SidebarSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={t("sidebar.searchPlaceholder")}
+            ariaLabel={t("sidebar.searchAriaLabel")}
+          />
+        </div>
+
+        <WorkflowSidebarSection
+          sectionId={sectionId}
+          title={t("workflows.defaultSectionTitle")}
+          entries={entriesForSection}
+          pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
+          defaultSectionTitle={t("workflows.defaultSectionTitle")}
+          floatingAction={{
+            label: t("workflowBuilder.createWorkflow.openModal"),
+            onClick: onOpenCreateModal,
+            disabled: isCreatingWorkflow,
+          }}
+          beforeGroups={beforeGroupsContent}
+          emptyState={emptyContent}
+          footerContent={footerContent}
+          variant={sectionVariant}
+        />
+      </div>
     );
   }, [
     hostedError,
@@ -1935,6 +1974,7 @@ export const WorkflowBuilderSidebar = ({
     managedHosted,
     onOpenCreateModal,
     sidebarEntries,
+    searchQuery,
     selectedWorkflow,
     t,
     warningStyle,
