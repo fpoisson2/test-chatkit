@@ -38,6 +38,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
+  const lastTask = currentTaskCount > 0 ? workflow.tasks[currentTaskCount - 1] : null;
 
   // Synchroniser isCompletedRef avec isCompleted pour l'utiliser dans les callbacks
   isCompletedRef.current = isCompleted;
@@ -241,6 +242,12 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       {!expanded && displayedTask && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
           <TaskRenderer task={displayedTask} theme={theme} />
+        </div>
+      )}
+
+      {!expanded && !displayedTask && !streamingTask && lastTask && (
+        <div className="chatkit-workflow-last-task">
+          <TaskRenderer task={lastTask} theme={theme} />
         </div>
       )}
 
