@@ -54,6 +54,12 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
         if mode == "agent":
             logger.info("Executing computer_use node %s in AGENT mode", node.slug)
+            if computer_use_config and computer_use_config.get("environment") == "ssh":
+                await self._emit_ssh_computer_use_preview(
+                    node=node,
+                    context=context,
+                    computer_use_config=computer_use_config,
+                )
             # Delegate to AgentNodeHandler
             # We don't pass an executor because v2 gets dependencies from context
             agent_handler = AgentNodeHandler()
@@ -408,3 +414,88 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 "final_node_slug": node.slug,
             },
         )
+
+    async def _emit_ssh_computer_use_preview(
+        self,
+        node: "WorkflowStep",
+        context: "ExecutionContext",
+        computer_use_config: dict[str, Any],
+    ) -> None:
+        """
+        Register and emit an SSH computer_use task preview when running in agent mode.
+
+        This allows users to observe the agent's actions inside the SSH terminal even
+        though the workflow isn't paused for manual interaction.
+        """
+
+        from ...tool_factory import build_computer_use_tool
+
+        thread = context.runtime_vars.get("thread")
+        agent_context = context.runtime_vars.get("agent_context")
+        on_stream_event = context.runtime_vars.get("on_stream_event")
+
+        enriched_config = dict(computer_use_config)
+        if thread:
+            enriched_config["thread_id"] = thread.id
+
+        computer_tool = build_computer_use_tool({"computer_use": enriched_config})
+
+        if not computer_tool or not hasattr(computer_tool, "computer"):
+            logger.warning(
+                "Unable to initialize SSH computer_use preview for node %s", node.slug
+            )
+            return
+
+        ssh_token = None
+        request_context = getattr(agent_context, "request_context", None) if agent_context else None
+        user_id = getattr(request_context, "user_id", None) if request_context else None
+
+        try:
+            from ...routes.computer import register_ssh_session
+
+            ssh_token = register_ssh_session(
+                ssh_instance=computer_tool.computer,
+                ssh_config=computer_tool.computer.config,
+                user_id=user_id,
+            )
+            logger.info(
+                "Registered SSH session (agent mode) with token %s... for user %s",
+                ssh_token[:8] if ssh_token else "<none>",
+                user_id,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Failed to register SSH session for agent computer_use: %s", exc)
+
+        if on_stream_event and agent_context and ssh_token:
+            task_kwargs: dict[str, Any] = {
+                "type": "computer_use",
+                "status_indicator": "loading",
+                "title": "Session SSH",
+                "ssh_token": ssh_token,
+                "mode": "agent",
+            }
+
+            computer_task = ComputerUseTask(**task_kwargs)
+            workflow = Workflow(type="custom", tasks=[computer_task], expanded=True)
+            workflow_item = WorkflowItem(
+                id=agent_context.generate_id("workflow"),
+                thread_id=agent_context.thread.id,
+                created_at=datetime.now(),
+                workflow=workflow,
+            )
+
+            await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
+            await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
+
+            logger.info(
+                "Emitted SSH computer_use preview for node %s with token %s",
+                node.slug,
+                ssh_token[:8],
+            )
+        else:
+            logger.warning(
+                "Cannot emit SSH computer_use preview: on_stream_event=%s agent_context=%s ssh_token=%s",
+                on_stream_event is not None,
+                agent_context is not None,
+                ssh_token is not None,
+            )
