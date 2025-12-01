@@ -404,26 +404,44 @@ class HostedSSH(AsyncComputer):
         if term_size is None:
             term_size = (self._width // 8, self._height // 16)  # Approximate char size
 
-        try:
-            process = await conn.create_process(
-                term_type=term_type,
-                term_size=term_size,
-                encoding=None,  # Binary mode for raw terminal data
-            )
-            logger.info(f"Interactive shell created for {self.ssh_info}")
-            return process
-        except asyncssh.Error as exc:
-            logger.warning(f"Failed to create interactive shell with PTY: {exc}. Trying fallback without PTY.")
+        async def _create_process(command: str | None, use_pty: bool) -> SSHClientProcess:
+            kwargs: dict = {"encoding": None}
+            if use_pty:
+                kwargs.update({
+                    "term_type": term_type,
+                    "term_size": term_size,
+                })
+            if command:
+                return await conn.create_process(command, **kwargs)
+            return await conn.create_process(**kwargs)
+
+        candidates: list[tuple[str | None, bool]] = [
+            (None, True),            # Default request with PTY
+            (None, False),           # Fallback without PTY
+            ("/bin/sh", True),      # Explicit shell with PTY
+            ("/bin/sh", False),     # Final fallback without PTY
+        ]
+
+        for command, use_pty in candidates:
             try:
-                # Fallback: try without PTY allocation
-                process = await conn.create_process(
-                    encoding=None
+                process = await _create_process(command, use_pty)
+                logger.info(
+                    "Interactive shell%s created for %s%s",
+                    " (without PTY)" if not use_pty else "",
+                    self.ssh_info,
+                    " using /bin/sh" if command else "",
                 )
-                logger.info(f"Interactive shell (fallback) created for {self.ssh_info}")
                 return process
-            except asyncssh.Error as exc2:
-                logger.error(f"Failed to create interactive shell (fallback): {exc2}")
-                return None
+            except asyncssh.Error as exc:
+                logger.warning(
+                    "Failed to create interactive shell%s%s: %s",
+                    " with PTY" if use_pty else " without PTY",
+                    " using /bin/sh" if command else "",
+                    exc,
+                )
+
+        logger.error("Failed to create interactive shell after all fallbacks")
+        return None
 
     @property
     def config(self) -> SSHConfig:
