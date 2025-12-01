@@ -938,6 +938,37 @@ class ShellCallTask(BaseTask):
     messages: list[ShellCommandMessage] = Field(default_factory=list)
 
 
+class ApplyPatchOperation(BaseModel):
+    """Details of a single apply_patch file operation."""
+
+    operation_type: str
+    """Type of operation: create_file, update_file, or delete_file."""
+
+    path: str
+    """File path affected by this operation."""
+
+    status: str | None = None
+    """Operation status: completed or failed."""
+
+    output: str | None = None
+    """Status message or error details."""
+
+    diff_preview: str | None = None
+    """Visual preview of the changes (first few lines)."""
+
+
+class ApplyPatchTask(BaseTask):
+    """Workflow task representing apply_patch file operations with visual diffs."""
+
+    type: Literal["apply_patch"] = "apply_patch"
+    title: str | None = None
+    operations: list[ApplyPatchOperation] = Field(default_factory=list)
+    """List of file operations performed."""
+
+    call_id: str | None = None
+    """Identifier of the underlying apply_patch tool call."""
+
+
 Task = Annotated[
     CustomTask
     | SearchTask
@@ -945,7 +976,8 @@ Task = Annotated[
     | FileTask
     | ImageTask
     | ComputerUseTask
-    | ShellCallTask,
+    | ShellCallTask
+    | ApplyPatchTask,
     Field(discriminator="type"),
 ]
 """Union of workflow task variants."""
