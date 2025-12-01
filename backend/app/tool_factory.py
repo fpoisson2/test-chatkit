@@ -15,6 +15,7 @@ _MODULE_PATHS: dict[str, str] = {
     "mcp": "app.tool_builders.mcp",
     "workflow": "app.tool_builders.workflow",
     "widget_validation": "app.tool_builders.widget_validation",
+    "apply_patch": "app.tool_builders.apply_patch",
 }
 
 _MODULE_CACHE: dict[str, ModuleType] = {}
@@ -36,6 +37,7 @@ _BUILDER_REGISTRY: dict[str, tuple[str, str]] = {
         "widget_validation",
         "build_widget_validation_tool",
     ),
+    "build_apply_patch_tool": ("apply_patch", "build_apply_patch_tool"),
 }
 
 _DEFERRED_EXPORTS: dict[str, tuple[str, str]] = {
@@ -117,6 +119,10 @@ def build_widget_validation_tool(payload: Any) -> Any:
     return _get_builder("build_widget_validation_tool")(payload)
 
 
+def build_apply_patch_tool(payload: Any) -> Any:
+    return _get_builder("build_apply_patch_tool")(payload)
+
+
 def __getattr__(name: str) -> Any:  # pragma: no cover - délègue aux modules
     if name in _DEFERRED_EXPORTS:
         module_key, attr = _DEFERRED_EXPORTS[name]
@@ -133,6 +139,7 @@ __all__ = [
     "WidgetValidationResult",
     "WorkflowValidationResult",
     "attach_mcp_runtime_context",
+    "build_apply_patch_tool",
     "build_computer_use_tool",
     "build_file_search_tool",
     "build_image_generation_tool",
