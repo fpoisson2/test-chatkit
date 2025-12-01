@@ -627,6 +627,11 @@ def register_startup_events(app: FastAPI) -> None:
         sip_contact_host=sip_contact_host,
         sip_contact_port=sip_contact_port,
     )
+    def _should_prelaunch_hosted_browser() -> bool:
+        value = os.getenv("CHATKIT_HOSTED_BROWSER_PRELAUNCH", "true")
+        if not value:
+            return True
+        return value.strip().lower() not in {"0", "false", "no"}
 
     # Initialize debug session callback for computer use screencast
     @app.on_event("startup")
@@ -639,3 +644,36 @@ def register_startup_events(app: FastAPI) -> None:
             logger.warning(
                 "Failed to initialize debug session callback: %s", exc, exc_info=True
             )
+
+    @app.on_event("startup")
+    async def _prelaunch_hosted_browser() -> None:
+        if not _should_prelaunch_hosted_browser():
+            logger.info("Skipped Playwright warm-up (disabled via CHATKIT_HOSTED_BROWSER_PRELAUNCH)")
+            return
+
+        try:
+            from ..computer import hosted_browser  # noqa: F401
+            from ..computer.hosted_browser import HostedBrowser
+
+            if hosted_browser.async_playwright is None:
+                logger.info("Playwright is not installed, skipping warm-up.")
+                return
+        except Exception as exc:
+            logger.warning("Unable to import HostedBrowser for warm-up: %s", exc)
+            return
+
+        browser = HostedBrowser(width=1280, height=720, environment="browser")
+        try:
+            await browser._get_driver()
+            debug_url = browser.debug_url
+            logger.info(
+                "Playwright warm-up complete%s",
+                f", debug URL: {debug_url}" if debug_url else "",
+            )
+        except Exception as exc:
+            logger.warning("Playwright warm-up failed: %s", exc)
+        finally:
+            try:
+                await browser.close()
+            except Exception as close_exc:  # pragma: no cover - best effort cleanup
+                logger.debug("Failed to close warm-up browser: %s", close_exc)

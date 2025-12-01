@@ -1191,8 +1191,15 @@ export const chatkitApi = {
         const response = await requestWithFallback("/api/chatkit/hosted", {
           headers: withAuthHeaders(token),
         });
-        const payload = (await response.json()) as HostedWorkflowApiEntry[];
-        const normalized = payload.map((entry) => normalizeHostedWorkflowMetadata(entry));
+        const payload = await response.json();
+        if (!Array.isArray(payload)) {
+          throw new ApiError("Chargement des workflows hébergés : payload invalide", {
+            detail: payload,
+          });
+        }
+        const normalized = payload.map((entry) =>
+          normalizeHostedWorkflowMetadata(entry as HostedWorkflowApiEntry),
+        );
         if (useCache) {
           hostedWorkflowCache = normalized;
         }

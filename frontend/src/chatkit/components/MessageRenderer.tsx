@@ -30,6 +30,7 @@ export interface MessageRendererProps {
   onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (screencast: { token: string; itemId: string } | null) => void;
+  onDismissScreencast: (itemId: string) => void;
   onContinueWorkflow: () => void;
   // Admin props for cost tracking
   isAdmin?: boolean;
@@ -391,6 +392,7 @@ function WorkflowContent({
   onScreencastLastFrame,
   onScreencastConnectionError,
   onActiveScreencastChange,
+  onDismissScreencast,
   onContinueWorkflow,
 }: {
   item: ThreadItem;
@@ -402,6 +404,7 @@ function WorkflowContent({
   onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (screencast: { token: string; itemId: string } | null) => void;
+  onDismissScreencast: (itemId: string) => void;
   onContinueWorkflow: () => void;
 }): JSX.Element | null {
   if (item.type !== 'workflow') return null;
@@ -454,6 +457,16 @@ function WorkflowContent({
       {(() => {
         const computerUseTasks = item.workflow.tasks.filter((task: any) => task.type === 'computer_use');
 
+        // Debug logging
+        if (computerUseTasks.length > 0) {
+          console.log('[MessageRenderer] Computer use tasks:', computerUseTasks.map(t => ({
+            status: t.status_indicator,
+            hasDebugToken: !!t.debug_url_token,
+            hasSshToken: !!t.ssh_token,
+            hasVncToken: !!t.vnc_token,
+          })));
+        }
+
         let computerUseTask = computerUseTasks.find(
           (task: any) => task.status_indicator === 'loading' && (task.debug_url_token || task.ssh_token || task.vnc_token)
         );
@@ -485,6 +498,14 @@ function WorkflowContent({
           const sshToken = computerUseTask.ssh_token;
           const vncToken = computerUseTask.vnc_token;
 
+          console.log('[MessageRenderer] Rendering computer use task:', {
+            itemId: item.id,
+            debugUrlToken: debugUrlToken?.substring(0, 8),
+            sshToken: sshToken?.substring(0, 8),
+            vncToken: vncToken?.substring(0, 8),
+            activeScreencastItemId: activeScreencast?.itemId,
+          });
+
           const isActiveScreencast = activeScreencast?.itemId === item.id && !!debugUrlToken;
           const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
           const showSSHTerminal = !!sshToken;
@@ -502,8 +523,9 @@ function WorkflowContent({
 
           const isDismissed = dismissedScreencastItems.has(item.id);
           const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
-          const shouldShowSSHTerminal = showSSHTerminal && !isDismissed && !isTerminal;
-          const shouldShowVNCScreencast = showVNCScreencast && !isDismissed && !isTerminal;
+          // Keep SSH and VNC screencasts visible even when task is complete, until user dismisses
+          const shouldShowSSHTerminal = showSSHTerminal && !isDismissed;
+          const shouldShowVNCScreencast = showVNCScreencast && !isDismissed;
           const shouldShowScreenshot = showScreenshot;
           const showPreview = shouldShowLiveScreencast || shouldShowSSHTerminal || shouldShowVNCScreencast || shouldShowScreenshot;
           const screenshotIsLoading = isLoading && !isDismissed;
@@ -525,9 +547,7 @@ function WorkflowContent({
 
           if (showPreview) {
             const handleEndSession = () => {
-              onActiveScreencastChange(
-                activeScreencast?.itemId === item.id ? null : activeScreencast
-              );
+              onDismissScreencast(item.id);
               onContinueWorkflow();
             };
 
@@ -653,6 +673,7 @@ export function MessageRenderer({
   onScreencastLastFrame,
   onScreencastConnectionError,
   onActiveScreencastChange,
+  onDismissScreencast,
   onContinueWorkflow,
   isAdmin,
 }: MessageRendererProps): JSX.Element | null {
@@ -710,6 +731,7 @@ export function MessageRenderer({
           onScreencastLastFrame={onScreencastLastFrame}
           onScreencastConnectionError={onScreencastConnectionError}
           onActiveScreencastChange={onActiveScreencastChange}
+          onDismissScreencast={onDismissScreencast}
           onContinueWorkflow={onContinueWorkflow}
         />
       )}

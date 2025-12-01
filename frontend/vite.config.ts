@@ -77,10 +77,12 @@ export default defineConfig({
         "/api": {
           target: backendTarget,
           changeOrigin: true,
+          ws: true,
         },
         "/.well-known": {
           target: backendTarget,
           changeOrigin: true,
+          ws: true,
         },
       },
     } : {}),

@@ -54,7 +54,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const attachmentsEnabled = attachmentsConfig?.enabled === true;
 
   // Extract auth token from API headers for DevToolsScreencast
-  const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
+  const authHeader =
+    (api.headers?.['Authorization'] as string | undefined) ??
+    (api.headers?.['authorization'] as string | undefined);
+  const authToken = authHeader?.replace(/^Bearer\s+/i, '').trim() || undefined;
 
   // Scroll management
   const {
@@ -93,6 +96,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     failedScreencastTokens,
     handleScreencastLastFrame,
     handleScreencastConnectionError,
+    dismissScreencast,
   } = useScreencast({
     threadId: control.thread?.id,
     threadItems: (control.thread?.items || []) as ThreadItem[],
@@ -292,6 +296,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             onScreencastLastFrame={handleScreencastLastFrame}
             onScreencastConnectionError={handleScreencastConnectionError}
             onActiveScreencastChange={setActiveScreencast}
+            onDismissScreencast={dismissScreencast}
             onContinueWorkflow={handleContinueWorkflow}
             isAdmin={isAdmin}
             inlineVoiceWidget={inlineVoiceWidget}
@@ -407,6 +412,7 @@ interface MessageListProps {
   onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (state: { token: string; itemId: string } | null) => void;
+  onDismissScreencast: (itemId: string) => void;
   onContinueWorkflow: () => void;
   isAdmin?: boolean;
   inlineVoiceWidget: VoiceSessionWidget | null;
@@ -428,6 +434,7 @@ function MessageList({
   onScreencastLastFrame,
   onScreencastConnectionError,
   onActiveScreencastChange,
+  onDismissScreencast,
   onContinueWorkflow,
   isAdmin,
   inlineVoiceWidget,
@@ -491,6 +498,7 @@ function MessageList({
         onScreencastLastFrame={onScreencastLastFrame}
         onScreencastConnectionError={onScreencastConnectionError}
         onActiveScreencastChange={onActiveScreencastChange}
+        onDismissScreencast={onDismissScreencast}
         onContinueWorkflow={onContinueWorkflow}
         isAdmin={isAdmin}
       />,

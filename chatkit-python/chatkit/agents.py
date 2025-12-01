@@ -960,6 +960,8 @@ async def stream_agent_response(
     image_tasks: dict[tuple[str, int], ImageTaskTracker] = {}
     computer_tasks: dict[str, ComputerTaskTracker] = {}
     computer_tasks_by_call_id: dict[str, ComputerTaskTracker] = {}
+    # Registry to store debug_url_tokens by debug_url to reuse across multiple computer_calls
+    debug_tokens_by_url: dict[str, str] = {}
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
     current_reasoning_id: str | None = None
@@ -1004,6 +1006,7 @@ async def stream_agent_response(
         image_tasks.clear()
         computer_tasks.clear()
         computer_tasks_by_call_id.clear()
+        debug_tokens_by_url.clear()
         function_tasks.clear()
         function_tasks_by_call_id.clear()
         return ThreadItemDoneEvent(item=item)
@@ -1310,17 +1313,24 @@ async def stream_agent_response(
                             debug_url = debug_url()
                         if debug_url:
                             LOGGER.info(f"[ComputerTaskTracker] Obtained debug_url: {debug_url}")
-                            # Register a secure debug session for proxy access
-                            callback = get_debug_session_callback()
-                            if callback is not None:
-                                try:
-                                    # TODO: Pass user_id for better authorization
-                                    debug_url_token = callback(debug_url, user_id=None)
-                                    LOGGER.info(f"[ComputerTaskTracker] Registered debug session token: {debug_url_token[:8]}...")
-                                except Exception as exc:
-                                    LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                            # Check if we already have a token for this debug_url
+                            debug_url_token = debug_tokens_by_url.get(debug_url)
+                            if debug_url_token:
+                                LOGGER.info(f"[ComputerTaskTracker] Reusing existing debug session token: {debug_url_token[:8]}...")
                             else:
-                                LOGGER.warning("[ComputerTaskTracker] Debug session callback not set - screencast will not be available")
+                                # Register a new secure debug session for proxy access
+                                callback = get_debug_session_callback()
+                                if callback is not None:
+                                    try:
+                                        # TODO: Pass user_id for better authorization
+                                        debug_url_token = callback(debug_url, user_id=None)
+                                        # Store token in registry for reuse
+                                        debug_tokens_by_url[debug_url] = debug_url_token
+                                        LOGGER.info(f"[ComputerTaskTracker] Registered NEW debug session token: {debug_url_token[:8]}...")
+                                    except Exception as exc:
+                                        LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                                else:
+                                    LOGGER.warning("[ComputerTaskTracker] Debug session callback not set - screencast will not be available")
                 except Exception as exc:
                     LOGGER.debug(f"[ComputerTaskTracker] Failed to get debug_url: {exc}")
 
@@ -1390,26 +1400,41 @@ async def stream_agent_response(
         parsed_output: Any = None,
     ) -> bool:
         # Check if we need to register debug session after browser is ready
+        token_added = False
         if tracker.task.debug_url_token is None:
             computer_tool = get_current_computer_tool()
+            LOGGER.info(f"[ComputerTaskTracker] Checking for debug_url, computer_tool={'found' if computer_tool else 'None'}")
             if computer_tool is not None:
                 try:
                     computer = getattr(computer_tool, "computer", None)
+                    LOGGER.info(f"[ComputerTaskTracker] computer={'found' if computer else 'None'}")
                     if computer is not None:
                         debug_url = getattr(computer, "debug_url", None)
                         if callable(debug_url):
                             debug_url = debug_url()
+                        LOGGER.info(f"[ComputerTaskTracker] debug_url={debug_url if debug_url else 'None'}")
                         if debug_url:
                             LOGGER.info(f"[ComputerTaskTracker] Browser started, obtained debug_url: {debug_url}")
-                            callback = get_debug_session_callback()
-                            if callback is not None:
-                                try:
-                                    debug_url_token = callback(debug_url, user_id=None)
-                                    tracker.task.debug_url_token = debug_url_token
-                                    tracker.task.debug_url = debug_url
-                                    LOGGER.info(f"[ComputerTaskTracker] Registered debug session token after browser start: {debug_url_token[:8]}...")
-                                except Exception as exc:
-                                    LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                            # Check if we already have a token for this debug_url
+                            debug_url_token = debug_tokens_by_url.get(debug_url)
+                            if debug_url_token:
+                                LOGGER.info(f"[ComputerTaskTracker] Reusing existing token from registry: {debug_url_token[:8]}...")
+                            else:
+                                # Register a new token
+                                callback = get_debug_session_callback()
+                                LOGGER.info(f"[ComputerTaskTracker] callback={'found' if callback else 'None'}")
+                                if callback is not None:
+                                    try:
+                                        debug_url_token = callback(debug_url, user_id=None)
+                                        # Store token in registry for reuse
+                                        debug_tokens_by_url[debug_url] = debug_url_token
+                                        LOGGER.info(f"[ComputerTaskTracker] Registered NEW debug session token after browser start: {debug_url_token[:8]}...")
+                                    except Exception as exc:
+                                        LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                            if debug_url_token:
+                                tracker.task.debug_url_token = debug_url_token
+                                tracker.task.debug_url = debug_url
+                                token_added = True  # Mark that we added the token
                 except Exception as exc:
                     LOGGER.debug(f"[ComputerTaskTracker] Failed to update debug_url: {exc}")
 
@@ -1425,7 +1450,8 @@ async def stream_agent_response(
                 del computer_tasks_by_call_id[previous_call_id]
         if tracker.call_id:
             computer_tasks_by_call_id[tracker.call_id] = tracker
-        return updated
+        # Return True if either the task was updated OR a token was added
+        return updated or token_added
 
     def search_status_from_call(call: ResponseFunctionWebSearch) -> str:
         if call.status == "completed":
