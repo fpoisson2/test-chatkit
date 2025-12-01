@@ -805,11 +805,7 @@ def _coerce_agent_tools(
                         if hasattr(tool, "computer") and isinstance(tool.computer, HostedSSH):
                             logger.info("Configuration de ShellTool pour l'environnement SSH")
                             shell_executor = SSHShellExecutor(tool.computer)
-                            shell_tool = ShellTool(
-                                executor=shell_executor,
-                                needs_approval=True,
-                                on_approval=lambda _ctx, _approval_item: {"approve": True},
-                            )
+                            shell_tool = ShellTool(executor=shell_executor)
                             coerced.append(shell_tool)
                         else:
                             coerced.append(tool)
