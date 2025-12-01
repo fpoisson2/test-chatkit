@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Workflow, WorkflowSummary, CustomSummary, DurationSummary, Task } from '../types';
+import type { Workflow, WorkflowSummary, CustomSummary, DurationSummary, Task, ComputerUseTask } from '../types';
 import { TaskRenderer } from './TaskRenderer';
 import { useI18n } from '../../i18n/I18nProvider';
 
@@ -38,6 +38,25 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
+
+  const hasRenderableContent = (task: Task): boolean => {
+    if (task.type !== 'computer_use') {
+      return true;
+    }
+
+    const computerUseTask = task as ComputerUseTask;
+
+    const screenshots = computerUseTask.screenshots || [];
+    const latestScreenshot = screenshots.length > 0 ? screenshots[screenshots.length - 1] : null;
+
+    const imageSrc = latestScreenshot
+      ? (latestScreenshot.data_url || (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : null))
+      : null;
+
+    const actionTitle = computerUseTask.current_action || latestScreenshot?.action_description || computerUseTask.title;
+
+    return Boolean(actionTitle || imageSrc);
+  };
 
   // Synchroniser isCompletedRef avec isCompleted pour l'utiliser dans les callbacks
   isCompletedRef.current = isCompleted;
@@ -241,6 +260,13 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       {!expanded && displayedTask && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
           <TaskRenderer task={displayedTask} theme={theme} />
+        </div>
+      )}
+
+      {/* Afficher la dernière tâche si rien n'est en cours de streaming */}
+      {!expanded && !streamingTask && !displayedTask && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
+        <div className="chatkit-workflow-last-task">
+          <TaskRenderer task={workflow.tasks[currentTaskCount - 1]} theme={theme} />
         </div>
       )}
 
