@@ -70,6 +70,9 @@ from .types import (
     HiddenContextItem,
     ImageTask,
     SearchTask,
+    ShellCallOutcome,
+    ShellCallTask,
+    ShellCommandOutput,
     Task,
     TaskItem,
     ThoughtTask,
@@ -704,6 +707,118 @@ def _computer_status_indicator(status: str | None) -> str | None:
     return None
 
 
+def _shell_status_indicator(status: str | None) -> str | None:
+    if status == "completed":
+        return "complete"
+    if status in {"in_progress", "generating"}:
+        return "loading"
+    if status == "incomplete":
+        return "none"
+    return None
+
+
+def _normalize_shell_result(result: Any) -> tuple[str | None, str | None, ShellCallOutcome | None]:
+    if hasattr(result, "model_dump"):
+        try:
+            result = result.model_dump()
+        except Exception:
+            pass
+
+    if isinstance(result, dict):
+        stdout = _coerce_optional_str(
+            result.get("stdout")
+            or result.get("output")
+            or result.get("result")
+            or result.get("text")
+        )
+        stderr = _coerce_optional_str(result.get("stderr") or result.get("error"))
+        outcome = ShellCallOutcome(
+            type=_coerce_optional_str(result.get("type")) or None,
+            exit_code=result.get("exit_code"),
+            signal=_coerce_optional_str(result.get("signal")) or None,
+            message=_coerce_optional_str(result.get("message")) or None,
+        )
+        if (
+            outcome.type is None
+            and outcome.exit_code is None
+            and outcome.signal is None
+            and outcome.message is None
+        ):
+            outcome = None
+        return stdout, stderr, outcome
+
+    text = _coerce_optional_str(result)
+    return text, None, None
+
+
+class ShellTaskTracker(BaseModel):
+    item_id: str
+    task: ShellCallTask
+    call_id: str | None = None
+
+    def set_call_id(self, call_id: str | None) -> tuple[bool, str | None]:
+        if call_id is None or call_id == self.call_id:
+            return False, None
+        previous = self.call_id
+        self.call_id = call_id
+        return True, previous
+
+    def _ensure_output(self, command: str | None = None) -> ShellCommandOutput:
+        if self.task.output:
+            output = self.task.output[0]
+        else:
+            output = ShellCommandOutput(command=command or "")
+            self.task.output.append(output)
+
+        if command:
+            if not output.command:
+                output.command = command
+            elif output.command != command:
+                output.command = command
+
+        return output
+
+    def set_command(self, command: str | None) -> bool:
+        normalized = _coerce_optional_str(command)
+        if normalized is None:
+            return False
+        output = self._ensure_output(normalized)
+        if output.command == normalized:
+            return False
+        output.command = normalized
+        return True
+
+    def set_status(self, status: str | None) -> bool:
+        indicator = _shell_status_indicator(status)
+        if indicator is None or indicator == self.task.status_indicator:
+            return False
+        self.task.status_indicator = indicator
+        return True
+
+    def set_result(self, result: Any) -> bool:
+        output = self._ensure_output()
+        stdout, stderr, outcome = _normalize_shell_result(result)
+        changed = False
+
+        if stdout is not None and output.stdout != stdout:
+            output.stdout = stdout
+            changed = True
+
+        if stderr is not None and output.stderr != stderr:
+            output.stderr = stderr
+            changed = True
+
+        if outcome is not None:
+            if output.outcome != outcome:
+                output.outcome = outcome
+                changed = True
+        elif output.outcome is not None:
+            output.outcome = None
+            changed = True
+
+        return changed
+
+
 @dataclass
 class ImageTaskTracker:
     item_id: str
@@ -960,6 +1075,8 @@ async def stream_agent_response(
     image_tasks: dict[tuple[str, int], ImageTaskTracker] = {}
     computer_tasks: dict[str, ComputerTaskTracker] = {}
     computer_tasks_by_call_id: dict[str, ComputerTaskTracker] = {}
+    shell_tasks: dict[str, ShellTaskTracker] = {}
+    shell_tasks_by_call_id: dict[str, ShellTaskTracker] = {}
     # Registry to store debug_url_tokens by debug_url to reuse across multiple computer_calls
     debug_tokens_by_url: dict[str, str] = {}
     function_tasks: dict[str, FunctionTaskTracker] = {}
@@ -1453,6 +1570,74 @@ async def stream_agent_response(
         # Return True if either the task was updated OR a token was added
         return updated or token_added
 
+    def _shell_command_from_action(action: Any) -> str | None:
+        if action is None:
+            return None
+        command_value = _get_value(action, "command")
+        if isinstance(command_value, (list, tuple)):
+            command_parts = [str(part) for part in command_value if part is not None]
+            return " ".join(command_parts) if command_parts else None
+        return _coerce_optional_str(command_value)
+
+    def ensure_shell_task(
+        item_id: str, *, call_id: str | None = None
+    ) -> tuple[ShellTaskTracker, bool, list[ThreadStreamEvent]]:
+        events = ensure_workflow()
+        tracker = shell_tasks.get(item_id)
+        task_added = False
+
+        if tracker is None:
+            tracker = ShellTaskTracker(
+                item_id=item_id,
+                task=ShellCallTask(status_indicator="loading", output=[], messages=[]),
+                call_id=call_id,
+            )
+            shell_tasks[item_id] = tracker
+            if ctx.workflow_item and tracker.task not in ctx.workflow_item.workflow.tasks:
+                ctx.workflow_item.workflow.tasks.append(tracker.task)
+                task_added = True
+
+        if call_id:
+            changed_call_id, previous_call_id = tracker.set_call_id(call_id)
+            if changed_call_id and previous_call_id:
+                existing = shell_tasks_by_call_id.get(previous_call_id)
+                if existing is tracker:
+                    del shell_tasks_by_call_id[previous_call_id]
+            shell_tasks_by_call_id[call_id] = tracker
+        elif tracker.call_id:
+            shell_tasks_by_call_id.setdefault(tracker.call_id, tracker)
+
+        return tracker, task_added, events
+
+    def get_shell_task_by_call_id(call_id: str | None) -> ShellTaskTracker | None:
+        if not call_id:
+            return None
+        tracker = shell_tasks_by_call_id.get(call_id)
+        if tracker:
+            return tracker
+        for candidate in shell_tasks.values():
+            if candidate.call_id == call_id:
+                shell_tasks_by_call_id[call_id] = candidate
+                return candidate
+        return None
+
+    def apply_shell_task_updates(
+        tracker: ShellTaskTracker,
+        *,
+        command: str | None = None,
+        status: str | None = None,
+        output: Any | None = None,
+    ) -> bool:
+        updated = False
+        if command:
+            updated |= tracker.set_command(command)
+        if status is not None:
+            updated |= tracker.set_status(status)
+        if output is not None:
+            updated |= tracker.set_result(output)
+            updated |= tracker.set_status("completed")
+        return updated
+
     def search_status_from_call(call: ResponseFunctionWebSearch) -> str:
         if call.status == "completed":
             return "complete"
@@ -1574,15 +1759,17 @@ async def stream_agent_response(
                         yield end_workflow(ctx.workflow_item)
 
                     # track the current workflow if one is added
-                    if (
-                        event.type == "thread.item.added"
-                        and event.item.type == "workflow"
-                    ):
-                        ctx.workflow_item = event.item
-                        search_tasks.clear()
-                        image_tasks.clear()
-                        function_tasks.clear()
-                        function_tasks_by_call_id.clear()
+                        if (
+                            event.type == "thread.item.added"
+                            and event.item.type == "workflow"
+                        ):
+                            ctx.workflow_item = event.item
+                            search_tasks.clear()
+                            image_tasks.clear()
+                            function_tasks.clear()
+                            function_tasks_by_call_id.clear()
+                            shell_tasks.clear()
+                            shell_tasks_by_call_id.clear()
 
                     # track integration produced items so we can clean them up if
                     # there is a guardrail tripwire
@@ -1665,6 +1852,40 @@ async def stream_agent_response(
                                     task_index=task_index,
                                 ),
                             )
+                    elif _get_value(raw_item, "type") == "local_shell_call":
+                        call_id = _get_value(raw_item, "call_id") or _get_value(
+                            raw_item, "id"
+                        )
+                        item_id = _get_value(raw_item, "id") or call_id or ""
+                        if item_id:
+                            produced_items.add(item_id)
+                        tracker, task_added, workflow_events = ensure_shell_task(
+                            item_id,
+                            call_id=call_id,
+                        )
+                        for workflow_event in workflow_events:
+                            yield workflow_event
+                        updated = apply_shell_task_updates(
+                            tracker,
+                            command=_shell_command_from_action(
+                                _get_value(raw_item, "action")
+                            ),
+                            status=_get_value(raw_item, "status"),
+                        )
+                        if ctx.workflow_item and (task_added or updated):
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            update_cls = (
+                                WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=update_cls(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
                 elif (
                     run_item_event.name == "tool_output"
                     and event_item.type == "tool_call_output_item"
@@ -1702,6 +1923,36 @@ async def stream_agent_response(
                                 parsed_output=getattr(event_item, "output", None),
                             )
                             if ctx.workflow_item and updated:
+                                task_index = ctx.workflow_item.workflow.tasks.index(
+                                    tracker.task
+                                )
+                                yield ThreadItemUpdated(
+                                    item_id=ctx.workflow_item.id,
+                                    update=WorkflowTaskUpdated(
+                                        task=tracker.task,
+                                        task_index=task_index,
+                                    ),
+                                )
+                    elif _get_value(raw_item, "type") == "local_shell_call_output":
+                        call_id = _get_value(raw_item, "call_id") or _get_value(
+                            raw_item, "id"
+                        )
+                        tracker = get_shell_task_by_call_id(call_id)
+                        if tracker is None and call_id:
+                            tracker, task_added, workflow_events = ensure_shell_task(
+                                call_id, call_id=call_id
+                            )
+                            for workflow_event in workflow_events:
+                                yield workflow_event
+                        else:
+                            task_added = False
+                        if tracker is not None:
+                            updated = apply_shell_task_updates(
+                                tracker,
+                                status=_get_value(raw_item, "status"),
+                                output=_get_value(raw_item, "output"),
+                            )
+                            if ctx.workflow_item and (task_added or updated):
                                 task_index = ctx.workflow_item.workflow.tasks.index(
                                     tracker.task
                                 )
@@ -1870,6 +2121,54 @@ async def stream_agent_response(
                             task_index = ctx.workflow_item.workflow.tasks.index(
                                 tracker.task
                             )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                elif item.type == "local_shell_call":
+                    call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+                    tracker, task_added, workflow_events = ensure_shell_task(
+                        item.id or call_id or "",
+                        call_id=call_id,
+                    )
+                    updated = apply_shell_task_updates(
+                        tracker,
+                        command=_shell_command_from_action(getattr(item, "action", None)),
+                        status=getattr(item, "status", None),
+                    )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    if ctx.workflow_item and (task_added or updated):
+                        task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                        update_cls = WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=update_cls(task=tracker.task, task_index=task_index),
+                        )
+                    produced_items.add(item.id)
+                elif item.type == "local_shell_call_output":
+                    call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+                    tracker = get_shell_task_by_call_id(call_id)
+                    task_added = False
+                    workflow_events: list[ThreadStreamEvent] = []
+                    if tracker is None and (item.id or call_id):
+                        tracker, task_added, workflow_events = ensure_shell_task(
+                            item.id or call_id or "",
+                            call_id=call_id,
+                        )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    if tracker:
+                        updated = apply_shell_task_updates(
+                            tracker,
+                            status=getattr(item, "status", None),
+                            output=getattr(item, "output", None),
+                        )
+                        if ctx.workflow_item and (task_added or updated):
+                            task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
                             yield ThreadItemUpdated(
                                 item_id=ctx.workflow_item.id,
                                 update=WorkflowTaskUpdated(
@@ -2243,6 +2542,54 @@ async def stream_agent_response(
                                     task_index=task_index,
                                 ),
                             )
+                elif item.type == "local_shell_call":
+                    call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+                    tracker, task_added, workflow_events = ensure_shell_task(
+                        item.id or call_id or "",
+                        call_id=call_id,
+                    )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    updated = apply_shell_task_updates(
+                        tracker,
+                        command=_shell_command_from_action(getattr(item, "action", None)),
+                        status=getattr(item, "status", None),
+                    )
+                    if ctx.workflow_item and (task_added or updated):
+                        task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                        update_cls = WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=update_cls(task=tracker.task, task_index=task_index),
+                        )
+                    produced_items.add(item.id)
+                elif item.type == "local_shell_call_output":
+                    call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+                    tracker = get_shell_task_by_call_id(call_id)
+                    task_added = False
+                    workflow_events: list[ThreadStreamEvent] = []
+                    if tracker is None and (item.id or call_id):
+                        tracker, task_added, workflow_events = ensure_shell_task(
+                            item.id or call_id or "",
+                            call_id=call_id,
+                        )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    if tracker:
+                        updated = apply_shell_task_updates(
+                            tracker,
+                            status=getattr(item, "status", None),
+                            output=getattr(item, "output", None),
+                        )
+                        if ctx.workflow_item and (task_added or updated):
+                            task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
                 elif item.type == "web_search_call":
                     for search_event in upsert_search_task(
                         cast(ResponseFunctionWebSearch, item), status="complete"
@@ -2312,6 +2659,8 @@ async def stream_agent_response(
         search_tasks.clear()
         function_tasks.clear()
         function_tasks_by_call_id.clear()
+        shell_tasks.clear()
+        shell_tasks_by_call_id.clear()
 
         raise
 
