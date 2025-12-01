@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from agents.computer import AsyncComputer, Button, Environment
+from collections.abc import Callable
 
 logger = logging.getLogger("chatkit.computer.hosted_ssh")
 
@@ -66,6 +67,33 @@ class _SSHDriver:
         self._last_output: str = ""
         self._command_history: list[str] = []
         self._placeholder_cache: str | None = None
+        self._output_listeners: set[Callable[[str, str], object]] = set()
+
+    def add_output_listener(self, listener: Callable[[str, str], object]) -> Callable[[], None]:
+        """Register a listener to receive command/output pairs."""
+
+        self._output_listeners.add(listener)
+
+        def remove() -> None:
+            self._output_listeners.discard(listener)
+
+        return remove
+
+    async def _notify_output_listeners(self, command: str, output: str) -> None:
+        if not self._output_listeners:
+            return
+
+        coros: list[asyncio.Future | asyncio.Task] = []
+        for listener in list(self._output_listeners):
+            try:
+                result = listener(command, output)
+                if asyncio.iscoroutine(result):
+                    coros.append(asyncio.create_task(result))
+            except Exception:
+                logger.debug("SSH output listener failed", exc_info=True)
+
+        if coros:
+            await asyncio.gather(*coros, return_exceptions=True)
 
     async def ensure_ready(self) -> None:
         if self._ready:
@@ -188,6 +216,7 @@ class _SSHDriver:
             self._command_history.append(command)
             self._invalidate_cache()
             logger.debug(f"Commande SSH exécutée: {command[:50]}...")
+            await self._notify_output_listeners(command, output)
             return output
         except asyncssh.Error as exc:
             logger.warning(f"Erreur lors de l'exécution de la commande SSH: {exc}")
@@ -370,6 +399,14 @@ class HostedSSH(AsyncComputer):
         """Execute a command via SSH."""
         driver = await self._get_driver()
         return await driver.run_command(command)
+
+    async def subscribe_output(
+        self, listener: Callable[[str, str], object]
+    ) -> Callable[[], None]:
+        """Register a callback invoked for each run_command output."""
+
+        driver = await self._get_driver()
+        return driver.add_output_listener(listener)
 
     async def close(self) -> None:
         if self._driver is None:

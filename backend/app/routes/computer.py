@@ -912,6 +912,8 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
 
     logger.info(f"SSH WebSocket connected for session {token[:8]}...")
 
+    unsubscribe_output = None
+
     try:
         # Create interactive shell
         process = await ssh_instance.create_interactive_shell()
@@ -921,6 +923,19 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
                 session["ws_active"] = False
                 availability.set()
             return
+
+        # Mirror run_command outputs executed by the agent into the interactive
+        # terminal so the frontend sees every command and its response.
+        async def _mirror_run_command(cmd: str, output: str) -> None:
+            try:
+                await websocket.send_bytes(f"$ {cmd}\r\n{output}\r\n".encode("utf-8"))
+            except Exception:
+                logger.debug("Failed to mirror SSH run_command output", exc_info=True)
+
+        try:
+            unsubscribe_output = await ssh_instance.subscribe_output(_mirror_run_command)
+        except Exception:
+            logger.debug("Unable to subscribe to SSH command stream", exc_info=True)
 
         async def forward_ssh_to_client() -> None:
             """Forward SSH output to WebSocket client."""
@@ -989,6 +1004,11 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         logger.error(f"SSH WebSocket error: {exc}")
         await websocket.close(code=1011, reason=str(exc))
     finally:
+        if unsubscribe_output:
+            try:
+                unsubscribe_output()
+            except Exception:
+                logger.debug("Failed to unsubscribe SSH output", exc_info=True)
         async with session_lock:
             session["ws_active"] = False
             availability.set()
