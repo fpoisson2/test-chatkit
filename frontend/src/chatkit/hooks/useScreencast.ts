@@ -125,14 +125,13 @@ export function useScreencast({
           status: computerUseTask.status_indicator,
           isLastComputerUseTask,
           isLastWorkflow,
+          allComputerUseTasksLength: allComputerUseTasks.length,
         });
       }
 
-      // Only consider a workflow "newer" if there's a NEWER computer_use task
-      // Don't close screencast just because there's a newer workflow that doesn't involve computer_use
+      // A computer_use task is "done" if there's a NEWER computer_use task (not just any newer workflow)
+      // This ensures that assistant messages don't close the screencast
       const hasNewerComputerUseTask = index < allComputerUseTasks.length - 1;
-      // Don't close screencast just because task is complete - keep it open until user dismisses
-      // or there's a newer computer_use task
       const isEffectivelyDone = hasNewerComputerUseTask;
 
       if (isEffectivelyDone && currentActiveScreencast && computerUseTask.debug_url_token === currentActiveScreencast.token) {
@@ -151,6 +150,13 @@ export function useScreencast({
           token: computerUseTask.debug_url_token,
           itemId: item.id,
         };
+      } else if (isLastComputerUseTask && computerUseTask.debug_url_token) {
+        console.log('[useScreencast] NOT activating (conditions failed):', {
+          itemId: item.id,
+          token: computerUseTask.debug_url_token.substring(0, 8),
+          isEffectivelyDone,
+          isInFailedTokens: failedScreencastTokens.has(computerUseTask.debug_url_token),
+        });
       }
     });
 
