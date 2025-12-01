@@ -871,9 +871,43 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         await websocket.close(code=1008, reason="Invalid or unauthorized SSH session")
         return
 
+    session_lock: asyncio.Lock = session.setdefault("ws_lock", asyncio.Lock())
+    availability: asyncio.Event = session.setdefault("ws_available", asyncio.Event())
+
+    # Ensure the availability event reflects the current state
+    if not session.get("ws_active"):
+        availability.set()
+    else:
+        availability.clear()
+
+    # Wait for the session to become available instead of failing fast, so the
+    # frontend doesn't churn through rapid reconnects while another connection
+    # is still cleaning up. Use a loop so late arrivals queue behind an active
+    # session instead of being closed immediately when they take the lock.
+    while True:
+        try:
+            await asyncio.wait_for(availability.wait(), timeout=15)
+        except asyncio.TimeoutError:
+            await websocket.close(code=1013, reason="SSH session busy")
+            return
+
+        async with session_lock:
+            if session.get("ws_active"):
+                # Another connection claimed the session before we grabbed the
+                # lock. Clear and loop to wait for it to finish.
+                availability.clear()
+                continue
+
+            session["ws_active"] = True
+            availability.clear()
+            break
+
     ssh_instance = session.get("ssh")
     if not ssh_instance:
         await websocket.close(code=1011, reason="SSH instance not found")
+        async with session_lock:
+            session["ws_active"] = False
+            availability.set()
         return
 
     logger.info(f"SSH WebSocket connected for session {token[:8]}...")
@@ -883,18 +917,23 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         process = await ssh_instance.create_interactive_shell()
         if not process:
             await websocket.close(code=1011, reason="Failed to create SSH shell")
+            async with session_lock:
+                session["ws_active"] = False
+                availability.set()
             return
 
         async def forward_ssh_to_client() -> None:
             """Forward SSH output to WebSocket client."""
             try:
                 while True:
-                    # Read from SSH process stdout
                     data = await process.stdout.read(4096)
                     if not data:
                         break
-                    # Send as binary to preserve terminal escape sequences
-                    await websocket.send_bytes(data)
+                    try:
+                        await websocket.send_bytes(data)
+                    except Exception as send_exc:  # WebSocket might already be closed
+                        logger.debug(f"SSH to client forward ended while sending: {send_exc}")
+                        break
             except Exception as exc:
                 logger.debug(f"SSH to client forward ended: {exc}")
 
@@ -911,7 +950,6 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
                         data = message["text"].encode("utf-8")
                     else:
                         continue
-                    # Write to SSH process stdin
                     process.stdin.write(data)
                     await process.stdin.drain()
             except WebSocketDisconnect:
@@ -919,17 +957,41 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
             except Exception as exc:
                 logger.debug(f"Client to SSH forward ended: {exc}")
 
-        # Run both forwarding tasks concurrently
-        await asyncio.gather(
-            forward_ssh_to_client(),
-            forward_client_to_ssh(),
-            return_exceptions=True,
-        )
+        send_task = asyncio.create_task(forward_ssh_to_client())
+        recv_task = asyncio.create_task(forward_client_to_ssh())
+
+        try:
+            done, pending = await asyncio.wait(
+                {send_task, recv_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            # Drain any cancellation exceptions
+            await asyncio.gather(*pending, return_exceptions=True)
+            # Surface any real exception from the finished tasks for logging
+            for task in done:
+                exc = task.exception()
+                if exc:
+                    logger.debug(f"SSH WebSocket task ended with error: {exc}")
+        finally:
+            try:
+                process.stdin.write_eof()
+            except Exception:
+                pass
+            try:
+                process.close()
+                await process.wait_closed()
+            except Exception:
+                pass
 
     except Exception as exc:
         logger.error(f"SSH WebSocket error: {exc}")
         await websocket.close(code=1011, reason=str(exc))
     finally:
+        async with session_lock:
+            session["ws_active"] = False
+            availability.set()
         logger.info(f"SSH WebSocket closed for session {token[:8]}...")
 
 
