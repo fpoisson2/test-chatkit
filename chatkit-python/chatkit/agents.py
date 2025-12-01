@@ -1297,6 +1297,18 @@ async def stream_agent_response(
         task_added = False
 
         if tracker is None:
+            # Reuse existing ComputerUseTask if available in the current workflow
+            if ctx.workflow_item:
+                for task in reversed(ctx.workflow_item.workflow.tasks):
+                    if isinstance(task, ComputerUseTask):
+                        tracker = ComputerTaskTracker(
+                            item_id=item_id,
+                            task=task,
+                        )
+                        computer_tasks[item_id] = tracker
+                        break
+
+        if tracker is None:
             # Get debug_url from computer_tool if available and register a secure session
             debug_url = None
             debug_url_token = None
