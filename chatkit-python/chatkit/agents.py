@@ -696,7 +696,9 @@ class ComputerTaskTracker(BaseModel):
 
 def _computer_status_indicator(status: str | None) -> str | None:
     if status == "completed":
-        return "complete"
+        # Return "none" instead of "complete" to keep the session active (non-terminal)
+        # and prevent the screencast from closing between actions.
+        return "none"
     if status in {"in_progress", "generating"}:
         return "loading"
     if status == "incomplete":
@@ -960,6 +962,9 @@ async def stream_agent_response(
     image_tasks: dict[tuple[str, int], ImageTaskTracker] = {}
     computer_tasks: dict[str, ComputerTaskTracker] = {}
     computer_tasks_by_call_id: dict[str, ComputerTaskTracker] = {}
+    active_computer_tracker: ComputerTaskTracker | None = None
+    # Track messages converted to tasks during computer use sessions
+    message_tasks: dict[str, StreamingThoughtTracker] = {}
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
     current_reasoning_id: str | None = None
@@ -989,7 +994,7 @@ async def stream_agent_response(
         ctx.workflow_item = second_last_item
 
     def end_workflow(item: WorkflowItem):
-        nonlocal search_tasks, image_tasks
+        nonlocal search_tasks, image_tasks, active_computer_tracker
         if item == ctx.workflow_item:
             ctx.workflow_item = None
         delta = datetime.now() - item.created_at
@@ -1004,6 +1009,8 @@ async def stream_agent_response(
         image_tasks.clear()
         computer_tasks.clear()
         computer_tasks_by_call_id.clear()
+        active_computer_tracker = None
+        message_tasks.clear()
         function_tasks.clear()
         function_tasks_by_call_id.clear()
         return ThreadItemDoneEvent(item=item)
@@ -1292,50 +1299,59 @@ async def stream_agent_response(
         *,
         call_id: str | None = None,
     ) -> tuple[ComputerTaskTracker, bool, list[ThreadStreamEvent]]:
+        nonlocal active_computer_tracker
         events = ensure_workflow()
         tracker = computer_tasks.get(item_id)
         task_added = False
 
         if tracker is None:
-            # Get debug_url from computer_tool if available and register a secure session
-            debug_url = None
-            debug_url_token = None
-            computer_tool = get_current_computer_tool()
-            if computer_tool is not None:
-                try:
-                    computer = getattr(computer_tool, "computer", None)
-                    if computer is not None:
-                        debug_url = getattr(computer, "debug_url", None)
-                        if callable(debug_url):
-                            debug_url = debug_url()
-                        if debug_url:
-                            LOGGER.info(f"[ComputerTaskTracker] Obtained debug_url: {debug_url}")
-                            # Register a secure debug session for proxy access
-                            callback = get_debug_session_callback()
-                            if callback is not None:
-                                try:
-                                    # TODO: Pass user_id for better authorization
-                                    debug_url_token = callback(debug_url, user_id=None)
-                                    LOGGER.info(f"[ComputerTaskTracker] Registered debug session token: {debug_url_token[:8]}...")
-                                except Exception as exc:
-                                    LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
-                            else:
-                                LOGGER.warning("[ComputerTaskTracker] Debug session callback not set - screencast will not be available")
-                except Exception as exc:
-                    LOGGER.debug(f"[ComputerTaskTracker] Failed to get debug_url: {exc}")
+            # Check if we already have an active computer tracker for this workflow
+            # If so, reuse it to prevent flickering/closing of the screencast
+            if active_computer_tracker is not None:
+                tracker = active_computer_tracker
+                computer_tasks[item_id] = tracker
+                # Note: We don't set task_added=True because it's already in the workflow
+            else:
+                # Get debug_url from computer_tool if available and register a secure session
+                debug_url = None
+                debug_url_token = None
+                computer_tool = get_current_computer_tool()
+                if computer_tool is not None:
+                    try:
+                        computer = getattr(computer_tool, "computer", None)
+                        if computer is not None:
+                            debug_url = getattr(computer, "debug_url", None)
+                            if callable(debug_url):
+                                debug_url = debug_url()
+                            if debug_url:
+                                LOGGER.info(f"[ComputerTaskTracker] Obtained debug_url: {debug_url}")
+                                # Register a secure debug session for proxy access
+                                callback = get_debug_session_callback()
+                                if callback is not None:
+                                    try:
+                                        # TODO: Pass user_id for better authorization
+                                        debug_url_token = callback(debug_url, user_id=None)
+                                        LOGGER.info(f"[ComputerTaskTracker] Registered debug session token: {debug_url_token[:8]}...")
+                                    except Exception as exc:
+                                        LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                                else:
+                                    LOGGER.warning("[ComputerTaskTracker] Debug session callback not set - screencast will not be available")
+                    except Exception as exc:
+                        LOGGER.debug(f"[ComputerTaskTracker] Failed to get debug_url: {exc}")
 
-            tracker = ComputerTaskTracker(
-                item_id=item_id,
-                task=ComputerUseTask(
-                    status_indicator="loading",
-                    title=None,
-                    screenshots=[],
-                    action_sequence=[],
-                    debug_url=debug_url,
-                    debug_url_token=debug_url_token,
-                ),
-            )
-            computer_tasks[item_id] = tracker
+                tracker = ComputerTaskTracker(
+                    item_id=item_id,
+                    task=ComputerUseTask(
+                        status_indicator="loading",
+                        title=None,
+                        screenshots=[],
+                        action_sequence=[],
+                        debug_url=debug_url,
+                        debug_url_token=debug_url_token,
+                    ),
+                )
+                computer_tasks[item_id] = tracker
+                active_computer_tracker = tracker
 
         removed_call_id: str | None = None
         if call_id:
@@ -1706,24 +1722,56 @@ async def stream_agent_response(
                     ),
                 )
             elif event.type == "response.output_text.delta":
-                yield ThreadItemUpdated(
-                    item_id=event.item_id,
-                    update=AssistantMessageContentPartTextDelta(
-                        content_index=event.content_index,
-                        delta=event.delta,
-                    ),
-                )
-            elif event.type == "response.output_text.done":
-                yield ThreadItemUpdated(
-                    item_id=event.item_id,
-                    update=AssistantMessageContentPartDone(
-                        content_index=event.content_index,
-                        content=AssistantMessageContent(
-                            text=event.text,
-                            annotations=[],
+                # Check if this message is being tracked as a task
+                msg_tracker = message_tasks.get(event.item_id)
+                if msg_tracker:
+                    msg_tracker.task.content += event.delta
+                    if ctx.workflow_item:
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            msg_tracker.task
+                        )
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=WorkflowTaskUpdated(
+                                task=msg_tracker.task,
+                                task_index=task_index,
+                            ),
+                        )
+                else:
+                    yield ThreadItemUpdated(
+                        item_id=event.item_id,
+                        update=AssistantMessageContentPartTextDelta(
+                            content_index=event.content_index,
+                            delta=event.delta,
                         ),
-                    ),
-                )
+                    )
+            elif event.type == "response.output_text.done":
+                # Check if this message is being tracked as a task
+                msg_tracker = message_tasks.get(event.item_id)
+                if msg_tracker:
+                    msg_tracker.task.content = event.text
+                    if ctx.workflow_item:
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            msg_tracker.task
+                        )
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=WorkflowTaskUpdated(
+                                task=msg_tracker.task,
+                                task_index=task_index,
+                            ),
+                        )
+                else:
+                    yield ThreadItemUpdated(
+                        item_id=event.item_id,
+                        update=AssistantMessageContentPartDone(
+                            content_index=event.content_index,
+                            content=AssistantMessageContent(
+                                text=event.text,
+                                annotations=[],
+                            ),
+                        ),
+                    )
             elif event.type == "response.output_text.annotation.added":
                 # Ignore annotation-added events; annotations are reflected in the final item content.
                 continue
@@ -1736,6 +1784,45 @@ async def stream_agent_response(
                     current_reasoning_id = item.id
                 if item.type == "message":
                     if item.id in produced_items:
+                        continue
+
+                    # If we are in an active computer use session, convert the message
+                    # to a task to prevent breaking the workflow and closing the screencast.
+                    if active_computer_tracker is not None and ctx.workflow_item:
+                        # Extract initial text if available (rare in streaming start)
+                        initial_text = ""
+                        for c in item.content:
+                            if c.type == "output_text":
+                                initial_text += c.text
+
+                        msg_task = ThoughtTask(
+                            title="Assistant",
+                            content=initial_text,
+                        )
+                        # Use StreamingThoughtTracker for convenience (reusing struct)
+                        # We use index 0 as placeholder since we key by item_id
+                        msg_tracker = StreamingThoughtTracker(
+                            item_id=item.id,
+                            index=0,
+                            task=msg_task,
+                        )
+                        message_tasks[item.id] = msg_tracker
+
+                        ctx.workflow_item.workflow.tasks.append(msg_task)
+                        task_index = len(ctx.workflow_item.workflow.tasks) - 1
+
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=WorkflowTaskAdded(
+                                task=msg_task,
+                                task_index=task_index,
+                            ),
+                        )
+                        produced_items.add(item.id)
+                        # Do NOT reset reasoning_id here as we haven't emitted a message item?
+                        # Actually reasoning_id is usually attached to the AssistantMessageItem.
+                        # If we don't emit it, the reasoning item stands alone. That's acceptable inside a workflow.
+                        current_reasoning_id = None
                         continue
 
                     if ctx.workflow_item:
@@ -2113,15 +2200,20 @@ async def stream_agent_response(
                 item = event.item
                 if item.type == "message":
                     produced_items.add(item.id)
-                    yield ThreadItemDoneEvent(
-                        item=AssistantMessageItem(
-                            # Reusing the Responses message ID
-                            id=item.id,
-                            thread_id=thread.id,
-                            content=[_convert_content(c) for c in item.content],
-                            created_at=datetime.now(),
-                        ),
-                    )
+                    # If this message was tracked as a task, we don't emit ThreadItemDoneEvent
+                    if item.id in message_tasks:
+                        # Clean up tracker
+                        del message_tasks[item.id]
+                    else:
+                        yield ThreadItemDoneEvent(
+                            item=AssistantMessageItem(
+                                # Reusing the Responses message ID
+                                id=item.id,
+                                thread_id=thread.id,
+                                content=[_convert_content(c) for c in item.content],
+                                created_at=datetime.now(),
+                            ),
+                        )
                 elif item.type == "function_call":
                     tracker, task_added, workflow_events = ensure_function_task(
                         item.id,
