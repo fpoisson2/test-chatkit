@@ -128,11 +128,12 @@ export function useScreencast({
         });
       }
 
-      const hasNewerWorkflow = workflowIndex >= 0 && workflowIndex < workflows.length - 1;
+      // Only consider a workflow "newer" if there's a NEWER computer_use task
+      // Don't close screencast just because there's a newer workflow that doesn't involve computer_use
       const hasNewerComputerUseTask = index < allComputerUseTasks.length - 1;
       // Don't close screencast just because task is complete - keep it open until user dismisses
-      // or there's a newer workflow/task
-      const isEffectivelyDone = hasNewerWorkflow || hasNewerComputerUseTask;
+      // or there's a newer computer_use task
+      const isEffectivelyDone = hasNewerComputerUseTask;
 
       if (isEffectivelyDone && currentActiveScreencast && computerUseTask.debug_url_token === currentActiveScreencast.token) {
         currentScreencastIsComplete = true;
