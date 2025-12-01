@@ -546,7 +546,8 @@ function WorkflowContent({
           });
 
           const isActiveScreencast = activeScreencast?.itemId === item.id && !!debugUrlToken;
-          const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
+          // Do not show the browser screencast when SSH/VNC sessions are available
+          const showLiveScreencast = isActiveScreencast && !!debugUrlToken && !sshToken && !vncToken;
           const showSSHTerminal = !!sshToken;
           const showVNCScreencast = !!vncToken;
 
