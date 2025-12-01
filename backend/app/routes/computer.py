@@ -871,9 +871,20 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         await websocket.close(code=1008, reason="Invalid or unauthorized SSH session")
         return
 
+    session_lock: asyncio.Lock = session.setdefault("ws_lock", asyncio.Lock())
+
+    async with session_lock:
+        if session.get("ws_active"):
+            await websocket.close(code=1013, reason="SSH session already active")
+            return
+
+        session["ws_active"] = True
+
     ssh_instance = session.get("ssh")
     if not ssh_instance:
         await websocket.close(code=1011, reason="SSH instance not found")
+        async with session_lock:
+            session["ws_active"] = False
         return
 
     logger.info(f"SSH WebSocket connected for session {token[:8]}...")
@@ -883,6 +894,8 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         process = await ssh_instance.create_interactive_shell()
         if not process:
             await websocket.close(code=1011, reason="Failed to create SSH shell")
+            async with session_lock:
+                session["ws_active"] = False
             return
 
         async def forward_ssh_to_client() -> None:
@@ -952,6 +965,8 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         logger.error(f"SSH WebSocket error: {exc}")
         await websocket.close(code=1011, reason=str(exc))
     finally:
+        async with session_lock:
+            session["ws_active"] = False
         logger.info(f"SSH WebSocket closed for session {token[:8]}...")
 
 
