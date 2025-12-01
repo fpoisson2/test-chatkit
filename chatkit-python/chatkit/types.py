@@ -909,6 +909,21 @@ class ShellCommandOutput(BaseModel):
     command: str
     """Command that was executed."""
 
+    user: str | None = None
+    """User that executed the command."""
+
+    host: str | None = None
+    """Host used in the shell prompt, if provided."""
+
+    hostname: str | None = None
+    """Alternative host field used in some payloads."""
+
+    cwd: str | None = None
+    """Working directory the command was executed in."""
+
+    prompt: str | None = None
+    """Full prompt string to display, when available."""
+
     stdout: str | None = None
     """Standard output of the command."""
 

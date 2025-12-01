@@ -2562,7 +2562,7 @@
   color: #f5f5f5;
 }
 
-.chatkit-shell-call-output pre {
+.chatkit-shell-call-output {
   background: #0c0c0c;
   color: #f5f5f5;
   padding: 10px 12px;
@@ -2574,13 +2574,19 @@
   white-space: pre-wrap;
 }
 
+.chatkit-shell-call-output--stderr {
+  color: #ffb4b4;
+  border-color: #2a0f0f;
+  background: #160909;
+}
+
 .chatkit-shell-call-label {
   font-weight: 600;
   font-size: 12px;
   color: #f5f5f5;
 }
 
-[data-theme="dark"] .chatkit-shell-call-output pre {
+[data-theme="dark"] .chatkit-shell-call-output {
   background: #0c0c0c;
   color: #f5f5f5;
 }

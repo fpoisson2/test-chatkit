@@ -247,6 +247,28 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
 function ShellCallTaskRenderer({ task, icon, theme = 'light' }: { task: Extract<Task, { type: 'shell_call' }>; icon?: React.ReactNode | null; theme?: 'light' | 'dark' }): JSX.Element {
   const { t } = useI18n();
 
+  const getWorkingDirectory = (command: string, cwd?: string | null): string => {
+    if (cwd) return cwd;
+
+    const cdMatch = command.match(/^(?:\s*cd\s+)([^&;]+?)(?:\s*(?:&&|;)|$)/);
+    if (cdMatch && cdMatch[1]) {
+      return cdMatch[1].trim();
+    }
+
+    return '/workspace';
+  };
+
+  const getPrompt = (call: Extract<Task, { type: 'shell_call' }>['output'][number]): string => {
+    if (call.prompt) return call.prompt;
+
+    const username = call.user || 'root';
+    const hostname = call.host || call.hostname || 'chatkit';
+    const workingDirectory = getWorkingDirectory(call.command, call.cwd);
+    const promptSymbol = username === 'root' ? '#' : '$';
+
+    return `${username}@${hostname}:${workingDirectory}${promptSymbol}`;
+  };
+
   return (
     <div className="chatkit-task-shell-call">
       <TaskLayout icon={icon}>
@@ -276,22 +298,16 @@ function ShellCallTaskRenderer({ task, icon, theme = 'light' }: { task: Extract<
                 </div>
                 <div className="chatkit-shell-call-content">
                   <div className="chatkit-shell-call-command">
-                    <span className="chatkit-shell-call-prompt">root@chatkit:/workspace#</span>
+                    <span className="chatkit-shell-call-prompt">{getPrompt(call)}</span>
                     <code>{call.command}</code>
                   </div>
                   {(call.stdout || call.stderr) && (
                     <div className="chatkit-shell-call-outputs">
                       {call.stdout && (
-                        <div className="chatkit-shell-call-output chatkit-shell-call-output--stdout">
-                          <div className="chatkit-shell-call-label">{t('chatkit.task.stdout')}</div>
-                          <pre>{call.stdout}</pre>
-                        </div>
+                        <pre className="chatkit-shell-call-output chatkit-shell-call-output--stdout">{call.stdout}</pre>
                       )}
                       {call.stderr && (
-                        <div className="chatkit-shell-call-output chatkit-shell-call-output--stderr">
-                          <div className="chatkit-shell-call-label">{t('chatkit.task.stderr')}</div>
-                          <pre>{call.stderr}</pre>
-                        </div>
+                        <pre className="chatkit-shell-call-output chatkit-shell-call-output--stderr">{call.stderr}</pre>
                       )}
                     </div>
                   )}

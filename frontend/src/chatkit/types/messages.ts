@@ -227,6 +227,11 @@ export interface ShellCallOutcome {
 
 export interface ShellCommandOutput {
   command: string;
+  user?: string;
+  host?: string;
+  hostname?: string;
+  cwd?: string;
+  prompt?: string;
   stdout?: string;
   stderr?: string;
   outcome?: ShellCallOutcome;
