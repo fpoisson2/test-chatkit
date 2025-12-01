@@ -12,9 +12,9 @@ interface WorkflowRendererProps {
 export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: WorkflowRendererProps): JSX.Element {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
-  const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
+  const [displayedTaskIndex, setDisplayedTaskIndex] = useState<number | null>(null);
   const [fadeKey, setFadeKey] = useState(0);
-  const taskQueueRef = useRef<Array<{ task: Task; index: number }>>([]);
+  const taskQueueRef = useRef<Array<{ index: number }>>([]);
   const isProcessingRef = useRef(false);
   const displayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastCompletedIndexRef = useRef<number>(-1);
@@ -73,6 +73,9 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const streamingTask = isStreamingFirstThought ? workflow.tasks[0] : null;
 
   // Obtenir le type de la tâche actuelle ou de la dernière tâche
+  const displayedTask =
+    displayedTaskIndex !== null ? workflow.tasks[displayedTaskIndex] || null : null;
+
   const getCurrentTaskType = (): string | null => {
     if (displayedTask) {
       return displayedTask.type;
@@ -103,10 +106,17 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     }
 
     isProcessingRef.current = true;
-    const { task, index } = taskQueueRef.current.shift()!;
+    const { index } = taskQueueRef.current.shift()!;
+    const task = workflow.tasks[index];
+
+    if (!task) {
+      isProcessingRef.current = false;
+      processQueue();
+      return;
+    }
 
     // Afficher la tâche
-    setDisplayedTask(task);
+    setDisplayedTaskIndex(index);
     setFadeKey(prev => prev + 1);
     minDisplayTimeRef.current = Date.now();
 
@@ -122,7 +132,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         processQueue();
       } else if (isCompletedRef.current) {
         // Workflow terminé et pas de tâche en attente, masquer la tâche
-        setDisplayedTask(null);
+        setDisplayedTaskIndex(null);
         isProcessingRef.current = false;
         minDisplayTimeRef.current = null;
       }
@@ -131,11 +141,11 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   };
 
   // Ajouter une tâche à la file d'attente
-  const enqueueTask = (task: Task, index: number) => {
+  const enqueueTask = (index: number) => {
     // Vérifier si déjà dans la queue
     const alreadyQueued = taskQueueRef.current.some(item => item.index === index);
     if (!alreadyQueued && index > lastCompletedIndexRef.current) {
-      taskQueueRef.current.push({ task, index });
+      taskQueueRef.current.push({ index });
       lastCompletedIndexRef.current = index;
 
       // Si on affiche déjà une tâche
@@ -170,21 +180,13 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     // Cas 1: Nouvelle tâche ajoutée → la précédente est "done"
     if (currentTaskCount > previousTaskCountRef.current && previousTaskCountRef.current > 0) {
       const completedIndex = previousTaskCountRef.current - 1;
-      const completedTask = workflow.tasks[completedIndex];
-
-      if (completedTask) {
-        enqueueTask(completedTask, completedIndex);
-      }
+      enqueueTask(completedIndex);
     }
 
     // Cas 2: Workflow complété → la dernière tâche est "done"
     if (isCompleted && currentTaskCount > 0) {
       const lastIndex = currentTaskCount - 1;
-      const lastTask = workflow.tasks[lastIndex];
-
-      if (lastTask) {
-        enqueueTask(lastTask, lastIndex);
-      }
+      enqueueTask(lastIndex);
     }
 
     previousTaskCountRef.current = currentTaskCount;
@@ -212,7 +214,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     const remaining = Math.max(0, 2000 - elapsed);
 
     const timeout = setTimeout(() => {
-      setDisplayedTask(null);
+      setDisplayedTaskIndex(null);
       isProcessingRef.current = false;
       minDisplayTimeRef.current = null;
     }, remaining);
