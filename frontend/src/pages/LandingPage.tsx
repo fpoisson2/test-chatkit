@@ -12,7 +12,7 @@ import {
   Layers,
   Cpu
 } from "lucide-react";
-import edxoLogo from "../assets/edxo-logo.svg";
+import squareLogo from "../assets/favicon.svg";
 import styles from "./LandingPage.module.css";
 
 const LandingPage = () => {
@@ -24,7 +24,7 @@ const LandingPage = () => {
         <div className={styles.container}>
           <nav className={styles.nav}>
             <div className={styles.logo}>
-              <img src={edxoLogo} alt="EDxo" style={{ height: 32 }} />
+              <img src={squareLogo} alt="EDxo" style={{ height: 32 }} />
               <span>EDxo</span>
             </div>
             <button
@@ -169,7 +169,7 @@ const LandingPage = () => {
         <div className={styles.container}>
           <div className={styles.footerContent}>
             <div className={styles.logo} style={{ fontSize: '1.2rem' }}>
-              <img src={edxoLogo} alt="EDxo" style={{ height: 24 }} />
+              <img src={squareLogo} alt="EDxo" style={{ height: 24 }} />
               <span>EDxo</span>
             </div>
             <div className={styles.copyright}>
