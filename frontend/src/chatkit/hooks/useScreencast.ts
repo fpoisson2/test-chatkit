@@ -26,6 +26,7 @@ export interface UseScreencastReturn {
   failedScreencastTokens: Set<string>;
   handleScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   handleScreencastConnectionError: (token: string) => void;
+  dismissScreencast: (itemId: string) => void;
 }
 
 /**
@@ -138,16 +139,50 @@ export function useScreencast({
     const loadingTokenEntries = tokenEntries.filter(({ entry }) => entry.task.status_indicator === 'loading');
     const latestLoadingEntry = [...loadingTokenEntries]
       .reverse()
-      .find(({ token }) => !failedScreencastTokens.has(token));
+      .find(({ token, entry }) => !failedScreencastTokens.has(token) && !dismissedScreencastItems.has(entry.item.id));
 
-    const newActiveScreencast = latestLoadingEntry
+    let newActiveScreencast = latestLoadingEntry
       ? {
           token: latestLoadingEntry.token,
           itemId: latestLoadingEntry.entry.item.id,
         }
       : null;
 
+    // If no specific task is loading, we still check if we should keep an existing screencast active.
+    // This handles two cases:
+    // 1. Preventing flickering between tasks in an agent loop (isLoading is true)
+    // 2. Keeping the screencast visible after completion until dismissed (isLoading is false)
+    if (!newActiveScreencast && tokenEntries.length > 0) {
+      // If we already have an active screencast, check if it's still valid (exists in tokenEntries)
+      // and keep it. We prioritize maintaining the current view over switching or clearing.
+      if (currentActiveScreencast) {
+        const isCurrentTokenValid = tokenEntries.some(e => e.token === currentActiveScreencast.token);
+        if (isCurrentTokenValid && !failedScreencastTokens.has(currentActiveScreencast.token)) {
+          newActiveScreencast = currentActiveScreencast;
+        }
+      }
+
+      // If we don't have an active one (or it became invalid), but we are still loading,
+      // pick the latest available one to show *something*.
+      // We only do this when loading to avoid aggressively showing stale sessions on load
+      // if the user hasn't explicitly interacted. But if they were just watching it,
+      // the logic above (currentActiveScreencast) keeps it.
+      if (!newActiveScreencast && isLoading) {
+        const latestEntry = [...tokenEntries]
+          .reverse()
+          .find(({ token }) => !failedScreencastTokens.has(token));
+
+      if (latestEntry && !dismissedScreencastItems.has(latestEntry.entry.item.id)) {
+          newActiveScreencast = {
+            token: latestEntry.token,
+            itemId: latestEntry.entry.item.id,
+          };
+        }
+      }
+    }
+
     if (!newActiveScreencast && currentActiveScreencast) {
+      // Only clear if we really decided we shouldn't have one anymore
       setActiveScreencast(null);
       if (lastScreencastScreenshot) {
         const screenshotWorkflow = workflows.find((w: any) => w.id === lastScreencastScreenshot.itemId);
@@ -219,6 +254,17 @@ export function useScreencast({
     });
   }, []);
 
+  // Callback to explicitly dismiss a screencast for an item
+  const dismissScreencast = useCallback((itemId: string) => {
+    setDismissedScreencastItems(prev => {
+      const next = new Set(prev);
+      next.add(itemId);
+      return next;
+    });
+    // If the dismissed item was active, clear it
+    setActiveScreencast(prev => (prev?.itemId === itemId ? null : prev));
+  }, []);
+
   return {
     activeScreencast,
     setActiveScreencast,
@@ -227,5 +273,6 @@ export function useScreencast({
     failedScreencastTokens,
     handleScreencastLastFrame,
     handleScreencastConnectionError,
+    dismissScreencast,
   };
 }
