@@ -814,6 +814,7 @@ def _coerce_agent_tools(
 
                     # Store computer tool in thread-local for access in agents.py
                     # The debug session will be registered in agents.py when creating the task
+                    set_current_computer_tool(tool)
                     if _set_chatkit_computer_tool is not None:
                         _set_chatkit_computer_tool(tool)
                 continue
