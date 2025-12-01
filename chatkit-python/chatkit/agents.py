@@ -1582,6 +1582,12 @@ async def stream_agent_response(
     def _shell_command_from_action(action: Any) -> str | None:
         if action is None:
             return None
+        commands_value = _get_value(action, "commands")
+        if isinstance(commands_value, (list, tuple)):
+            command_parts = [str(part) for part in commands_value if part is not None]
+            if command_parts:
+                return " && ".join(command_parts)
+
         command_value = _get_value(action, "command")
         if isinstance(command_value, (list, tuple)):
             command_parts = [str(part) for part in command_value if part is not None]
