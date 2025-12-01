@@ -184,16 +184,6 @@ export function useScreencast({
     if (!newActiveScreencast && currentActiveScreencast) {
       // Only clear if we really decided we shouldn't have one anymore
       setActiveScreencast(null);
-      if (lastScreencastScreenshot) {
-        const screenshotWorkflow = workflows.find((w: any) => w.id === lastScreencastScreenshot.itemId);
-        const screenshotTask = screenshotWorkflow?.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
-        if (screenshotTask) {
-          const isActuallyTerminal = screenshotTask.status_indicator === 'complete' || screenshotTask.status_indicator === 'error';
-          if (isActuallyTerminal) {
-            setLastScreencastScreenshot(null);
-          }
-        }
-      }
     }
 
     if (newActiveScreencast &&
