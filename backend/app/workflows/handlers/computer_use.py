@@ -17,6 +17,8 @@ from chatkit.types import (
 
 from .base import BaseNodeHandler
 from .agent import AgentNodeHandler
+from ...chatkit.agent_registry import get_current_computer_tool
+from ...computer.hosted_ssh import HostedSSH
 
 if TYPE_CHECKING:  # pragma: no cover
     from ...models import WorkflowStep
@@ -438,7 +440,15 @@ class ComputerUseNodeHandler(BaseNodeHandler):
         if thread:
             enriched_config["thread_id"] = thread.id
 
-        computer_tool = build_computer_use_tool({"computer_use": enriched_config})
+        # Reuse the currently active computer tool if it matches the SSH environment
+        # so that the preview reflects the real agent session.
+        computer_tool = get_current_computer_tool()
+        if not (
+            computer_tool
+            and hasattr(computer_tool, "computer")
+            and isinstance(computer_tool.computer, HostedSSH)
+        ):
+            computer_tool = build_computer_use_tool({"computer_use": enriched_config})
 
         if not computer_tool or not hasattr(computer_tool, "computer"):
             logger.warning(
