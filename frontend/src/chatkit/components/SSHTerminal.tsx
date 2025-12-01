@@ -5,7 +5,7 @@
  * via WebSocket for SSH communication.
  */
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -31,8 +31,19 @@ export function SSHTerminal({
   const terminalInstanceRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const onCloseRef = useRef(onClose);
+  const onConnectionErrorRef = useRef(onConnectionError);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  // Keep callback refs updated without re-running connection effect
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    onConnectionErrorRef.current = onConnectionError;
+  }, [onConnectionError]);
 
   // Initialize terminal
   useEffect(() => {
@@ -149,7 +160,7 @@ export function SSHTerminal({
       const errorMsg = "Erreur de connexion WebSocket";
       setConnectionError(errorMsg);
       terminal.writeln(`\r\n\x1b[31m${errorMsg}\x1b[0m`);
-      onConnectionError?.(errorMsg);
+      onConnectionErrorRef.current?.(errorMsg);
     };
 
     ws.onclose = (event) => {
@@ -160,9 +171,9 @@ export function SSHTerminal({
         const errorMsg = `Connexion perdue (code: ${event.code})`;
         setConnectionError(errorMsg);
         terminal.writeln(`\r\n\x1b[31m${errorMsg}\x1b[0m`);
-        onConnectionError?.(errorMsg);
+        onConnectionErrorRef.current?.(errorMsg);
       }
-      onClose?.();
+      onCloseRef.current?.();
     };
 
     // Handle terminal input
@@ -190,7 +201,7 @@ export function SSHTerminal({
       }
       wsRef.current = null;
     };
-  }, [sshToken, authToken, onClose, onConnectionError]);
+  }, [sshToken, authToken]);
 
   // Re-fit terminal when container size changes
   useEffect(() => {
