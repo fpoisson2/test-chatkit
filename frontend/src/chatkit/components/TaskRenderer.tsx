@@ -72,6 +72,13 @@ const taskTypeIcons: Record<IconKey, React.ReactNode> = {
       <path d="M8.2 13h3.6" />
     </svg>
   ),
+  shell_call: (
+    <svg {...iconProps}>
+      <path d="m5 7 3 3-3 3" />
+      <path d="M10 14h5" />
+      <rect x="3.5" y="5.5" width="13" height="9" rx="1.5" />
+    </svg>
+  ),
 };
 
 function getTaskIcon(task: Task): React.ReactNode | null {
@@ -117,6 +124,7 @@ export function TaskRenderer({
           backendUrl={backendUrl}
         />
       )}
+      {task.type === 'shell_call' && <ShellCallTaskRenderer task={task} theme={theme} icon={icon} />}
     </div>
   );
 }
@@ -229,6 +237,60 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
         {task.images && task.images.length > 0 && (
           <div className="chatkit-task-content">
             {t('chatkit.task.imageCompleted')}
+          </div>
+        )}
+      </TaskLayout>
+    </div>
+  );
+}
+
+function ShellCallTaskRenderer({ task, icon, theme = 'light' }: { task: Extract<Task, { type: 'shell_call' }>; icon?: React.ReactNode | null; theme?: 'light' | 'dark' }): JSX.Element {
+  const { t } = useI18n();
+
+  return (
+    <div className="chatkit-task-shell-call">
+      <TaskLayout icon={icon}>
+        {task.title && <div className="chatkit-task-title">{task.title}</div>}
+        {task.messages && task.messages.length > 0 && (
+          <div className="chatkit-shell-call-messages">
+            <div className="chatkit-shell-call-label">{t('chatkit.task.messages')}</div>
+            <div className="chatkit-shell-call-message-list">
+              {task.messages.map((message, messageIndex) => (
+                <div key={messageIndex} className="chatkit-shell-call-message">
+                  <span className="chatkit-shell-call-message-role">{message.role}</span>
+                  <div className="chatkit-shell-call-message-content">
+                    <MarkdownRenderer content={message.content} theme={theme} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {task.output && task.output.length > 0 && (
+          <div className="chatkit-task-shell-calls">
+            {task.output.map((call, index) => (
+              <div key={index} className="chatkit-shell-call">
+                <div className="chatkit-shell-call-command">
+                  <strong>{t('chatkit.task.command')}:</strong> <code>{call.command}</code>
+                </div>
+                {(call.stdout || call.stderr) && (
+                  <div className="chatkit-shell-call-outputs">
+                    {call.stdout && (
+                      <div className="chatkit-shell-call-output chatkit-shell-call-output--stdout">
+                        <div className="chatkit-shell-call-label">{t('chatkit.task.stdout')}</div>
+                        <pre>{call.stdout}</pre>
+                      </div>
+                    )}
+                    {call.stderr && (
+                      <div className="chatkit-shell-call-output chatkit-shell-call-output--stderr">
+                        <div className="chatkit-shell-call-label">{t('chatkit.task.stderr')}</div>
+                        <pre>{call.stderr}</pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </TaskLayout>
