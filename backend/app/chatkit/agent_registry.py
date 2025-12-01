@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-from agents import Agent, ModelSettings, WebSearchTool
+from agents import Agent, ModelSettings, ShellTool, WebSearchTool
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServer
 from agents.models.interface import ModelProvider
@@ -791,7 +791,31 @@ def _coerce_agent_tools(
             if normalized_type in {"computer_use", "computer_use_preview"}:
                 tool = build_computer_use_tool(entry)
                 if tool is not None:
-                    coerced.append(tool)
+                    # Check if we should use ShellTool for SSH environment
+                    is_ssh = False
+                    computer_config = entry.get("computer_use", entry)
+                    if isinstance(computer_config, dict):
+                        is_ssh = computer_config.get("environment") == "ssh"
+
+                    if is_ssh:
+                        # Lazy import to avoid circular dependencies
+                        from ..computer.hosted_ssh import HostedSSH
+                        from ..computer.shell_executor import SSHShellExecutor
+
+                        if hasattr(tool, "computer") and isinstance(tool.computer, HostedSSH):
+                            logger.info("Configuration de ShellTool pour l'environnement SSH")
+                            shell_executor = SSHShellExecutor(tool.computer)
+                            shell_tool = ShellTool(
+                                executor=shell_executor,
+                                needs_approval=True,
+                                on_approval=lambda _ctx, _approval_item: {"approve": True},
+                            )
+                            coerced.append(shell_tool)
+                        else:
+                            coerced.append(tool)
+                    else:
+                        coerced.append(tool)
+
                     # Store computer tool in thread-local for access in agents.py
                     # The debug session will be registered in agents.py when creating the task
                     if _set_chatkit_computer_tool is not None:
