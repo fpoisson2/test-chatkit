@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 from typing import Any, Mapping
 from weakref import WeakKeyDictionary
@@ -29,6 +30,14 @@ _browser_cache_by_thread: dict[str, dict[str, HostedBrowser]] = {}
 # This is more reliable than contextvars because each async task has a unique ID
 # and there's no inheritance/copying issues
 _thread_id_by_task: WeakKeyDictionary[asyncio.Task, str] = WeakKeyDictionary()
+# Context variable used as a fallback for propagating the thread_id to child tasks
+# created after set_current_thread_id() has been called. This ensures that
+# computer_use builds which happen in a new asyncio task (e.g., inside the agent
+# executor) still see the same thread_id and therefore reuse the cached SSH
+# session instead of opening a fresh one.
+_thread_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "computer_use_thread_id", default=None
+)
 
 
 def set_current_thread_id(thread_id: str | None) -> None:
@@ -42,12 +51,17 @@ def set_current_thread_id(thread_id: str | None) -> None:
     inheritance issues between different chat threads.
     """
     task = asyncio.current_task()
-    if task and thread_id:
-        _thread_id_by_task[task] = thread_id
-        logger.info(
-            f"🔵 NOUVEAU MAPPING: thread_id={thread_id} → task_id={id(task)} "
-            f"| Total tâches actives: {len(_thread_id_by_task)}"
-        )
+    if thread_id:
+        if task:
+            _thread_id_by_task[task] = thread_id
+            logger.info(
+                f"🔵 NOUVEAU MAPPING: thread_id={thread_id} → task_id={id(task)} "
+                f"| Total tâches actives: {len(_thread_id_by_task)}"
+            )
+
+        # Always populate the context variable so child tasks or call sites
+        # without an active asyncio task can still recover the thread id.
+        _thread_id_ctx.set(thread_id)
 
 
 def _get_browser_cache(thread_id: str | None) -> dict[str, HostedBrowser]:
@@ -170,7 +184,16 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
     else:
         thread_id = None
 
-    # Fallback to task mapping if not in config
+    # Fallback to context variable first (handles child tasks without mapping)
+    if not thread_id:
+        ctx_thread_id = _thread_id_ctx.get(None)
+        if ctx_thread_id:
+            thread_id = ctx_thread_id
+            logger.info(
+                f"🧵 Fallback context thread_id={thread_id} (task_id={id(asyncio.current_task()) if asyncio.current_task() else 'N/A'})"
+            )
+
+    # Fallback to task mapping if still missing
     if not thread_id:
         task = asyncio.current_task()
         if task:
@@ -247,30 +270,59 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
             )
             computer = cached_ssh
         else:
+            # Try to reuse the current computer tool (if any) to avoid opening a
+            # second SSH connection when the agent already has one.
             try:
-                computer = HostedSSH(
-                    width=width,
-                    height=height,
-                    config=ssh_config,
-                )
-                if thread_id:
-                    cache[cache_key] = computer  # type: ignore[assignment]
+                from ..chatkit.agent_registry import get_current_computer_tool
+
+                current_tool = get_current_computer_tool()
+            except Exception:  # pragma: no cover - defensive import guard
+                current_tool = None
+
+            if (
+                current_tool
+                and hasattr(current_tool, "computer")
+                and isinstance(current_tool.computer, HostedSSH)
+            ):
+                existing_config = getattr(current_tool.computer, "config", None)
+                if isinstance(existing_config, SSHConfig) and existing_config == ssh_config:
+                    computer = current_tool.computer
+                    if thread_id:
+                        cache[cache_key] = computer  # type: ignore[assignment]
                     logger.info(
-                        f"🆕 CRÉATION nouvelle connexion SSH (thread={thread_id}): {cache_key}"
+                        "♻️ RÉUTILISATION connexion SSH existante via current computer tool: %s",
+                        cache_key,
                     )
                 else:
-                    logger.info(
-                        f"⚠️ CRÉATION connexion SSH SANS CACHE (thread_id manquant): {cache_key}"
+                    computer = None
+            else:
+                computer = None
+
+            if computer is None:
+                try:
+                    computer = HostedSSH(
+                        width=width,
+                        height=height,
+                        config=ssh_config,
                     )
-            except HostedSSHError as exc:
-                logger.warning("Impossible d'initialiser la connexion SSH : %s", exc)
-                return None
-            except Exception as exc:
-                logger.exception(
-                    "Erreur inattendue lors de la création de la connexion SSH",
-                    exc_info=exc,
-                )
-                return None
+                    if thread_id:
+                        cache[cache_key] = computer  # type: ignore[assignment]
+                        logger.info(
+                            f"🆕 CRÉATION nouvelle connexion SSH (thread={thread_id}): {cache_key}"
+                        )
+                    else:
+                        logger.info(
+                            f"⚠️ CRÉATION connexion SSH SANS CACHE (thread_id manquant): {cache_key}"
+                        )
+                except HostedSSHError as exc:
+                    logger.warning("Impossible d'initialiser la connexion SSH : %s", exc)
+                    return None
+                except Exception as exc:
+                    logger.exception(
+                        "Erreur inattendue lors de la création de la connexion SSH",
+                        exc_info=exc,
+                    )
+                    return None
     elif environment == "vnc":
         # Handle VNC environment - connect to remote desktop via noVNC
         vnc_host = config.get("vnc_host")
