@@ -2156,12 +2156,6 @@
   border-color: rgba(168, 85, 247, 0.4);
 }
 
-.chatkit-computer-action-title {
-  margin-bottom: 10px;
-  font-weight: 600;
-  color: var(--color-text-default);
-}
-
 /* Computer Use Task - Standalone Layout (No Card) */
 .chatkit-computer-use-standalone {
   width: 100%;

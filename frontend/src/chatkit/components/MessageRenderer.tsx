@@ -553,9 +553,6 @@ function WorkflowContent({
 
             return (
               <div className="chatkit-computer-use-preview">
-                {actionTitle && (
-                  <div className="chatkit-computer-action-title">{actionTitle}</div>
-                )}
                 {shouldShowLiveScreencast && (
                   <>
                     <DevToolsScreencast
