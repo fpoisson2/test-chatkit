@@ -16,7 +16,7 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-
 import { useAuth } from "../auth";
 import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { ProfileMenu } from "./ProfileMenu";
-import edxoLogo from "../assets/edxo-logo.svg";
+import edxoLogo from "../assets/new-logo.jpg";
 import { Tooltip } from "./Tooltip";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import { useI18n } from "../i18n";
