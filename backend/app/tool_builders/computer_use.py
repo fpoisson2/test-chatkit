@@ -51,13 +51,17 @@ def set_current_thread_id(thread_id: str | None) -> None:
     inheritance issues between different chat threads.
     """
     task = asyncio.current_task()
-    if task and thread_id:
-        _thread_id_by_task[task] = thread_id
+    if thread_id:
+        if task:
+            _thread_id_by_task[task] = thread_id
+            logger.info(
+                f"🔵 NOUVEAU MAPPING: thread_id={thread_id} → task_id={id(task)} "
+                f"| Total tâches actives: {len(_thread_id_by_task)}"
+            )
+
+        # Always populate the context variable so child tasks or call sites
+        # without an active asyncio task can still recover the thread id.
         _thread_id_ctx.set(thread_id)
-        logger.info(
-            f"🔵 NOUVEAU MAPPING: thread_id={thread_id} → task_id={id(task)} "
-            f"| Total tâches actives: {len(_thread_id_by_task)}"
-        )
 
 
 def _get_browser_cache(thread_id: str | None) -> dict[str, HostedBrowser]:
@@ -180,7 +184,16 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
     else:
         thread_id = None
 
-    # Fallback to task mapping if not in config
+    # Fallback to context variable first (handles child tasks without mapping)
+    if not thread_id:
+        ctx_thread_id = _thread_id_ctx.get(None)
+        if ctx_thread_id:
+            thread_id = ctx_thread_id
+            logger.info(
+                f"🧵 Fallback context thread_id={thread_id} (task_id={id(asyncio.current_task()) if asyncio.current_task() else 'N/A'})"
+            )
+
+    # Fallback to task mapping if still missing
     if not thread_id:
         task = asyncio.current_task()
         if task:
@@ -188,11 +201,6 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
             logger.info(
                 f"🔍 Récupération thread_id depuis mapping: task_id={id(task)} → thread_id={thread_id}"
             )
-            if not thread_id:
-                thread_id = _thread_id_ctx.get(None)
-                logger.info(
-                    f"🧵 Fallback context thread_id={thread_id} (task_id={id(task) if task else 'N/A'})"
-                )
         else:
             logger.warning("⚠️ Aucune tâche asyncio actuelle trouvée!")
 
