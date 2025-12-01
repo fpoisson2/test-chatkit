@@ -16,7 +16,7 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-
 import { useAuth } from "../auth";
 import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { ProfileMenu } from "./ProfileMenu";
-import edxoLogo from "../assets/favicon.svg";
+import squareLogo from "../assets/favicon.svg";
 import { Tooltip } from "./Tooltip";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import { useI18n } from "../i18n";
@@ -499,12 +499,15 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 <div className="chatkit-sidebar__topline">
                   <div className="chatkit-sidebar__brand">
                     <img
-                      src={edxoLogo}
-                      alt="EDxo"
+                      src={squareLogo}
+                      alt=""
                       className={`chatkit-sidebar__logo-image${
                         isSidebarCollapsed ? " chatkit-sidebar__logo-image--compact" : ""
                       }`}
                     />
+                    {!isSidebarCollapsed && (
+                      <span className="chatkit-sidebar__brand-text">EDxo</span>
+                    )}
                   </div>
                   <div className="chatkit-sidebar__actions">
                     <button
