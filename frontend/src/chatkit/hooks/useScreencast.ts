@@ -117,6 +117,17 @@ export function useScreencast({
       const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
       const isLastWorkflowAndStreaming = isLastWorkflow && isLoading;
 
+      // Debug logging
+      if (computerUseTask.debug_url_token) {
+        console.log('[useScreencast] Found computer_use task with token:', {
+          itemId: item.id,
+          token: computerUseTask.debug_url_token.substring(0, 8),
+          status: computerUseTask.status_indicator,
+          isLastComputerUseTask,
+          isLastWorkflow,
+        });
+      }
+
       const hasNewerWorkflow = workflowIndex >= 0 && workflowIndex < workflows.length - 1;
       const hasNewerComputerUseTask = index < allComputerUseTasks.length - 1;
       // Don't close screencast just because task is complete - keep it open until user dismisses
@@ -131,6 +142,10 @@ export function useScreencast({
           !failedScreencastTokens.has(computerUseTask.debug_url_token)) {
         // Show screencast if it has a token and is not superseded by a newer workflow/task
         // Keep it visible even if the task is complete, until user explicitly dismisses it
+        console.log('[useScreencast] Activating screencast:', {
+          itemId: item.id,
+          token: computerUseTask.debug_url_token.substring(0, 8),
+        });
         newActiveScreencast = {
           token: computerUseTask.debug_url_token,
           itemId: item.id,
