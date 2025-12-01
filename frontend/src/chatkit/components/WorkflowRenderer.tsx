@@ -131,8 +131,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         minDisplayTimeRef.current = null;
         processQueue();
       } else if (isCompletedRef.current) {
-        // Workflow terminé et pas de tâche en attente, masquer la tâche
-        setDisplayedTaskIndex(null);
+        // Workflow terminé et pas de tâche en attente, conserver la dernière tâche affichée
         isProcessingRef.current = false;
         minDisplayTimeRef.current = null;
       }
@@ -200,27 +199,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       }
     };
   }, []);
-
-  // Masquer la dernière tâche affichée lorsque le workflow est terminé
-  useEffect(() => {
-    if (!isCompleted) {
-      return;
-    }
-
-    const elapsed =
-      minDisplayTimeRef.current !== null
-        ? Date.now() - minDisplayTimeRef.current
-        : 2000;
-    const remaining = Math.max(0, 2000 - elapsed);
-
-    const timeout = setTimeout(() => {
-      setDisplayedTaskIndex(null);
-      isProcessingRef.current = false;
-      minDisplayTimeRef.current = null;
-    }, remaining);
-
-    return () => clearTimeout(timeout);
-  }, [isCompleted]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
