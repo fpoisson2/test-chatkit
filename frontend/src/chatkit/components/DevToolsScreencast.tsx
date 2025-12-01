@@ -52,6 +52,10 @@ export function DevToolsScreencast({
   const [urlInput, setUrlInput] = useState('');
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
+  const [navigationEntries, setNavigationEntries] = useState<
+    { id: number; url: string }[]
+  >([]);
+  const [navigationIndex, setNavigationIndex] = useState<number | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageIdRef = useRef(1);
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
@@ -270,6 +274,13 @@ export function DevToolsScreencast({
               const entries = message.result.entries;
 
               if (typeof currentIndex === 'number' && Array.isArray(entries)) {
+                const simplifiedEntries = entries.map((entry: any) => ({
+                  id: entry.id as number,
+                  url: entry.url as string,
+                }));
+
+                setNavigationEntries(simplifiedEntries);
+                setNavigationIndex(currentIndex);
                 setCanGoBack(currentIndex > 0);
                 setCanGoForward(currentIndex < entries.length - 1);
 
@@ -426,9 +437,15 @@ export function DevToolsScreencast({
   };
 
   const goBack = () => {
+    if (!navigationEntries.length || navigationIndex === null) return;
+
+    const targetEntry = navigationEntries[navigationIndex - 1];
+    if (!targetEntry) return;
+
     const command = {
       id: messageIdRef.current++,
-      method: 'Page.goBack',
+      method: 'Page.navigateToHistoryEntry',
+      params: { entryId: targetEntry.id },
     };
     sendCdpCommand(command);
 
@@ -443,9 +460,15 @@ export function DevToolsScreencast({
   };
 
   const goForward = () => {
+    if (!navigationEntries.length || navigationIndex === null) return;
+
+    const targetEntry = navigationEntries[navigationIndex + 1];
+    if (!targetEntry) return;
+
     const command = {
       id: messageIdRef.current++,
-      method: 'Page.goForward',
+      method: 'Page.navigateToHistoryEntry',
+      params: { entryId: targetEntry.id },
     };
     sendCdpCommand(command);
 
