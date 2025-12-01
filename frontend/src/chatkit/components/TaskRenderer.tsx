@@ -225,11 +225,12 @@ function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: 
     : null;
 
   const actionTitle = task.current_action || latestScreenshot?.action_description || task.title;
+  const titleToDisplay = actionTitle || t('chatkit.task.type.computer_use');
 
   return (
     <div className="chatkit-task-computer-use">
       <TaskLayout icon={icon}>
-        {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
+        {titleToDisplay && <div className="chatkit-task-title">{titleToDisplay}</div>}
         {imageSrc && (
           <div className="chatkit-task-browser-screenshot">
             <ImageWithBlobUrl
