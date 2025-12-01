@@ -140,12 +140,28 @@ export function useScreencast({
       .reverse()
       .find(({ token }) => !failedScreencastTokens.has(token));
 
-    const newActiveScreencast = latestLoadingEntry
+    let newActiveScreencast = latestLoadingEntry
       ? {
           token: latestLoadingEntry.token,
           itemId: latestLoadingEntry.entry.item.id,
         }
       : null;
+
+    // If no specific task is loading, but the workflow is still in progress (isLoading),
+    // and we have previously found computer use tasks, keep the latest one active.
+    // This prevents flickering between tasks in an agent loop.
+    if (!newActiveScreencast && isLoading && tokenEntries.length > 0) {
+      const latestEntry = [...tokenEntries]
+        .reverse()
+        .find(({ token }) => !failedScreencastTokens.has(token));
+
+      if (latestEntry) {
+        newActiveScreencast = {
+          token: latestEntry.token,
+          itemId: latestEntry.entry.item.id,
+        };
+      }
+    }
 
     if (!newActiveScreencast && currentActiveScreencast) {
       setActiveScreencast(null);
