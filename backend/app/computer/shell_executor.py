@@ -14,22 +14,23 @@ class SSHShellExecutor:
 
     async def __call__(self, request: ShellCommandRequest) -> ShellResult:
         action = request.data.action
-        command = action.command
+        outputs: list[ShellCommandOutput] = []
 
-        # Execute command via HostedSSH
+        # Execute each requested command via HostedSSH
         # Note: HostedSSH.run_command currently returns combined output string
         # We might want to enhance HostedSSH to return structured data later
         # For now, we use what we have.
-        output = await self.ssh.run_command(command)
-
-        return ShellResult(
-            output=[
+        for command in action.commands:
+            output = await self.ssh.run_command(command)
+            outputs.append(
                 ShellCommandOutput(
                     command=command,
                     stdout=output,
-                    stderr="", # HostedSSH combines stderr into stdout
-                    outcome=ShellCallOutcome(type="exit", exit_code=0), # We assume success if no exception
+                    stderr="",  # HostedSSH combines stderr into stdout
+                    outcome=ShellCallOutcome(
+                        type="exit", exit_code=0
+                    ),  # We assume success if no exception
                 )
-            ],
-            max_output_length=action.max_output_length,
-        )
+            )
+
+        return ShellResult(output=outputs, max_output_length=action.max_output_length)
