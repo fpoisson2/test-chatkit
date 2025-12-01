@@ -63,7 +63,7 @@ else:
         from .routes import (
             admin,
             auth,
-            computer,
+            computer as computer_routes,
             docs,
             health,
             languages,
@@ -141,7 +141,7 @@ else:
         app.include_router(users.router)
         app.include_router(admin.router)
         app.include_router(workflow_monitor_ws.router)
-        app.include_router(computer.router)
+        app.include_router(computer_routes.router)
         app.include_router(docs.router)
         app.include_router(health.router)
         app.include_router(languages.router)
