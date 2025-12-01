@@ -889,12 +889,14 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
             """Forward SSH output to WebSocket client."""
             try:
                 while True:
-                    # Read from SSH process stdout
                     data = await process.stdout.read(4096)
                     if not data:
                         break
-                    # Send as binary to preserve terminal escape sequences
-                    await websocket.send_bytes(data)
+                    try:
+                        await websocket.send_bytes(data)
+                    except Exception as send_exc:  # WebSocket might already be closed
+                        logger.debug(f"SSH to client forward ended while sending: {send_exc}")
+                        break
             except Exception as exc:
                 logger.debug(f"SSH to client forward ended: {exc}")
 
@@ -911,7 +913,6 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
                         data = message["text"].encode("utf-8")
                     else:
                         continue
-                    # Write to SSH process stdin
                     process.stdin.write(data)
                     await process.stdin.drain()
             except WebSocketDisconnect:
@@ -919,12 +920,33 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
             except Exception as exc:
                 logger.debug(f"Client to SSH forward ended: {exc}")
 
-        # Run both forwarding tasks concurrently
-        await asyncio.gather(
-            forward_ssh_to_client(),
-            forward_client_to_ssh(),
-            return_exceptions=True,
-        )
+        send_task = asyncio.create_task(forward_ssh_to_client())
+        recv_task = asyncio.create_task(forward_client_to_ssh())
+
+        try:
+            done, pending = await asyncio.wait(
+                {send_task, recv_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            # Drain any cancellation exceptions
+            await asyncio.gather(*pending, return_exceptions=True)
+            # Surface any real exception from the finished tasks for logging
+            for task in done:
+                exc = task.exception()
+                if exc:
+                    logger.debug(f"SSH WebSocket task ended with error: {exc}")
+        finally:
+            try:
+                process.stdin.write_eof()
+            except Exception:
+                pass
+            try:
+                process.close()
+                await process.wait_closed()
+            except Exception:
+                pass
 
     except Exception as exc:
         logger.error(f"SSH WebSocket error: {exc}")
