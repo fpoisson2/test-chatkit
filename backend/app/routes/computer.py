@@ -882,20 +882,25 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
 
     # Wait for the session to become available instead of failing fast, so the
     # frontend doesn't churn through rapid reconnects while another connection
-    # is still cleaning up.
-    try:
-        await asyncio.wait_for(availability.wait(), timeout=15)
-    except asyncio.TimeoutError:
-        await websocket.close(code=1013, reason="SSH session busy")
-        return
-
-    async with session_lock:
-        if session.get("ws_active"):
-            await websocket.close(code=1013, reason="SSH session already active")
+    # is still cleaning up. Use a loop so late arrivals queue behind an active
+    # session instead of being closed immediately when they take the lock.
+    while True:
+        try:
+            await asyncio.wait_for(availability.wait(), timeout=15)
+        except asyncio.TimeoutError:
+            await websocket.close(code=1013, reason="SSH session busy")
             return
 
-        session["ws_active"] = True
-        availability.clear()
+        async with session_lock:
+            if session.get("ws_active"):
+                # Another connection claimed the session before we grabbed the
+                # lock. Clear and loop to wait for it to finish.
+                availability.clear()
+                continue
+
+            session["ws_active"] = True
+            availability.clear()
+            break
 
     ssh_instance = session.get("ssh")
     if not ssh_instance:
