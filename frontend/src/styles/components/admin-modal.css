@@ -61,9 +61,17 @@
 
   .admin-modal__sidebar {
     border-right: 1px solid var(--color-border-subtle);
-    overflow-y: auto;
+    overflow: hidden;
     background: var(--color-surface-subtle);
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .admin-modal__sidebar-header {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--color-border-subtle);
+    flex-shrink: 0;
   }
 
   .admin-modal__tabs-list {
@@ -71,6 +79,8 @@
     flex-direction: column;
     gap: 0.25rem;
     padding: 1rem;
+    flex: 1 1 auto;
+    overflow-y: auto;
   }
 
   .admin-modal__tab-trigger {
@@ -112,6 +122,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    flex: 1 1 auto;
   }
 
   .admin-modal__tab-content {
@@ -125,6 +136,21 @@
 
   .admin-modal__tab-content[data-state="inactive"] {
     display: none;
+  }
+
+  .admin-modal__desktop-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+  }
+
+  .admin-modal__desktop-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--color-border-subtle);
+    flex-shrink: 0;
   }
 }
 
