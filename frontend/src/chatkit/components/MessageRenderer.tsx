@@ -502,8 +502,9 @@ function WorkflowContent({
 
           const isDismissed = dismissedScreencastItems.has(item.id);
           const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
-          const shouldShowSSHTerminal = showSSHTerminal && !isDismissed && !isTerminal;
-          const shouldShowVNCScreencast = showVNCScreencast && !isDismissed && !isTerminal;
+          // Keep SSH and VNC screencasts visible even when task is complete, until user dismisses
+          const shouldShowSSHTerminal = showSSHTerminal && !isDismissed;
+          const shouldShowVNCScreencast = showVNCScreencast && !isDismissed;
           const shouldShowScreenshot = showScreenshot;
           const showPreview = shouldShowLiveScreencast || shouldShowSSHTerminal || shouldShowVNCScreencast || shouldShowScreenshot;
           const screenshotIsLoading = isLoading && !isDismissed;

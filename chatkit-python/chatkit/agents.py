@@ -1390,6 +1390,7 @@ async def stream_agent_response(
         parsed_output: Any = None,
     ) -> bool:
         # Check if we need to register debug session after browser is ready
+        token_added = False
         if tracker.task.debug_url_token is None:
             computer_tool = get_current_computer_tool()
             if computer_tool is not None:
@@ -1407,6 +1408,7 @@ async def stream_agent_response(
                                     debug_url_token = callback(debug_url, user_id=None)
                                     tracker.task.debug_url_token = debug_url_token
                                     tracker.task.debug_url = debug_url
+                                    token_added = True  # Mark that we added the token
                                     LOGGER.info(f"[ComputerTaskTracker] Registered debug session token after browser start: {debug_url_token[:8]}...")
                                 except Exception as exc:
                                     LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
@@ -1425,7 +1427,8 @@ async def stream_agent_response(
                 del computer_tasks_by_call_id[previous_call_id]
         if tracker.call_id:
             computer_tasks_by_call_id[tracker.call_id] = tracker
-        return updated
+        # Return True if either the task was updated OR a token was added
+        return updated or token_added
 
     def search_status_from_call(call: ResponseFunctionWebSearch) -> str:
         if call.status == "completed":

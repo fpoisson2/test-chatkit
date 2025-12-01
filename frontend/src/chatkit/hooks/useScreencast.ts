@@ -119,7 +119,9 @@ export function useScreencast({
 
       const hasNewerWorkflow = workflowIndex >= 0 && workflowIndex < workflows.length - 1;
       const hasNewerComputerUseTask = index < allComputerUseTasks.length - 1;
-      const isEffectivelyDone = isTerminal || hasNewerWorkflow || hasNewerComputerUseTask;
+      // Don't close screencast just because task is complete - keep it open until user dismisses
+      // or there's a newer workflow/task
+      const isEffectivelyDone = hasNewerWorkflow || hasNewerComputerUseTask;
 
       if (isEffectivelyDone && currentActiveScreencast && computerUseTask.debug_url_token === currentActiveScreencast.token) {
         currentScreencastIsComplete = true;
@@ -127,8 +129,8 @@ export function useScreencast({
 
       if (isLastComputerUseTask && computerUseTask.debug_url_token && !isEffectivelyDone &&
           !failedScreencastTokens.has(computerUseTask.debug_url_token)) {
-        // Show screencast if it's not done (terminal) and has a token, regardless of loading state
-        // This supports manual mode where the task might be paused waiting for user input
+        // Show screencast if it has a token and is not superseded by a newer workflow/task
+        // Keep it visible even if the task is complete, until user explicitly dismisses it
         newActiveScreencast = {
           token: computerUseTask.debug_url_token,
           itemId: item.id,
@@ -151,7 +153,9 @@ export function useScreencast({
     const hasLoadingComputerUse = allComputerUseTasks.some(t => t.isLoading);
 
     // Priority 1: Close screencast if needed
-    if (currentScreencastIsComplete || (latestComputerUseIsTerminal && !newActiveScreencast && !hasLoadingComputerUse)) {
+    // Only close if the screencast is complete (superseded by newer workflow/task)
+    // Don't close just because the task is terminal - keep it open until user dismisses
+    if (currentScreencastIsComplete) {
       if (currentActiveScreencast) {
         setActiveScreencast(null);
       }
