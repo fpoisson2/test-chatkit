@@ -65,6 +65,7 @@ export const DEFAULT_COMPUTER_USE_CONFIG: ComputerUseConfig = {
   display_width: 1024,
   display_height: 768,
   environment: "browser",
+  mode: "agent",
 };
 
 export const COMPUTER_USE_ENVIRONMENTS = [

@@ -75,6 +75,10 @@ import {
   DEFAULT_IMAGE_TOOL_CONFIG,
   DEFAULT_JSON_SCHEMA_TEXT,
 } from '../constants';
+import {
+  buildComputerUseConfig,
+  type ComputerUseFieldUpdates,
+} from '../utils/computerUse';
 import type { ModelSelectionMode, UserModelOption } from '../../../../../utils/workflows';
 import { ToolSettingsPanel } from './ToolSettingsPanel';
 import { AgentPromptModal } from '../components/AgentPromptModal';
@@ -1946,6 +1950,31 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
     [t],
   );
 
+  const computerUseModeValue =
+    computerUseConfig?.mode ?? DEFAULT_COMPUTER_USE_CONFIG.mode;
+  const computerUseSshHostValue = computerUseConfig?.ssh_host ?? '';
+  const computerUseSshPortValue =
+    computerUseConfig?.ssh_port != null ? String(computerUseConfig.ssh_port) : '';
+  const computerUseSshUsernameValue = computerUseConfig?.ssh_username ?? '';
+  const computerUseSshPasswordValue = computerUseConfig?.ssh_password ?? '';
+  const computerUseSshPrivateKeyValue = computerUseConfig?.ssh_private_key ?? '';
+  const computerUseVncHostValue = computerUseConfig?.vnc_host ?? '';
+  const computerUseVncPortValue =
+    computerUseConfig?.vnc_port != null ? String(computerUseConfig.vnc_port) : '';
+  const computerUseVncPasswordValue = computerUseConfig?.vnc_password ?? '';
+  const computerUseNoVncPortValue =
+    computerUseConfig?.novnc_port != null ? String(computerUseConfig.novnc_port) : '';
+  const computerUseEnvironmentIsSsh = computerUseEnvironmentValue === 'ssh';
+  const computerUseEnvironmentIsVnc = computerUseEnvironmentValue === 'vnc';
+
+  const handleComputerUseFieldChange = useCallback(
+    (updates: ComputerUseFieldUpdates) => {
+      const payload = buildComputerUseConfig(computerUseConfig, updates);
+      onAgentComputerUseChange(nodeId, payload);
+    },
+    [computerUseConfig, nodeId, onAgentComputerUseChange],
+  );
+
   return (
     <div className={styles.tabContent}>
       <div className={styles.sectionCard}>
@@ -2118,10 +2147,8 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
                 min={1}
                 value={computerUseDisplayWidthValue}
                 onChange={(event) =>
-                  onAgentComputerUseChange(nodeId, {
-                    ...(computerUseConfig ?? DEFAULT_COMPUTER_USE_CONFIG),
-                    display_width: Number.parseInt(event.target.value, 10) ||
-                      DEFAULT_COMPUTER_USE_CONFIG.display_width,
+                  handleComputerUseFieldChange({
+                    display_width: event.target.value,
                   })
                 }
               />
@@ -2133,10 +2160,8 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
                 min={1}
                 value={computerUseDisplayHeightValue}
                 onChange={(event) =>
-                  onAgentComputerUseChange(nodeId, {
-                    ...(computerUseConfig ?? DEFAULT_COMPUTER_USE_CONFIG),
-                    display_height: Number.parseInt(event.target.value, 10) ||
-                      DEFAULT_COMPUTER_USE_CONFIG.display_height,
+                  handleComputerUseFieldChange({
+                    display_height: event.target.value,
                   })
                 }
               />
@@ -2147,10 +2172,7 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
             <select
               value={computerUseEnvironmentValue}
               onChange={(event) =>
-                onAgentComputerUseChange(nodeId, {
-                  ...(computerUseConfig ?? DEFAULT_COMPUTER_USE_CONFIG),
-                  environment: event.target.value as ComputerUseConfig['environment'],
-                })
+                handleComputerUseFieldChange({ environment: event.target.value })
               }
             >
               {COMPUTER_USE_ENVIRONMENTS.map((environment) => (
@@ -2164,6 +2186,25 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
           </Field>
 
           <Field
+            label={t('workflowBuilder.agentInspector.computerUseModeLabel')}
+            hint={t('workflowBuilder.agentInspector.computerUseModeHelp')}
+          >
+            <select
+              value={computerUseModeValue}
+              onChange={(event) =>
+                handleComputerUseFieldChange({ mode: event.target.value })
+              }
+            >
+              <option value="agent">
+                {t('workflowBuilder.agentInspector.computerUseMode.agent')}
+              </option>
+              <option value="manual">
+                {t('workflowBuilder.agentInspector.computerUseMode.manual')}
+              </option>
+            </select>
+          </Field>
+
+          <Field
             label={t('workflowBuilder.agentInspector.computerUseStartUrlLabel')}
             hint={t('workflowBuilder.agentInspector.computerUseStartUrlHelp')}
           >
@@ -2171,16 +2212,160 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
               type="text"
               value={computerUseStartUrlValue}
               onChange={(event) =>
-                onAgentComputerUseChange(nodeId, {
-                  ...(computerUseConfig ?? DEFAULT_COMPUTER_USE_CONFIG),
-                  start_url: event.target.value,
-                })
+                handleComputerUseFieldChange({ start_url: event.target.value })
               }
               placeholder={t(
                 'workflowBuilder.agentInspector.computerUseStartUrlPlaceholder',
               )}
             />
           </Field>
+
+          {computerUseEnvironmentIsSsh ? (
+            <>
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseSshHostLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseSshHostHelp')}
+              >
+                <input
+                  type="text"
+                  value={computerUseSshHostValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({ ssh_host: event.target.value })
+                  }
+                  placeholder="192.168.1.100"
+                />
+              </Field>
+
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseSshPortLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseSshPortHelp')}
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={computerUseSshPortValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({ ssh_port: event.target.value })
+                  }
+                  placeholder="22"
+                />
+              </Field>
+
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseSshUsernameLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseSshUsernameHelp')}
+              >
+                <input
+                  type="text"
+                  value={computerUseSshUsernameValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({
+                      ssh_username: event.target.value,
+                    })
+                  }
+                  placeholder="root"
+                />
+              </Field>
+
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseSshPasswordLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseSshPasswordHelp')}
+              >
+                <input
+                  type="password"
+                  value={computerUseSshPasswordValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({
+                      ssh_password: event.target.value,
+                    })
+                  }
+                  placeholder="••••••••"
+                />
+              </Field>
+
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseSshPrivateKeyLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseSshPrivateKeyHelp')}
+              >
+                <textarea
+                  value={computerUseSshPrivateKeyValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({
+                      ssh_private_key: event.target.value,
+                    })
+                  }
+                  placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
+                  rows={4}
+                  style={{ fontFamily: 'monospace', fontSize: '12px' }}
+                />
+              </Field>
+            </>
+          ) : null}
+
+          {computerUseEnvironmentIsVnc ? (
+            <>
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseVncHostLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseVncHostHelp')}
+              >
+                <input
+                  type="text"
+                  value={computerUseVncHostValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({ vnc_host: event.target.value })
+                  }
+                  placeholder="192.168.1.100"
+                />
+              </Field>
+
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseVncPortLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseVncPortHelp')}
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={computerUseVncPortValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({ vnc_port: event.target.value })
+                  }
+                  placeholder="5900"
+                />
+              </Field>
+
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseVncPasswordLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseVncPasswordHelp')}
+              >
+                <input
+                  type="password"
+                  value={computerUseVncPasswordValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({ vnc_password: event.target.value })
+                  }
+                  placeholder="••••••••"
+                />
+              </Field>
+
+              <Field
+                label={t('workflowBuilder.agentInspector.computerUseNoVncPortLabel')}
+                hint={t('workflowBuilder.agentInspector.computerUseNoVncPortHelp')}
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={computerUseNoVncPortValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({ novnc_port: event.target.value })
+                  }
+                  placeholder="6080"
+                />
+              </Field>
+            </>
+          ) : null}
         </AccordionSection>
 
         <AccordionSection

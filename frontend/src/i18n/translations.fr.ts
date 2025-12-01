@@ -767,10 +767,44 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.computerUseEnvironment.mac": "macOS",
   "workflowBuilder.agentInspector.computerUseEnvironment.windows": "Windows",
   "workflowBuilder.agentInspector.computerUseEnvironment.ubuntu": "Ubuntu",
+  "workflowBuilder.agentInspector.computerUseEnvironment.ssh": "SSH",
+  "workflowBuilder.agentInspector.computerUseEnvironment.vnc": "VNC",
+  "workflowBuilder.agentInspector.computerUseModeLabel": "Mode",
+  "workflowBuilder.agentInspector.computerUseModeHelp":
+    "Choisissez si l'outil computer use fonctionne en mode autonome ou pas à pas.",
+  "workflowBuilder.agentInspector.computerUseMode.agent": "Agent",
+  "workflowBuilder.agentInspector.computerUseMode.manual": "Manuel",
   "workflowBuilder.agentInspector.computerUseStartUrlLabel": "URL initiale (optionnel)",
   "workflowBuilder.agentInspector.computerUseStartUrlHelp":
     "Charge cette URL dès le démarrage de la session contrôlée (laisser vide pour utiliser la page par défaut).",
   "workflowBuilder.agentInspector.computerUseStartUrlPlaceholder": "https://exemple.com",
+  "workflowBuilder.agentInspector.computerUseSshHostLabel": "Hôte SSH",
+  "workflowBuilder.agentInspector.computerUseSshHostHelp":
+    "Adresse IP ou nom d'hôte du serveur SSH.",
+  "workflowBuilder.agentInspector.computerUseSshPortLabel": "Port SSH",
+  "workflowBuilder.agentInspector.computerUseSshPortHelp":
+    "Port du serveur SSH (par défaut: 22).",
+  "workflowBuilder.agentInspector.computerUseSshUsernameLabel": "Nom d'utilisateur",
+  "workflowBuilder.agentInspector.computerUseSshUsernameHelp":
+    "Nom d'utilisateur pour la connexion SSH.",
+  "workflowBuilder.agentInspector.computerUseSshPasswordLabel": "Mot de passe (optionnel)",
+  "workflowBuilder.agentInspector.computerUseSshPasswordHelp":
+    "Mot de passe pour l'authentification SSH. Laissez vide si vous utilisez une clé privée.",
+  "workflowBuilder.agentInspector.computerUseSshPrivateKeyLabel": "Clé privée SSH (optionnel)",
+  "workflowBuilder.agentInspector.computerUseSshPrivateKeyHelp":
+    "Contenu de la clé privée SSH pour l'authentification. Laissez vide si vous utilisez un mot de passe.",
+  "workflowBuilder.agentInspector.computerUseVncHostLabel": "Hôte VNC",
+  "workflowBuilder.agentInspector.computerUseVncHostHelp":
+    "Adresse IP ou nom d'hôte du serveur VNC.",
+  "workflowBuilder.agentInspector.computerUseVncPortLabel": "Port VNC",
+  "workflowBuilder.agentInspector.computerUseVncPortHelp":
+    "Port du serveur VNC (par défaut: 5900).",
+  "workflowBuilder.agentInspector.computerUseVncPasswordLabel": "Mot de passe VNC (optionnel)",
+  "workflowBuilder.agentInspector.computerUseVncPasswordHelp":
+    "Mot de passe pour l'authentification VNC. Laissez vide si aucun mot de passe n'est requis.",
+  "workflowBuilder.agentInspector.computerUseNoVncPortLabel": "Port noVNC",
+  "workflowBuilder.agentInspector.computerUseNoVncPortHelp":
+    "Port pour l'interface web noVNC (par défaut: 6080). Ce port est utilisé pour accéder au bureau distant via le navigateur.",
   "workflowBuilder.startInspector.autoRunLabel": "Démarrer automatiquement",
   "workflowBuilder.startInspector.autoRunHelp":
     "Exécute immédiatement le workflow lors de l'ouverture d'un fil, même sans message utilisateur.",
