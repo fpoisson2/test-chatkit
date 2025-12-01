@@ -52,8 +52,153 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
         mode = computer_use_config.get("mode", "manual") if computer_use_config else "manual"
 
+        # Common initialization for both modes
+        thread = context.runtime_vars.get("thread")
+        agent_context = context.runtime_vars.get("agent_context")
+        on_stream_event = context.runtime_vars.get("on_stream_event")
+        request_context = getattr(agent_context, "request_context", None) if agent_context else None
+        user_id = getattr(request_context, "user_id", None) if request_context else None
+
         if mode == "agent":
             logger.info("Executing computer_use node %s in AGENT mode", node.slug)
+
+            # Initialize computer tool and emit task for screencast visibility
+            try:
+                # Get agent instance to access its tools
+                agent_instances = context.runtime_vars.get("agent_instances", {})
+                agent = agent_instances.get(node.slug)
+
+                computer_tool = None
+                if agent:
+                    # Find ComputerTool in agent tools
+                    # Tools can be a list of tools or MCPServer instances
+                    # We need to find the ComputerTool instance
+                    from agents.tool import ComputerTool
+
+                    # Agent tools might be coerced/normalized already
+                    # Accessing agent.tools which is a list
+                    if hasattr(agent, "tools"):
+                        for tool in agent.tools:
+                            if isinstance(tool, ComputerTool):
+                                computer_tool = tool
+                                break
+
+                # If we found the tool, register session and emit task
+                if computer_tool and computer_use_config:
+                    is_ssh = computer_use_config.get("environment") == "ssh"
+                    is_vnc = computer_use_config.get("environment") == "vnc"
+
+                    debug_url_token = None
+                    ssh_token = None
+                    vnc_token = None
+
+                    # Identifier for the current session to prevent duplicates
+                    session_identifier = None
+
+                    # Initialize environment if needed
+                    if not is_ssh and not is_vnc and hasattr(computer_tool, "computer"):
+                        try:
+                            # Force browser initialization
+                            await computer_tool.computer.screenshot()
+                            debug_url = computer_tool.computer.debug_url
+
+                            if debug_url:
+                                session_identifier = f"browser_{debug_url}"
+
+                                # Check if we already emitted a task for this session
+                                last_session = context.state.get("active_computer_use_session")
+                                if last_session != session_identifier:
+                                    from ...routes.computer import register_debug_session
+                                    debug_url_token = register_debug_session(debug_url, user_id)
+                                    logger.info(f"Registered debug session for agent with token {debug_url_token[:8]}...")
+                                else:
+                                    logger.info(f"Skipping task emission for existing session: {session_identifier}")
+
+                        except Exception as e:
+                            logger.error(f"Failed to initialize browser for agent: {e}")
+
+                    elif is_ssh and hasattr(computer_tool, "computer"):
+                        try:
+                            # Use ID of computer instance as identifier for SSH
+                            session_identifier = f"ssh_{id(computer_tool.computer)}"
+
+                            last_session = context.state.get("active_computer_use_session")
+                            if last_session != session_identifier:
+                                from ...routes.computer import register_ssh_session
+                                ssh_token = register_ssh_session(
+                                    ssh_instance=computer_tool.computer,
+                                    ssh_config=computer_tool.computer.config,
+                                    user_id=user_id,
+                                )
+                                logger.info(f"Registered SSH session for agent with token {ssh_token[:8]}...")
+                            else:
+                                logger.info(f"Skipping task emission for existing SSH session")
+
+                        except Exception as e:
+                            logger.error(f"Failed to register SSH session for agent: {e}")
+
+                    elif is_vnc and hasattr(computer_tool, "computer"):
+                        try:
+                            # Use ID of computer instance as identifier for VNC
+                            session_identifier = f"vnc_{id(computer_tool.computer)}"
+
+                            last_session = context.state.get("active_computer_use_session")
+                            if last_session != session_identifier:
+                                from ...routes.computer import register_vnc_session
+                                await computer_tool.computer.screenshot() # Force init
+                                vnc_token = register_vnc_session(
+                                    vnc_instance=computer_tool.computer,
+                                    vnc_config=computer_tool.computer.config,
+                                    user_id=user_id,
+                                )
+                                logger.info(f"Registered VNC session for agent with token {vnc_token[:8]}...")
+                            else:
+                                logger.info(f"Skipping task emission for existing VNC session")
+
+                        except Exception as e:
+                            logger.error(f"Failed to register VNC session for agent: {e}")
+
+                    # Emit ComputerUseTask if we have a token
+                    if (debug_url_token or ssh_token or vnc_token) and on_stream_event and agent_context:
+                        task_kwargs: dict[str, Any] = {
+                            "type": "computer_use",
+                            "status_indicator": "loading",
+                            "title": "Session VNC" if is_vnc else ("Session SSH" if is_ssh else "Environnement Computer Use"),
+                            "mode": "agent",
+                        }
+                        if debug_url_token:
+                            task_kwargs["debug_url_token"] = debug_url_token
+                        if ssh_token:
+                            task_kwargs["ssh_token"] = ssh_token
+                        if vnc_token:
+                            task_kwargs["vnc_token"] = vnc_token
+
+                        computer_task = ComputerUseTask(**task_kwargs)
+
+                        workflow = Workflow(
+                            type="custom",
+                            tasks=[computer_task],
+                            expanded=True,
+                        )
+
+                        workflow_item = WorkflowItem(
+                            id=agent_context.generate_id("workflow"),
+                            thread_id=agent_context.thread.id,
+                            created_at=datetime.now(),
+                            workflow=workflow,
+                        )
+
+                        await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
+                        await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
+                        logger.info(f"Emitted ComputerUseTask for agent mode node {node.slug}")
+
+                        # Update state with current session identifier
+                        if session_identifier:
+                            context.state["active_computer_use_session"] = session_identifier
+
+            except Exception as e:
+                logger.error(f"Error setting up computer use task for agent: {e}", exc_info=True)
+
             # Delegate to AgentNodeHandler
             # We don't pass an executor because v2 gets dependencies from context
             agent_handler = AgentNodeHandler()
@@ -72,8 +217,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             _json_safe_copy,
         )
 
-        thread = context.runtime_vars.get("thread")
-        agent_context = context.runtime_vars.get("agent_context")
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
 
         # Check if we're resuming from computer_use wait
@@ -237,10 +380,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             ssh_token = None
             vnc_token = None
 
-            # Get user_id from request_context (set by chatkit routes)
-            request_context = getattr(agent_context, "request_context", None) if agent_context else None
-            user_id = getattr(request_context, "user_id", None) if request_context else None
-
             if debug_url:
                 try:
                     from ...routes.computer import register_debug_session
@@ -275,9 +414,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 except Exception as e:
                     logger.error(f"Failed to register VNC session: {e}")
 
-            # Create a workflow item with computer_use task
-            on_stream_event = context.runtime_vars.get("on_stream_event")
-
             if on_stream_event and agent_context and (debug_url_token or ssh_token or vnc_token):
                 # Create ComputerUseTask
                 task_kwargs: dict[str, Any] = {
@@ -293,21 +429,11 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                     task_kwargs["vnc_token"] = vnc_token
 
                 # Add mode from config
-                mode = computer_use_config.get("mode", "agent")
+                mode = computer_use_config.get("mode", "manual")
                 if mode in ("agent", "manual"):
                     task_kwargs["mode"] = mode
 
-                # Debug: Log task_kwargs before creating ComputerUseTask
-                logger.info(f"task_kwargs before ComputerUseTask: {task_kwargs}")
-
                 computer_task = ComputerUseTask(**task_kwargs)
-
-                # Debug: Check if vnc_token attribute exists on the model
-                logger.info(f"ComputerUseTask has vnc_token attr: {hasattr(computer_task, 'vnc_token')}")
-                logger.info(f"ComputerUseTask.vnc_token value: {getattr(computer_task, 'vnc_token', 'NOT_FOUND')}")
-
-                # Debug: Log the serialized task to verify vnc_token is present
-                logger.info(f"ComputerUseTask created: {computer_task.model_dump_json(exclude_none=True)}")
 
                 # Create Workflow
                 workflow = Workflow(
@@ -323,9 +449,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                     created_at=datetime.now(),
                     workflow=workflow,
                 )
-
-                # Debug: Log the serialized workflow item
-                logger.info(f"WorkflowItem tasks: {[t.model_dump(exclude_none=True) for t in workflow_item.workflow.tasks]}")
 
                 # Emit the workflow item
                 await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
