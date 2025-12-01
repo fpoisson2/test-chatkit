@@ -536,7 +536,9 @@ export const ComputerUseInspectorSection = ({
 
       <p className={styles.nodeInspectorHintTextTight}>
         {isSSH
-          ? "Configure la connexion SSH pour permettre a Claude d'interagir avec un serveur distant via l'outil Computer Use."
+          ? isAgentMode
+            ? "En mode Agent avec SSH, Claude utilisera l'outil Shell pour exécuter des commandes directement sur le serveur distant."
+            : "Configure la connexion SSH pour permettre a Claude d'interagir avec un serveur distant via l'outil Computer Use."
           : isVNC
           ? "Configure la connexion VNC via noVNC pour permettre a Claude d'interagir avec un bureau distant via l'outil Computer Use."
           : "Configure l'environnement de bureau virtuel pour permettre a Claude d'interagir avec un ordinateur via l'outil Computer Use."}
