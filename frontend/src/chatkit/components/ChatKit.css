@@ -2464,7 +2464,14 @@
 
 /* Shell call task styles */
 .chatkit-task-shell-call {
-  padding: 12px;
+  background: #0c0c0c;
+  color: #f5f5f5;
+  border: 1px solid #1f1f1f;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
 }
 
 .chatkit-task-shell-calls {
@@ -2473,10 +2480,47 @@
   gap: 8px;
 }
 
+.chatkit-shell-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #161616;
+  border-bottom: 1px solid #1f1f1f;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 12px;
+}
+
+.chatkit-shell-call-header-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38c172;
+  display: inline-block;
+}
+
+.chatkit-shell-call-header-title {
+  color: #f5f5f5;
+}
+
+.chatkit-shell-call-content {
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .chatkit-shell-call-command {
   font-family: var(--font-mono, 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
   font-size: 12px;
-  color: var(--color-text-subtle);
+  color: #f5f5f5;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
 }
 
 .chatkit-shell-call-outputs {
@@ -2498,9 +2542,9 @@
 
 .chatkit-shell-call-message {
   padding: 8px 10px;
-  background: var(--color-bg-subtle);
+  background: #161616;
   border-radius: 6px;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid #1f1f1f;
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 6px 10px;
@@ -2509,20 +2553,21 @@
 .chatkit-shell-call-message-role {
   font-weight: 600;
   font-size: 12px;
-  color: var(--color-text-subtle);
+  color: #c7c7c7;
   text-transform: capitalize;
 }
 
 .chatkit-shell-call-message-content {
   font-size: 13px;
-  color: var(--color-text-default);
+  color: #f5f5f5;
 }
 
 .chatkit-shell-call-output pre {
-  background: var(--color-bg-subtle);
-  color: var(--color-text-default);
-  padding: 8px;
+  background: #0c0c0c;
+  color: #f5f5f5;
+  padding: 10px 12px;
   border-radius: 6px;
+  border: 1px solid #1f1f1f;
   font-family: var(--font-mono, 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
   font-size: 12px;
   margin: 4px 0 0;
@@ -2532,12 +2577,16 @@
 .chatkit-shell-call-label {
   font-weight: 600;
   font-size: 12px;
-  color: var(--color-text-default);
+  color: #f5f5f5;
 }
 
 [data-theme="dark"] .chatkit-shell-call-output pre {
-  background: var(--color-bg-elevated);
-  color: var(--color-text-default);
+  background: #0c0c0c;
+  color: #f5f5f5;
+}
+
+.chatkit-shell-call-prompt {
+  color: #b8e986;
 }
 
 /* ===== ANNOTATIONS & SOURCES ===== */
