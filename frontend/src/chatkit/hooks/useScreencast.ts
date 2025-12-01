@@ -239,8 +239,14 @@ export function useScreencast({
 
   // Callback for last frame (screenshots now handled by backend)
   const handleScreencastLastFrame = useCallback((itemId: string) => {
-    return (_frameDataUrl: string) => {
-      // Screenshot is now emitted by backend, no need to store it here
+    return (frameDataUrl: string) => {
+      // Still store it in case the backend hasn't processed the final screenshot yet
+      // (e.g. forced termination by user)
+      setLastScreencastScreenshot({
+        itemId,
+        src: frameDataUrl,
+        action: 'Terminé par l\'utilisateur',
+      });
     };
   }, []);
 
