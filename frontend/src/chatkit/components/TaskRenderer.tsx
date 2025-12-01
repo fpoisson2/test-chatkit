@@ -215,13 +215,7 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
 }
 
 function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
-  // If we have a debug_url_token, the screencast is displayed in ChatKit.tsx
-  // Don't render anything here to avoid duplication
-  if (task.debug_url_token) {
-    return <></>;
-  }
-
-  // Fallback: show static screenshots in a card
+  // Show static screenshots in a card
   const latestScreenshot = task.screenshots && task.screenshots.length > 0
     ? task.screenshots[task.screenshots.length - 1]
     : null;
