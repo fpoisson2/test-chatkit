@@ -18,6 +18,7 @@ interface TaskRendererProps {
   task: Task;
   className?: string;
   theme?: 'light' | 'dark';
+  hideComputerUseScreenshot?: boolean;
 }
 
 type IconKey = Exclude<Task['type'], 'custom'>;
@@ -78,7 +79,12 @@ function getTaskIcon(task: Task): React.ReactNode | null {
   return taskTypeIcons[task.type] || null;
 }
 
-export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRendererProps): JSX.Element {
+export function TaskRenderer({
+  task,
+  className = '',
+  theme = 'light',
+  hideComputerUseScreenshot = false,
+}: TaskRendererProps): JSX.Element {
   const { t } = useI18n();
   // Ne pas ajouter la classe --loading
   const statusClass = task.status_indicator && task.status_indicator !== 'loading'
@@ -94,7 +100,14 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
       {task.type === 'thought' && <ThoughtTaskRenderer task={task} theme={theme} icon={icon} />}
       {task.type === 'file' && <FileTaskRenderer task={task} icon={icon} />}
       {task.type === 'image' && <ImageTaskRenderer task={task} t={t} icon={icon} />}
-      {task.type === 'computer_use' && <ComputerUseTaskRenderer task={task} t={t} icon={icon} />}
+      {task.type === 'computer_use' && (
+        <ComputerUseTaskRenderer
+          task={task}
+          t={t}
+          icon={icon}
+          hideScreenshot={hideComputerUseScreenshot}
+        />
+      )}
     </div>
   );
 }
@@ -214,13 +227,23 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
   );
 }
 
-function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
+function ComputerUseTaskRenderer({
+  task,
+  t,
+  icon,
+  hideScreenshot = false,
+}: {
+  task: ComputerUseTask;
+  t: (key: string) => string;
+  icon?: React.ReactNode | null;
+  hideScreenshot?: boolean;
+}): JSX.Element {
   // Show static screenshots in a card
   const latestScreenshot = task.screenshots && task.screenshots.length > 0
     ? task.screenshots[task.screenshots.length - 1]
     : null;
 
-  const imageSrc = latestScreenshot
+  const imageSrc = !hideScreenshot && latestScreenshot
     ? (latestScreenshot.data_url || (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : null))
     : null;
 

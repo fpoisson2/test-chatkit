@@ -232,21 +232,25 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       {/* Afficher le premier thought en streaming (sans animation de fade) */}
       {!expanded && streamingTask && !displayedTask && (
         <div className="chatkit-workflow-last-task chatkit-workflow-streaming-task">
-          <TaskRenderer task={streamingTask} theme={theme} />
+          <TaskRenderer task={streamingTask} theme={theme} hideComputerUseScreenshot />
         </div>
       )}
 
       {/* Afficher la dernière tâche complète (avec animation) */}
       {!expanded && displayedTask && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
-          <TaskRenderer task={displayedTask} theme={theme} />
+          <TaskRenderer task={displayedTask} theme={theme} hideComputerUseScreenshot />
         </div>
       )}
 
       {/* Afficher la dernière tâche si rien n'est en cours de streaming */}
       {!expanded && !streamingTask && !displayedTask && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
         <div className="chatkit-workflow-last-task">
-          <TaskRenderer task={workflow.tasks[currentTaskCount - 1]} theme={theme} />
+          <TaskRenderer
+            task={workflow.tasks[currentTaskCount - 1]}
+            theme={theme}
+            hideComputerUseScreenshot
+          />
         </div>
       )}
 
