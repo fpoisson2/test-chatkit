@@ -32,6 +32,13 @@ DEFAULT_SIP_MEDIA_PORT = 40000
 DEFAULT_LTI_PRIVATE_KEY_FILENAME = "tool-private-key.pem"
 DEFAULT_LTI_PUBLIC_KEY_FILENAME = "tool-public-key.pem"
 
+DEFAULT_DEV_ALLOWED_ORIGINS = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5183",
+    "http://127.0.0.1:5183",
+)
+
 ADMIN_MODEL_API_KEY_ENV = "APP_SETTINGS_MODEL_API_KEY"
 
 _RUNTIME_SETTINGS_OVERRIDES: dict[str, Any] | None = None
@@ -548,6 +555,10 @@ class Settings:
 
         model_provider = (get_stripped("MODEL_PROVIDER") or "openai").lower()
 
+        runtime_environment = (
+            get_stripped("ENVIRONMENT") or "development"
+        ).strip().lower()
+
         explicit_model_api_base = get_stripped("MODEL_API_BASE")
         if explicit_model_api_base:
             model_api_base = explicit_model_api_base.rstrip("/")
@@ -675,8 +686,16 @@ class Settings:
             get_stripped("LTI_TOOL_PRIVATE_KEY"),
         )
 
+        raw_allowed_origins = cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS"))
+        if raw_allowed_origins:
+            allowed_origins = raw_allowed_origins
+        elif runtime_environment == "development":
+            allowed_origins = list(DEFAULT_DEV_ALLOWED_ORIGINS)
+        else:
+            allowed_origins = []
+
         return cls(
-            allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
+            allowed_origins=allowed_origins,
             model_provider=model_provider,
             model_api_base=model_api_base,
             model_api_key_env=model_api_key_env,

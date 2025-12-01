@@ -118,6 +118,7 @@ export const LoginPage = () => {
               className="input"
               type="email"
               {...register("email")}
+              autoComplete="email"
               placeholder={t("auth.login.email.placeholder")}
             />
             {formErrors.email && (
@@ -133,6 +134,7 @@ export const LoginPage = () => {
               className="input"
               type="password"
               {...register("password")}
+              autoComplete="current-password"
               placeholder={t("auth.login.password.placeholder")}
             />
             {formErrors.password && (

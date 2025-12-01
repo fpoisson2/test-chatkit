@@ -109,7 +109,7 @@ EDxo est une plateforme complète permettant aux éducateurs et institutions de 
    ADMIN_PASSWORD=MotDePasseSecurise123!
 
    # Configuration de base
-   ALLOWED_ORIGINS=http://localhost:5183
+   ALLOWED_ORIGINS=http://localhost:5183,http://127.0.0.1:5183
    DATABASE_URL=postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit
    ```
 
