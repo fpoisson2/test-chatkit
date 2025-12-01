@@ -270,30 +270,59 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
             )
             computer = cached_ssh
         else:
+            # Try to reuse the current computer tool (if any) to avoid opening a
+            # second SSH connection when the agent already has one.
             try:
-                computer = HostedSSH(
-                    width=width,
-                    height=height,
-                    config=ssh_config,
-                )
-                if thread_id:
-                    cache[cache_key] = computer  # type: ignore[assignment]
+                from ..chatkit.agent_registry import get_current_computer_tool
+
+                current_tool = get_current_computer_tool()
+            except Exception:  # pragma: no cover - defensive import guard
+                current_tool = None
+
+            if (
+                current_tool
+                and hasattr(current_tool, "computer")
+                and isinstance(current_tool.computer, HostedSSH)
+            ):
+                existing_config = getattr(current_tool.computer, "config", None)
+                if isinstance(existing_config, SSHConfig) and existing_config == ssh_config:
+                    computer = current_tool.computer
+                    if thread_id:
+                        cache[cache_key] = computer  # type: ignore[assignment]
                     logger.info(
-                        f"🆕 CRÉATION nouvelle connexion SSH (thread={thread_id}): {cache_key}"
+                        "♻️ RÉUTILISATION connexion SSH existante via current computer tool: %s",
+                        cache_key,
                     )
                 else:
-                    logger.info(
-                        f"⚠️ CRÉATION connexion SSH SANS CACHE (thread_id manquant): {cache_key}"
+                    computer = None
+            else:
+                computer = None
+
+            if computer is None:
+                try:
+                    computer = HostedSSH(
+                        width=width,
+                        height=height,
+                        config=ssh_config,
                     )
-            except HostedSSHError as exc:
-                logger.warning("Impossible d'initialiser la connexion SSH : %s", exc)
-                return None
-            except Exception as exc:
-                logger.exception(
-                    "Erreur inattendue lors de la création de la connexion SSH",
-                    exc_info=exc,
-                )
-                return None
+                    if thread_id:
+                        cache[cache_key] = computer  # type: ignore[assignment]
+                        logger.info(
+                            f"🆕 CRÉATION nouvelle connexion SSH (thread={thread_id}): {cache_key}"
+                        )
+                    else:
+                        logger.info(
+                            f"⚠️ CRÉATION connexion SSH SANS CACHE (thread_id manquant): {cache_key}"
+                        )
+                except HostedSSHError as exc:
+                    logger.warning("Impossible d'initialiser la connexion SSH : %s", exc)
+                    return None
+                except Exception as exc:
+                    logger.exception(
+                        "Erreur inattendue lors de la création de la connexion SSH",
+                        exc_info=exc,
+                    )
+                    return None
     elif environment == "vnc":
         # Handle VNC environment - connect to remote desktop via noVNC
         vnc_host = config.get("vnc_host")
