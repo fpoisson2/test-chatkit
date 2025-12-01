@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 from typing import Any, Mapping
 from weakref import WeakKeyDictionary
@@ -29,6 +30,14 @@ _browser_cache_by_thread: dict[str, dict[str, HostedBrowser]] = {}
 # This is more reliable than contextvars because each async task has a unique ID
 # and there's no inheritance/copying issues
 _thread_id_by_task: WeakKeyDictionary[asyncio.Task, str] = WeakKeyDictionary()
+# Context variable used as a fallback for propagating the thread_id to child tasks
+# created after set_current_thread_id() has been called. This ensures that
+# computer_use builds which happen in a new asyncio task (e.g., inside the agent
+# executor) still see the same thread_id and therefore reuse the cached SSH
+# session instead of opening a fresh one.
+_thread_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "computer_use_thread_id", default=None
+)
 
 
 def set_current_thread_id(thread_id: str | None) -> None:
@@ -44,6 +53,7 @@ def set_current_thread_id(thread_id: str | None) -> None:
     task = asyncio.current_task()
     if task and thread_id:
         _thread_id_by_task[task] = thread_id
+        _thread_id_ctx.set(thread_id)
         logger.info(
             f"🔵 NOUVEAU MAPPING: thread_id={thread_id} → task_id={id(task)} "
             f"| Total tâches actives: {len(_thread_id_by_task)}"
@@ -178,6 +188,11 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
             logger.info(
                 f"🔍 Récupération thread_id depuis mapping: task_id={id(task)} → thread_id={thread_id}"
             )
+            if not thread_id:
+                thread_id = _thread_id_ctx.get(None)
+                logger.info(
+                    f"🧵 Fallback context thread_id={thread_id} (task_id={id(task) if task else 'N/A'})"
+                )
         else:
             logger.warning("⚠️ Aucune tâche asyncio actuelle trouvée!")
 
