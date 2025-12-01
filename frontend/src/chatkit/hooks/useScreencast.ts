@@ -122,17 +122,27 @@ export function useScreencast({
       const isEffectivelyDone = isTerminal || hasNewerWorkflow || hasNewerComputerUseTask;
 
       if (isEffectivelyDone && currentActiveScreencast && computerUseTask.debug_url_token === currentActiveScreencast.token) {
-        currentScreencastIsComplete = true;
+        // Only mark as complete if the workflow is NOT loading (for agent mode continuity)
+        // or if we have moved on to a new workflow/task completely
+        if (!isLoading) {
+          currentScreencastIsComplete = true;
+        }
       }
 
-      if (isLastComputerUseTask && computerUseTask.debug_url_token && !isEffectivelyDone &&
+      if (isLastComputerUseTask && computerUseTask.debug_url_token &&
           !failedScreencastTokens.has(computerUseTask.debug_url_token)) {
-        // Show screencast if it's not done (terminal) and has a token, regardless of loading state
-        // This supports manual mode where the task might be paused waiting for user input
-        newActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
+
+        // Determine if we should show this screencast
+        // 1. It's not effectively done (standard case)
+        // 2. OR it IS done, but we are still loading (agent mode - keep it open until workflow finishes)
+        const shouldShow = !isEffectivelyDone || isLoading;
+
+        if (shouldShow) {
+          newActiveScreencast = {
+            token: computerUseTask.debug_url_token,
+            itemId: item.id,
+          };
+        }
       }
     });
 
@@ -151,7 +161,10 @@ export function useScreencast({
     const hasLoadingComputerUse = allComputerUseTasks.some(t => t.isLoading);
 
     // Priority 1: Close screencast if needed
-    if (currentScreencastIsComplete || (latestComputerUseIsTerminal && !newActiveScreencast && !hasLoadingComputerUse)) {
+    // We only force close if explicitly complete AND not loading, OR if we found no active candidate
+    const shouldClose = currentScreencastIsComplete || (latestComputerUseIsTerminal && !newActiveScreencast && !hasLoadingComputerUse && !isLoading);
+
+    if (shouldClose) {
       if (currentActiveScreencast) {
         setActiveScreencast(null);
       }
