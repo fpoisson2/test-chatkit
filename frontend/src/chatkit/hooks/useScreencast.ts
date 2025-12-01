@@ -185,10 +185,12 @@ export function useScreencast({
         }
       }
     }
-    // Priority 2: Activate new screencast if different
-    else if (newActiveScreencast &&
-             (newActiveScreencast.token !== currentActiveScreencast?.token ||
-              newActiveScreencast.itemId !== currentActiveScreencast?.itemId)) {
+    // Priority 2: Activate new screencast if different (or if no current screencast)
+    if (newActiveScreencast &&
+        (!currentActiveScreencast ||
+         newActiveScreencast.token !== currentActiveScreencast.token ||
+         newActiveScreencast.itemId !== currentActiveScreencast.itemId)) {
+      console.log('[useScreencast] Setting active screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
     }
   }, [isLoading, threadItems, dismissedScreencastItems, failedScreencastTokens, lastScreencastScreenshot]);
