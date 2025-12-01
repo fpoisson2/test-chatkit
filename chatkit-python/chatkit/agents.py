@@ -725,18 +725,18 @@ def _normalize_shell_result(result: Any) -> tuple[str | None, str | None, ShellC
             pass
 
     if isinstance(result, dict):
-        stdout = _coerce_optional_str(
+        stdout = _stringify_shell_value(
             result.get("stdout")
             or result.get("output")
             or result.get("result")
             or result.get("text")
         )
-        stderr = _coerce_optional_str(result.get("stderr") or result.get("error"))
+        stderr = _stringify_shell_value(result.get("stderr") or result.get("error"))
         outcome = ShellCallOutcome(
             type=_coerce_optional_str(result.get("type")) or None,
             exit_code=result.get("exit_code"),
             signal=_coerce_optional_str(result.get("signal")) or None,
-            message=_coerce_optional_str(result.get("message")) or None,
+            message=_stringify_shell_value(result.get("message")) or None,
         )
         if (
             outcome.type is None
@@ -747,7 +747,7 @@ def _normalize_shell_result(result: Any) -> tuple[str | None, str | None, ShellC
             outcome = None
         return stdout, stderr, outcome
 
-    text = _coerce_optional_str(result)
+    text = _stringify_shell_value(result)
     return text, None, None
 
 
@@ -849,6 +849,30 @@ def _coerce_optional_str(value: Any) -> str | None:
         if stripped:
             return stripped
     return None
+
+
+def _stringify_shell_value(value: Any) -> str | None:
+    """Convert shell outputs to readable strings for rendering."""
+
+    if isinstance(value, bytes):
+        try:
+            value = value.decode(errors="ignore")
+        except Exception:
+            value = str(value)
+
+    if isinstance(value, str):
+        return value if value.strip() else None
+
+    if value is None:
+        return None
+
+    try:
+        normalized = _normalize_for_json(value)
+        text = json.dumps(normalized, ensure_ascii=False, indent=2)
+    except Exception:
+        text = str(value)
+
+    return text if text.strip() else None
 
 
 def _guess_format_from_url(url: str) -> str | None:
