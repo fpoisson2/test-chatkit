@@ -218,6 +218,26 @@ export interface ComputerUseTask extends BaseTask {
   vnc_token?: string;
 }
 
+export interface ShellCallOutcome {
+  type?: string;
+  exit_code?: number;
+  signal?: string;
+  message?: string;
+}
+
+export interface ShellCommandOutput {
+  command: string;
+  stdout?: string;
+  stderr?: string;
+  outcome?: ShellCallOutcome;
+}
+
+export interface ShellCallTask extends BaseTask {
+  type: 'shell_call';
+  title?: string;
+  output?: ShellCommandOutput[];
+}
+
 export interface VoiceAgentTask extends BaseTask {
   type: 'voice_agent';
   title?: string;
@@ -240,6 +260,7 @@ export type Task =
   | FileTask
   | ImageTask
   | ComputerUseTask
+  | ShellCallTask
   | VoiceAgentTask
   | OutboundCallTask;
 

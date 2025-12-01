@@ -887,8 +887,54 @@ class ComputerUseTask(BaseTask):
     """Mode of operation for the computer use session."""
 
 
+class ShellCallOutcome(BaseModel):
+    """Outcome of a shell command execution."""
+
+    type: str | None = None
+    """Outcome type reported by the shell executor (e.g. ``exit``)."""
+
+    exit_code: int | None = None
+    """Exit code when the outcome type is ``exit``."""
+
+    signal: str | None = None
+    """Signal name when the process was terminated by a signal."""
+
+    message: str | None = None
+    """Optional descriptive message for the outcome."""
+
+
+class ShellCommandOutput(BaseModel):
+    """Captured IO for a single shell command."""
+
+    command: str
+    """Command that was executed."""
+
+    stdout: str | None = None
+    """Standard output of the command."""
+
+    stderr: str | None = None
+    """Standard error of the command."""
+
+    outcome: ShellCallOutcome | None = None
+    """Outcome metadata such as exit codes."""
+
+
+class ShellCallTask(BaseTask):
+    """Workflow task representing one or more shell command executions."""
+
+    type: Literal["shell_call"] = "shell_call"
+    title: str | None = None
+    output: list[ShellCommandOutput] = Field(default_factory=list)
+
+
 Task = Annotated[
-    CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask,
+    CustomTask
+    | SearchTask
+    | ThoughtTask
+    | FileTask
+    | ImageTask
+    | ComputerUseTask
+    | ShellCallTask,
     Field(discriminator="type"),
 ]
 """Union of workflow task variants."""
