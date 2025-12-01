@@ -166,6 +166,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 images = task.get("images")
                 if isinstance(images, list):
                     new_images = []
+                    images_modified = False
                     for image in images:
                         if not isinstance(image, dict):
                             new_images.append(image)
@@ -196,11 +197,12 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                                 f"/api/chatkit/thread-images/{thread_id}/{item_id}/{image_id}"
                             )
                             new_images.append(new_image)
+                            images_modified = True
                             modified = True
                         else:
                             new_images.append(image)
 
-                    if modified:
+                    if images_modified:
                         task = dict(task)
                         task["images"] = new_images
 
@@ -209,6 +211,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 screenshots = task.get("screenshots")
                 if isinstance(screenshots, list):
                     new_screenshots = []
+                    screenshots_modified = False
                     for idx, screenshot in enumerate(screenshots):
                         if not isinstance(screenshot, dict):
                             new_screenshots.append(screenshot)
@@ -233,11 +236,12 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                                 f"/api/chatkit/thread-images/{thread_id}/{item_id}/{screenshot_id}"
                             )
                             new_screenshots.append(new_screenshot)
+                            screenshots_modified = True
                             modified = True
                         else:
                             new_screenshots.append(screenshot)
 
-                    if modified:
+                    if screenshots_modified:
                         task = dict(task)
                         task["screenshots"] = new_screenshots
 
@@ -339,6 +343,21 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 mime_type = header.split(":")[1].split(";")[0]
                 return base64.b64decode(data), mime_type
             except (ValueError, IndexError):
+                pass
+
+        def _guess_mime() -> str:
+            fmt = (image_data.get("output_format") or "").lower()
+            if fmt in {"jpg", "jpeg"}:
+                return "image/jpeg"
+            if fmt == "webp":
+                return "image/webp"
+            return "image/png"
+
+        if isinstance(data_url, str) and data_url and not data_url.startswith("data:"):
+            try:
+                raw_bytes = base64.b64decode(data_url)
+                return raw_bytes, _guess_mime()
+            except Exception:
                 pass
 
         # Essayer b64_json ou b64_image
@@ -725,7 +744,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 owner_id,
                 expected,
             )
-            payload = self._normalize_thread_item_payload(item.model_dump(mode="json"))
+            # Ne PAS normaliser lors de la sauvegarde pour préserver les données d'image
+            payload = item.model_dump(mode="json")
             created_at = _ensure_timezone(getattr(item, "created_at", None))
             existing = session.get(ChatThreadItem, item.id)
             if existing is None:
@@ -772,9 +792,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 raise NotFoundError(
                     f"Élément {item.id} introuvable dans le fil {thread_id}"
                 )
-            record.payload = self._normalize_thread_item_payload(
-                item.model_dump(mode="json")
-            )
+            # Ne PAS normaliser lors de la sauvegarde pour préserver les données d'image
+            record.payload = item.model_dump(mode="json")
             record.created_at = _ensure_timezone(getattr(item, "created_at", None))
             session.commit()
 

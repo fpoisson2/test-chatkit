@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { MutableRefObject } from "react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
-import { makeApiEndpointCandidates } from "../utils/backend";
+import { makeApiEndpointCandidates, getBackendBaseUrl } from "../utils/backend";
 
 export type ChatConfigDebugSnapshot = {
   hostedFlow: boolean;
@@ -117,10 +117,17 @@ export const useChatApiConfig = ({
     }
 
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
-    const backendUrl = import.meta.env.VITE_BACKEND_URL?.trim() ?? "";
-    const endpointCandidates = makeApiEndpointCandidates(backendUrl, "/api/chatkit");
-    const [defaultRelativeUrl] = endpointCandidates;
-    const customApiUrl = explicitCustomUrl || defaultRelativeUrl || "/api/chatkit";
+    const backendBaseUrl = getBackendBaseUrl();
+    const endpointCandidates = makeApiEndpointCandidates(
+      backendBaseUrl ?? "",
+      "/api/chatkit",
+    );
+    const defaultRelativeUrl = endpointCandidates[0];
+    const absoluteCandidate = endpointCandidates.find((candidate) =>
+      /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(candidate) || candidate.startsWith("//"),
+    );
+    const customApiUrl =
+      explicitCustomUrl || absoluteCandidate || defaultRelativeUrl || "/api/chatkit";
     const useHostedFlow = forceHosted;
 
     if (useHostedFlow) {
@@ -442,4 +449,3 @@ export const useChatApiConfig = ({
     missingDomainKeyWarningShownRef,
     token,
   ]);
-

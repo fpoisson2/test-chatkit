@@ -26,6 +26,7 @@ import { useWidgetActions } from '../hooks/useWidgetActions';
 import { useAutoDismissError } from '../hooks/useAutoDismissError';
 import type { Attachment } from '../api/attachments';
 import { COPY_FEEDBACK_DELAY_MS } from '../utils';
+import { getBackendBaseUrl } from '../../utils/backend';
 import './ChatKit.css';
 
 export interface ChatKitProps {
@@ -37,6 +38,7 @@ export interface ChatKitProps {
 
 export function ChatKit({ control, options, className, style }: ChatKitProps): JSX.Element {
   const { t } = useI18n();
+  const backendUrl = getBackendBaseUrl() || undefined;
   const [inputValue, setInputValue] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
@@ -293,6 +295,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             dismissedScreencastItems={dismissedScreencastItems}
             failedScreencastTokens={failedScreencastTokens}
             authToken={authToken}
+            apiUrl={api.url}
+            backendUrl={backendUrl}
             onScreencastLastFrame={handleScreencastLastFrame}
             onScreencastConnectionError={handleScreencastConnectionError}
             onActiveScreencastChange={setActiveScreencast}
@@ -409,6 +413,8 @@ interface MessageListProps {
   dismissedScreencastItems: Set<string>;
   failedScreencastTokens: Set<string>;
   authToken?: string;
+  apiUrl?: string;
+  backendUrl?: string;
   onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (state: { token: string; itemId: string } | null) => void;
@@ -431,6 +437,8 @@ function MessageList({
   dismissedScreencastItems,
   failedScreencastTokens,
   authToken,
+  apiUrl,
+  backendUrl,
   onScreencastLastFrame,
   onScreencastConnectionError,
   onActiveScreencastChange,
@@ -495,6 +503,8 @@ function MessageList({
         dismissedScreencastItems={dismissedScreencastItems}
         failedScreencastTokens={failedScreencastTokens}
         authToken={authToken}
+        apiUrl={apiUrl}
+        backendUrl={backendUrl}
         onScreencastLastFrame={onScreencastLastFrame}
         onScreencastConnectionError={onScreencastConnectionError}
         onActiveScreencastChange={onActiveScreencastChange}

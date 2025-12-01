@@ -774,7 +774,7 @@ class Settings:
             ),
             admin_email=env.get("ADMIN_EMAIL"),
             admin_password=env.get("ADMIN_PASSWORD"),
-            database_connect_retries=int(env.get("DATABASE_CONNECT_RETRIES", "10")),
+            database_connect_retries=int(env.get("DATABASE_CONNECT_RETRIES", "30")),
             database_connect_delay=float(env.get("DATABASE_CONNECT_DELAY", "1.0")),
             agent_image_token_ttl_seconds=int(
                 env.get("AGENT_IMAGE_TOKEN_TTL_SECONDS", "3600")

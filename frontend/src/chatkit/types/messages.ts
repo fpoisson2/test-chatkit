@@ -192,6 +192,7 @@ export interface ComputerUseScreenshot {
   id: string;
   b64_image?: string;
   data_url?: string;
+  image_url?: string;
   timestamp?: string;
   action_description?: string;
   click_position?: {

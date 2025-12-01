@@ -1481,27 +1481,29 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         logger.info("Handling continue_workflow action for thread %s", thread.id)
 
-        # Get wait state
+        # Get wait state (may be None for agent mode)
         wait_state = _get_wait_state_metadata(thread)
-        if not wait_state:
-            logger.warning("No wait state found for thread %s", thread.id)
-            return
+        next_step_slug = None
 
-        wait_type = wait_state.get("wait_type")
-        if wait_type != "computer_use":
-            logger.warning(
-                "Wait state type is %s, not computer_use for thread %s",
+        if wait_state:
+            wait_type = wait_state.get("wait_type")
+            if wait_type != "computer_use":
+                logger.warning(
+                    "Wait state type is %s, not computer_use for thread %s",
+                    wait_type,
+                    thread.id,
+                )
+                return
+
+            next_step_slug = wait_state.get("next_step_slug")
+            logger.info(
+                "Continue workflow: wait_type=%s, next_step_slug=%s",
                 wait_type,
-                thread.id,
+                next_step_slug,
             )
-            return
-
-        next_step_slug = wait_state.get("next_step_slug")
-        logger.info(
-            "Continue workflow: wait_type=%s, next_step_slug=%s",
-            wait_type,
-            next_step_slug,
-        )
+        else:
+            # No wait state (agent mode) - just capture screenshot and clean up
+            logger.info("No wait state (agent mode) - capturing screenshot and cleaning up")
 
         # Get cached browsers for this thread
         browsers = get_thread_browsers(thread.id)
@@ -1582,24 +1584,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     status_indicator="complete",
                     debug_url_token=None,  # Clear the token
                     ssh_token=None,  # Clear SSH token too
+                    vnc_token=None,  # Clear VNC token too
                     current_action="Session terminée",
                 )
                 computer_use_item.workflow.tasks[computer_use_task_index] = updated_computer_task
-
-                # Emit update for ComputerUseTask
-                yield ThreadItemUpdated(
-                    item_id=computer_use_item.id,
-                    update=WorkflowTaskUpdated(
-                        task_index=computer_use_task_index,
-                        task=updated_computer_task,
-                    ),
-                )
-                await asyncio.sleep(0)  # Allow event to be sent
                 logger.info("ComputerUseTask marked as complete")
 
                 # 2. Create and add ImageTask with the screenshot (skip for SSH sessions)
-                if not is_ssh_session:
+                if not is_ssh_session and data_url:
                     image_id = f"img_{uuid.uuid4().hex[:8]}"
+
+                    # Keep data_url as-is - the store will extract it automatically
                     generated_image = GeneratedImage(
                         id=image_id,
                         data_url=data_url,
@@ -1614,20 +1609,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
                     # Add to workflow tasks
                     computer_use_item.workflow.tasks.append(image_task)
-                    new_task_index = len(computer_use_item.workflow.tasks) - 1
-
-                    # Emit add event for ImageTask
-                    yield ThreadItemUpdated(
-                        item_id=computer_use_item.id,
-                        update=WorkflowTaskAdded(
-                            task_index=new_task_index,
-                            task=image_task,
-                        ),
-                    )
-                    await asyncio.sleep(0)  # Allow event to be sent
                     logger.info("ImageTask added to workflow")
                 else:
-                    logger.info("Skipping ImageTask for SSH session")
+                    logger.info("Skipping screenshot - SSH session or no data_url")
 
                 # Set duration summary and collapse workflow
                 try:
@@ -1664,14 +1648,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             else:
                 logger.warning("Could not find ComputerUseTask workflow to add screenshot")
 
-        # Clear wait state
-        logger.info(">>> Clearing wait state for thread %s", thread.id)
-        _set_wait_state_metadata(thread, None)
-        await self.store.save_thread(thread, context=context)
+        # Clear wait state (only if it exists - manual mode)
+        if wait_state:
+            logger.info(">>> Clearing wait state for thread %s", thread.id)
+            _set_wait_state_metadata(thread, None)
+            await self.store.save_thread(thread, context=context)
 
-        # Continue workflow to next step if there is one
+        # Continue workflow to next step if there is one (manual mode only)
         if not next_step_slug:
-            logger.info("No next step, workflow complete for thread %s", thread.id)
+            logger.info("No next step or agent mode, workflow complete for thread %s", thread.id)
             return
 
         logger.info(">>> Continuing workflow to: %s", next_step_slug)

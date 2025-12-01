@@ -19,6 +19,9 @@ interface TaskRendererProps {
   className?: string;
   theme?: 'light' | 'dark';
   hideComputerUseScreenshot?: boolean;
+  authToken?: string;
+  apiUrl?: string;
+  backendUrl?: string;
 }
 
 type IconKey = Exclude<Task['type'], 'custom'>;
@@ -84,6 +87,9 @@ export function TaskRenderer({
   className = '',
   theme = 'light',
   hideComputerUseScreenshot = false,
+  authToken,
+  apiUrl,
+  backendUrl,
 }: TaskRendererProps): JSX.Element {
   const { t } = useI18n();
   // Ne pas ajouter la classe --loading
@@ -106,6 +112,9 @@ export function TaskRenderer({
           t={t}
           icon={icon}
           hideScreenshot={hideComputerUseScreenshot}
+          authToken={authToken}
+          apiUrl={apiUrl}
+          backendUrl={backendUrl}
         />
       )}
     </div>
@@ -232,11 +241,17 @@ function ComputerUseTaskRenderer({
   t,
   icon,
   hideScreenshot = false,
+  authToken,
+  apiUrl,
+  backendUrl,
 }: {
   task: ComputerUseTask;
   t: (key: string) => string;
   icon?: React.ReactNode | null;
   hideScreenshot?: boolean;
+  authToken?: string;
+  apiUrl?: string;
+  backendUrl?: string;
 }): JSX.Element {
   // Show static screenshots in a card
   const latestScreenshot = task.screenshots && task.screenshots.length > 0
@@ -264,6 +279,9 @@ function ComputerUseTaskRenderer({
                 src={imageSrc}
                 alt={actionTitle || t('chatkit.task.browserScreenshot')}
                 className="chatkit-browser-screenshot-image"
+                authToken={authToken}
+                apiUrl={apiUrl}
+                backendUrl={backendUrl}
               />
             </div>
           </div>

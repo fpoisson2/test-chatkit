@@ -2,23 +2,50 @@ import type { WorkflowSharedUser, WorkflowSummary } from "../types/workflows";
 
 type NullableString = string | null | undefined;
 
-const sanitizeBackendUrl = (value: string): string => value.trim();
+const stripQuotes = (value: string): string => {
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
+};
+
+const sanitizeBackendUrl = (value: string): string => stripQuotes(value).trim();
 
 const ensureTrailingSlash = (value: string): string =>
   value.endsWith("/") ? value : `${value}/`;
 
 const toUniqueList = (values: string[]): string[] => Array.from(new Set(values));
 
+const DEFAULT_DEV_BACKEND_URL = "http://localhost:8000";
+
+export const getBackendBaseUrl = (): string | undefined => {
+  const configured = import.meta.env.VITE_BACKEND_URL?.trim();
+  if (configured) {
+    return configured;
+  }
+  if (import.meta.env.DEV) {
+    return DEFAULT_DEV_BACKEND_URL;
+  }
+  return undefined;
+};
+
+export const getBackendUrlForRequests = (): string =>
+  sanitizeBackendUrl(getBackendBaseUrl() ?? "");
+
 export const makeApiEndpointCandidates = (
   rawBackendUrl: string,
   path: string,
 ): string[] => {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const candidates = [normalizedPath];
   const backendUrl = sanitizeBackendUrl(rawBackendUrl);
+  const candidates: string[] = [normalizedPath];
 
   if (!backendUrl) {
-    return candidates;
+    return toUniqueList(candidates);
   }
 
   try {
@@ -38,7 +65,7 @@ export const makeApiEndpointCandidates = (
   return toUniqueList(candidates);
 };
 
-const backendUrl = sanitizeBackendUrl(import.meta.env.VITE_BACKEND_URL ?? "");
+const backendUrl = getBackendUrlForRequests();
 
 export class ApiError extends Error {
   status: number | undefined;

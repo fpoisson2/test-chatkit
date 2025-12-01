@@ -7,9 +7,12 @@ interface WorkflowRendererProps {
   workflow: Workflow;
   className?: string;
   theme?: 'light' | 'dark';
+  authToken?: string;
+  apiUrl?: string;
+  backendUrl?: string;
 }
 
-export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: WorkflowRendererProps): JSX.Element {
+export function WorkflowRenderer({ workflow, className = '', theme = 'light', authToken, apiUrl, backendUrl }: WorkflowRendererProps): JSX.Element {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
   const [displayedTaskIndex, setDisplayedTaskIndex] = useState<number | null>(null);
@@ -232,25 +235,28 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       {/* Afficher le premier thought en streaming (sans animation de fade) */}
       {!expanded && streamingTask && !displayedTask && (
         <div className="chatkit-workflow-last-task chatkit-workflow-streaming-task">
-          <TaskRenderer task={streamingTask} theme={theme} hideComputerUseScreenshot />
+          <TaskRenderer task={streamingTask} theme={theme} hideComputerUseScreenshot authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
         </div>
       )}
 
       {/* Afficher la dernière tâche complète (avec animation) */}
       {!expanded && displayedTask && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
-          <TaskRenderer task={displayedTask} theme={theme} hideComputerUseScreenshot />
+          <TaskRenderer task={displayedTask} theme={theme} hideComputerUseScreenshot authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
         </div>
       )}
 
-      {/* Afficher la dernière tâche si rien n'est en cours de streaming */}
-      {!expanded && !streamingTask && !displayedTask && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
+      {/* Afficher la dernière tâche si rien n'est en cours de streaming et pas de summary */}
+      {!expanded && !streamingTask && !displayedTask && !workflow.summary && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
         <div className="chatkit-workflow-last-task">
-          <TaskRenderer
-            task={workflow.tasks[currentTaskCount - 1]}
-            theme={theme}
-            hideComputerUseScreenshot
-          />
+            <TaskRenderer
+              task={workflow.tasks[currentTaskCount - 1]}
+              theme={theme}
+              hideComputerUseScreenshot
+              authToken={authToken}
+              apiUrl={apiUrl}
+              backendUrl={backendUrl}
+            />
         </div>
       )}
 
@@ -258,7 +264,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       {expanded && (
         <div className="chatkit-workflow-tasks">
           {workflow.tasks.map((task, i) => (
-            <TaskRenderer key={i} task={task} theme={theme} />
+            <TaskRenderer key={i} task={task} theme={theme} authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
           ))}
         </div>
       )}

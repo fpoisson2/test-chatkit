@@ -434,18 +434,40 @@ async def get_thread_image(
         ) from exc
 
     context = build_chatkit_request_context(current_user, request)
+    logger.debug(
+        "Thread image request %s/%s/%s for user=%s from %s",
+        thread_id,
+        item_id,
+        image_id,
+        current_user.id,
+        request.client.host if request.client else None,
+    )
 
     try:
         result = await server.store.get_thread_image_data(
             thread_id, item_id, image_id, context
         )
     except NotFoundError:
+        logger.warning(
+            "Thread image not found %s/%s/%s for user %s",
+            thread_id,
+            item_id,
+            image_id,
+            current_user.id,
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Image introuvable",
         ) from None
 
     if result is None:
+        logger.warning(
+            "Thread image data missing %s/%s/%s for user %s",
+            thread_id,
+            item_id,
+            image_id,
+            current_user.id,
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Image introuvable",

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import os
 
-from app import app as fastapi_app
-
-# Configurer le logging structuré
+# Configure logging before importing the FastAPI app so that any modules
+# bundled with the app (e.g., `chatkit`) can rely on the structured handlers.
 from app.logging_config import configure_logging
 
 # Détermine si on utilise JSON ou console en fonction de l'environnement
@@ -20,5 +19,7 @@ configure_logging(
     litellm_log_level=os.getenv("LITELLM_LOG_LEVEL"),
     use_json_logs=use_json,
 )
+
+from app import app as fastapi_app
 
 app = fastapi_app

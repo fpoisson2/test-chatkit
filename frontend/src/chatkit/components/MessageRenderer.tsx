@@ -27,6 +27,8 @@ export interface MessageRendererProps {
   dismissedScreencastItems: Set<string>;
   failedScreencastTokens: Set<string>;
   authToken?: string;
+  apiUrl?: string;
+  backendUrl?: string;
   onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (screencast: { token: string; itemId: string } | null) => void;
@@ -39,7 +41,17 @@ export interface MessageRendererProps {
 /**
  * Component to display final images with wrapper
  */
-function FinalImageDisplay({ src, authToken }: { src: string; authToken?: string }): JSX.Element | null {
+function FinalImageDisplay({
+  src,
+  authToken,
+  apiUrl,
+  backendUrl,
+}: {
+  src: string;
+  authToken?: string;
+  apiUrl?: string;
+  backendUrl?: string;
+}): JSX.Element | null {
   return (
     <div className="chatkit-image-generation-preview">
       <ImageWithBlobUrl
@@ -47,6 +59,8 @@ function FinalImageDisplay({ src, authToken }: { src: string; authToken?: string
         alt="Image générée"
         className="chatkit-generated-image-final"
         authToken={authToken}
+        apiUrl={apiUrl}
+        backendUrl={backendUrl}
       />
     </div>
   );
@@ -78,7 +92,13 @@ function findAttachment(
 /**
  * Renders a user message
  */
-function UserMessageContent({ item, theme, authToken }: { item: ThreadItem; theme?: string; authToken?: string }): JSX.Element {
+function UserMessageContent({
+  item,
+  theme,
+  authToken,
+  apiUrl,
+  backendUrl,
+}: { item: ThreadItem; theme?: string; authToken?: string; apiUrl?: string; backendUrl?: string }): JSX.Element {
   if (item.type !== 'user_message') return <></>;
 
   return (
@@ -89,7 +109,9 @@ function UserMessageContent({ item, theme, authToken }: { item: ThreadItem; them
           {content.type === 'input_tag' && (
             <span className="chatkit-tag">{content.text}</span>
           )}
-          {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" authToken={authToken} />}
+          {content.type === 'image' && (
+            <ImageWithBlobUrl src={content.image} alt="" authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
+          )}
           {content.type === 'file' && (
             <FileAttachmentDisplay
               attachmentId={content.file}
@@ -361,7 +383,12 @@ function WidgetContent({
 /**
  * Renders a standalone task
  */
-function TaskContent({ item, theme }: { item: ThreadItem; theme?: string }): JSX.Element | null {
+function TaskContent({
+  item,
+  theme,
+  apiUrl,
+  backendUrl,
+}: { item: ThreadItem; theme?: string; apiUrl?: string; backendUrl?: string }): JSX.Element | null {
   if (item.type !== 'task') return null;
 
   const task = item.task as any;
@@ -374,7 +401,7 @@ function TaskContent({ item, theme }: { item: ThreadItem; theme?: string }): JSX
 
   return (
     <div className="chatkit-message-content">
-      <TaskRenderer task={task} theme={theme} />
+      <TaskRenderer task={task} theme={theme} apiUrl={apiUrl} backendUrl={backendUrl} />
     </div>
   );
 }
@@ -389,6 +416,8 @@ function WorkflowContent({
   lastScreencastScreenshot,
   dismissedScreencastItems,
   authToken,
+  apiUrl,
+  backendUrl,
   onScreencastLastFrame,
   onScreencastConnectionError,
   onActiveScreencastChange,
@@ -401,6 +430,8 @@ function WorkflowContent({
   lastScreencastScreenshot: { itemId: string; src: string; action?: string } | null;
   dismissedScreencastItems: Set<string>;
   authToken?: string;
+  apiUrl?: string;
+  backendUrl?: string;
   onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (screencast: { token: string; itemId: string } | null) => void;
@@ -412,7 +443,13 @@ function WorkflowContent({
   return (
     <>
       <div className="chatkit-message-content">
-        <WorkflowRenderer workflow={item.workflow} theme={theme} />
+        <WorkflowRenderer
+          workflow={item.workflow}
+          theme={theme}
+          authToken={authToken}
+          apiUrl={apiUrl}
+          backendUrl={backendUrl}
+        />
       </div>
 
       {/* Image generation preview/final */}
@@ -434,6 +471,8 @@ function WorkflowContent({
                   alt="Génération en cours..."
                   className="chatkit-generating-image"
                   authToken={authToken}
+                  apiUrl={apiUrl}
+                  backendUrl={backendUrl}
                 />
               </div>
             );
@@ -446,7 +485,7 @@ function WorkflowContent({
               src = `data:image/png;base64,${src}`;
             }
             if (src) {
-              return <FinalImageDisplay src={src} authToken={authToken} />;
+              return <FinalImageDisplay src={src} authToken={authToken} apiUrl={apiUrl} />;
             }
           }
         }
@@ -626,12 +665,14 @@ function WorkflowContent({
                 {shouldShowScreenshot && (
                   <div className="chatkit-browser-screenshot-container">
                     <div className="chatkit-browser-screenshot-image-wrapper">
-                      <ImageWithBlobUrl
-                        src={src}
-                        alt={actionTitle || "Browser automation"}
-                        className={screenshotIsLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
-                        authToken={authToken}
-                      />
+                    <ImageWithBlobUrl
+                      src={src}
+                      alt={actionTitle || "Browser automation"}
+                      className={screenshotIsLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                      authToken={authToken}
+                      apiUrl={apiUrl}
+                      backendUrl={backendUrl}
+                    />
                       {clickCoordinates && (
                         <div
                           className="chatkit-browser-click-indicator"
@@ -667,6 +708,8 @@ export function MessageRenderer({
   dismissedScreencastItems,
   failedScreencastTokens,
   authToken,
+  apiUrl,
+  backendUrl,
   onScreencastLastFrame,
   onScreencastConnectionError,
   onActiveScreencastChange,
@@ -690,7 +733,7 @@ export function MessageRenderer({
   return (
     <div className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}>
       {item.type === 'user_message' && (
-        <UserMessageContent item={item} theme={theme} authToken={authToken} />
+        <UserMessageContent item={item} theme={theme} authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
       )}
 
       {item.type === 'assistant_message' && (
@@ -714,9 +757,8 @@ export function MessageRenderer({
       )}
 
       {item.type === 'task' && (
-        <TaskContent item={item} theme={theme} />
+        <TaskContent item={item} theme={theme} apiUrl={apiUrl} backendUrl={backendUrl} />
       )}
-
       {item.type === 'workflow' && (
         <WorkflowContent
           item={item}
@@ -725,6 +767,7 @@ export function MessageRenderer({
           lastScreencastScreenshot={lastScreencastScreenshot}
           dismissedScreencastItems={dismissedScreencastItems}
           authToken={authToken}
+          apiUrl={apiUrl}
           onScreencastLastFrame={onScreencastLastFrame}
           onScreencastConnectionError={onScreencastConnectionError}
           onActiveScreencastChange={onActiveScreencastChange}
