@@ -1595,14 +1595,13 @@
   margin-top: 0.5em;
 }
 
+/* Truncate last task content with fade effect for preview, except custom tasks (patches/diffs) */
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown,
 .chatkit-workflow-last-task .chatkit-task-search .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-file .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-image .chatkit-task-content,
-.chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-content,
-.chatkit-workflow-last-task .chatkit-task-custom .chatkit-task-content,
-.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown {
+.chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-content {
   position: relative;
   min-height: 150px;
   display: block;
@@ -1624,6 +1623,14 @@
   );
 }
 
+/* Allow custom tasks (patches/diffs) to display at full height */
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown {
+  position: relative;
+  display: block;
+  overflow: visible;
+}
+
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown,
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph,
@@ -1631,9 +1638,6 @@
 .chatkit-workflow-last-task .chatkit-task-file .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-image .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-content,
-.chatkit-workflow-last-task .chatkit-task-custom .chatkit-task-content,
-.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown,
-.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown-paragraph,
 .chatkit-workflow-header .chatkit-workflow-title,
 .chatkit-workflow-header .chatkit-workflow-default-title {
   position: relative;
