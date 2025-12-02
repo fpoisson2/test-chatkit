@@ -84,14 +84,18 @@ class StateInitializer:
             pending_wait_state = (
                 _get_wait_state_metadata(thread) if thread is not None else None
             )
-            if (
-                not isinstance(current_input_item_id, str)
-                and current_user_message is not None
-            ):
+            if current_user_message is not None:
                 candidate_id = getattr(current_user_message, "id", None)
-                current_input_item_id = (
-                    candidate_id if isinstance(candidate_id, str) else None
-                )
+                if isinstance(candidate_id, str):
+                    if isinstance(current_input_item_id, str) and (
+                        current_input_item_id != candidate_id
+                    ):
+                        logger.debug(
+                            "Override source_item_id %s with current user message id %s",
+                            current_input_item_id,
+                            candidate_id,
+                        )
+                    current_input_item_id = candidate_id
 
             restored_from_wait_state = False
             if pending_wait_state:
