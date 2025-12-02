@@ -1206,6 +1206,94 @@ def _build_agent_kwargs(
             merged["model_settings"] = coerced_settings
     if "response_format" in merged:
         response_format = merged.pop("response_format")
+
+        # Normalize response_format to OpenAI Responses API flat format
+        # Expected format: {"type": "json_schema", "name": "...", "schema": {...}, "strict": True}
+        if isinstance(response_format, dict):
+            fmt_type = response_format.get("type")
+
+            # Check if we have nested format with 'json_schema' key
+            # Format: {"type": "json_schema", "json_schema": {"name": "...", "schema": {...}}}
+            if fmt_type == "json_schema" and "json_schema" in response_format:
+                # Flatten to OpenAI Responses API format
+                json_schema_config = response_format.get("json_schema")
+                if isinstance(json_schema_config, dict):
+                    name = json_schema_config.get("name", "custom_output")
+                    schema = json_schema_config.get("schema", {})
+                    strict = json_schema_config.get("strict", True)
+
+                    # Ensure schema has 'type' key
+                    if isinstance(schema, dict) and "type" not in schema:
+                        if "properties" in schema:
+                            schema = {"type": "object", **schema}
+
+                    # Convert to flat format
+                    response_format = {
+                        "type": "json_schema",
+                        "name": name,
+                        "strict": strict,
+                        "schema": schema
+                    }
+                    logger.debug(
+                        "response_format converti au format plat: %s",
+                        json.dumps(response_format, ensure_ascii=False)
+                    )
+            elif "schema" in response_format:
+                # Already in flat format or compact format {"name": "...", "schema": {...}}
+                schema = response_format.get("schema")
+
+                # Check if schema is itself a wrapper with nested "schema" key
+                # This happens when frontend sends: {"name": "X", "schema": {"name": "Y", "schema": {...}}}
+                if isinstance(schema, dict) and "schema" in schema:
+                    # Extract the actual schema from the nested structure
+                    actual_name = schema.get("name", response_format.get("name", "custom_output"))
+                    actual_strict = schema.get("strict", response_format.get("strict", True))
+                    schema = schema.get("schema")
+
+                    logger.debug(
+                        "Schéma doublement imbriqué détecté, extraction du schéma réel: name=%s",
+                        actual_name
+                    )
+
+                    # Override name and strict with the inner values
+                    if isinstance(schema, dict):
+                        # Ensure schema has 'type' key
+                        if "type" not in schema:
+                            if "properties" in schema:
+                                schema = {"type": "object", **schema}
+
+                        # Build flat format with extracted values
+                        response_format = {
+                            "type": "json_schema",
+                            "name": actual_name,
+                            "strict": actual_strict,
+                            "schema": schema
+                        }
+
+                        logger.debug(
+                            "response_format normalisé après extraction: %s",
+                            json.dumps(response_format, ensure_ascii=False)
+                        )
+                elif isinstance(schema, dict):
+                    # Normal case: schema is the actual JSON schema
+                    # Ensure schema has 'type' key
+                    if "type" not in schema:
+                        if "properties" in schema:
+                            schema = {"type": "object", **schema}
+
+                    # Build flat format
+                    response_format = {
+                        "type": response_format.get("type", "json_schema"),
+                        "name": response_format.get("name", "custom_output"),
+                        "strict": response_format.get("strict", True),
+                        "schema": schema
+                    }
+
+                    logger.debug(
+                        "response_format normalisé au format plat: %s",
+                        json.dumps(response_format, ensure_ascii=False)
+                    )
+
         if sync_output_type:
             output_type = merged.get("output_type")
             resolved = _build_output_type_from_response_format(
