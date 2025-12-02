@@ -459,6 +459,7 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
                 return
 
             existing_index = task_indices.get(key)
+            logger.info(f"[TITLE_TRACE] _upsert_task creating ThoughtTask with title={title}, key={key}, status={status}")
             task_payload = ThoughtTask(
                 title=title,
                 content=content,
@@ -485,6 +486,7 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
         async def _handle_step_stream(update: WorkflowStepStreamUpdate) -> None:
             if not show_ui:
                 return
+            logger.info(f"[TITLE_TRACE] _handle_step_stream received update.title={update.title}, update.key={update.key}, update.index={update.index}")
             title = update.title or f"Étape {update.index}"
             current = task_texts.get(update.key, "")
             if update.delta:

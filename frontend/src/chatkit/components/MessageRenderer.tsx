@@ -444,6 +444,7 @@ function WorkflowContent({
     <>
       <div className="chatkit-message-content">
         <WorkflowRenderer
+          key={`${item.id}-${item.workflow.summary?.title || 'default'}`}
           workflow={item.workflow}
           theme={theme}
           authToken={authToken}
