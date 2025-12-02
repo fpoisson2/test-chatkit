@@ -357,9 +357,6 @@ button {
   flex-direction: column;
   gap: 24px;
   padding: 0 0 28px;
-  padding-inline-end: calc(
-    var(--chatkit-sidebar-padding-x) + max(env(safe-area-inset-right), 0px)
-  );
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -417,9 +414,6 @@ button {
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__scroll-area {
   padding: 0 0 28px;
-  padding-inline-end: calc(
-    var(--chatkit-sidebar-padding-x) + max(env(safe-area-inset-right), 0px)
-  );
   gap: 20px;
 }
 
@@ -454,7 +448,7 @@ button {
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__scroll-area {
-  padding-inline: 0 var(--chatkit-sidebar-padding-x);
+  padding-inline-start: 0;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__main {
@@ -492,9 +486,6 @@ button {
 
   .chatkit-sidebar__scroll-area {
     padding: 0 0 24px;
-    padding-inline-end: calc(
-      var(--chatkit-sidebar-padding-x) + max(env(safe-area-inset-right), 0px)
-    );
   }
 
   .chatkit-sidebar__main {

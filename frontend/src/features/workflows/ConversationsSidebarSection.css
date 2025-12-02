@@ -95,16 +95,15 @@
   align-items: flex-start;
   gap: calc(var(--spacing) * 0.5);
   padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
-  padding-right: calc(calc(var(--spacing) * 4) + var(--conversations-sidebar-actions-width));
   border: none;
   background: transparent;
   border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
   transition: all var(--transition-duration-basic);
-  margin-inline-start: 0;
-  margin-inline-end: calc(-1 * var(--chatkit-sidebar-content-padding-x, calc(var(--spacing) * 4)));
-  margin-block: calc(var(--spacing) * 0.5);
+   margin-inline-start: 0;
+   margin-inline-end: -6px;
+   margin-block: calc(var(--spacing) * 0.5);
 }
 
 .conversations-sidebar-section__thread-button:hover,
@@ -115,11 +114,22 @@
 
 .conversations-sidebar-section__thread-button--active {
   background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-  margin-inline-end: 0;
+  margin-inline-end: -6px;
 }
 
 .conversations-sidebar-section__thread-button--active:hover,
 .conversations-sidebar-section__thread-button--active:focus-visible {
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+}
+
+/* Apply hover styles to thread button when hovering action button */
+.conversations-sidebar-section__action-button:hover ~ .conversations-sidebar-section__thread-button,
+.conversations-sidebar-section__action-button:focus-visible ~ .conversations-sidebar-section__thread-button {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.conversations-sidebar-section__action-button:hover ~ .conversations-sidebar-section__thread-button--active,
+.conversations-sidebar-section__action-button:focus-visible ~ .conversations-sidebar-section__thread-button--active {
   background: color-mix(in srgb, var(--primary-color) 16%, transparent);
 }
 
@@ -172,19 +182,7 @@
   flex-shrink: 0;
 }
 
-/* Action menu container - aligned with workflow styling */
-.conversations-sidebar-section__actions {
-  position: absolute;
-  top: 0;
-  right: var(--chatkit-sidebar-content-padding-x, calc(var(--spacing) * 4));
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: calc(var(--spacing) * 0.625);
-  z-index: 1;
-  outline: none;
-}
+
 
 .conversations-sidebar-section__action-button {
   border: none;
@@ -198,7 +196,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  padding: 4px 0;
   cursor: pointer;
   transition-duration: var(--transition-duration-basic);
   transition-property: color, opacity, transform;
@@ -211,6 +209,7 @@
 .conversations-sidebar-section__action-button:hover,
 .conversations-sidebar-section__action-button:focus-visible {
   color: var(--primary-hover);
+  font-weight: 700;
   outline: none;
 }
 

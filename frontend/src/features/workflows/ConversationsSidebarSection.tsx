@@ -592,17 +592,27 @@ export function ConversationsSidebarSection({
                       </TruncatedText>
                     </span>
                   </button>
-                  <div className="conversations-sidebar-section__actions" data-conversation-menu-container="">
-                    <button
-                      type="button"
-                      className="conversations-sidebar-section__action-button"
-                      data-conversation-menu-trigger=""
-                      aria-haspopup="true"
-                      aria-expanded={isMenuOpen}
-                      aria-controls={menuId}
-                      disabled={isDeleting}
-                      onClick={(e) => handleMenuTriggerClick(thread.id, e)}
-                    >
+                  <button
+                    type="button"
+                    className="conversations-sidebar-section__action-button"
+                    data-conversation-menu-trigger=""
+                    data-conversation-menu-container=""
+                    aria-haspopup="true"
+                    aria-expanded={isMenuOpen}
+                    aria-controls={menuId}
+                    disabled={isDeleting}
+                    onClick={(e) => handleMenuTriggerClick(thread.id, e)}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      right: '8px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: 0,
+                      boxShadow: 'none',
+                      outline: 'none'
+                    }}
+                  >
                       <span aria-hidden="true">…</span>
                       <span className="visually-hidden">Actions pour {threadTitle}</span>
                     </button>
@@ -643,7 +653,6 @@ export function ConversationsSidebarSection({
                         </button>
                       </div>
                     )}
-                  </div>
                 </li>
               );
             })}

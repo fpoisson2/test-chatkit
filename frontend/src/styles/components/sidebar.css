@@ -1012,7 +1012,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  padding: 4px 0;
   cursor: pointer;
   transition-duration: var(--transition-duration-basic);
   transition-property: background-color, color, opacity, transform;
@@ -1023,6 +1023,7 @@
 .chatkit-sidebar__workflow-action-button:focus-visible {
   background: color-mix(in srgb, var(--primary-color) 12%, transparent);
   color: var(--primary-hover);
+  font-weight: 700;
   outline: none;
 }
 
@@ -1046,6 +1047,17 @@
 .chatkit-sidebar__workflow-action-button[aria-expanded="true"] {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Apply hover styles to workflow button when hovering action button */
+.chatkit-sidebar__workflow-action-button:hover ~ .chatkit-sidebar__workflow-button,
+.chatkit-sidebar__workflow-action-button:focus-visible ~ .chatkit-sidebar__workflow-button {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.chatkit-sidebar__workflow-action-button:hover ~ .chatkit-sidebar__workflow-button--active,
+.chatkit-sidebar__workflow-action-button:focus-visible ~ .chatkit-sidebar__workflow-button--active {
+  background: color-mix(in srgb, var(--primary-color) 16%, transparent);
 }
 
 /* On mobile, always show action buttons */
@@ -1362,7 +1374,7 @@
   width: auto;
   object-fit: contain;
   margin: 0;
-  padding-left: 26px;
+  padding-left: 20px;
   /* Prevent flicker during sidebar open transition */
   transform: translateZ(0);
   backface-visibility: hidden;
@@ -1371,7 +1383,7 @@
 }
 
 .chatkit-sidebar__logo-image--compact {
-  padding-left: 26px;
+  padding-left: 20px;
 }
 
 @media (max-width: 1023px) {
@@ -1936,7 +1948,7 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__logo-image--compact {
-  padding-left: 26px;
+  padding-left: 20px;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand-title {
