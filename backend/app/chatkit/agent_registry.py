@@ -391,6 +391,60 @@ def _sanitize_model_name(name: str | None) -> str:
     return sanitized
 
 
+def _wrap_schema_for_responses_api(schema: dict[str, Any]) -> dict[str, Any]:
+    """Wrap a JSON schema with a 'response' property for OpenAI Responses API.
+
+    The OpenAI Responses API expects the root schema to have a 'response' property
+    that contains the actual response schema. This function wraps a user-provided
+    schema to meet this requirement.
+
+    IMPORTANT: The wrapped 'response' property MUST have an explicit "type" key,
+    otherwise OpenAI will reject the schema with:
+    "In context=('properties', 'response'), schema must have a 'type' key."
+
+    Args:
+        schema: The original schema to wrap
+
+    Returns:
+        A wrapped schema with 'response' property at the root level
+    """
+    # Check if the schema already has 'response' property wrapped
+    if (isinstance(schema, dict) and
+        schema.get("type") == "object" and
+        isinstance(schema.get("properties"), dict) and
+        "response" in schema["properties"] and
+        len(schema["properties"]) == 1):
+        # Already wrapped, but make sure the 'response' property has a 'type'
+        response_schema = schema["properties"]["response"]
+        if isinstance(response_schema, dict) and "type" not in response_schema:
+            # Add missing type
+            response_schema = {"type": "object", **response_schema}
+            schema["properties"]["response"] = response_schema
+        return schema
+
+    # Ensure the schema has a 'type' key (required by OpenAI)
+    if isinstance(schema, dict) and "type" not in schema:
+        # If no type specified, assume 'object' based on the presence of 'properties'
+        if "properties" in schema:
+            schema = {"type": "object", **schema}
+        else:
+            # Default to object type
+            schema = {"type": "object", **schema}
+
+    # Wrap the schema with 'response' property
+    # CRITICAL: The response property itself MUST have a 'type' key
+    wrapped_schema = {
+        "type": "object",
+        "properties": {
+            "response": schema  # schema already has 'type' from above
+        },
+        "required": ["response"],
+        "additionalProperties": False
+    }
+
+    return wrapped_schema
+
+
 def _create_response_format_from_pydantic(model: type[BaseModel]) -> dict[str, Any]:
     if hasattr(model, "model_json_schema"):
         schema = model.model_json_schema()
@@ -1206,6 +1260,61 @@ def _build_agent_kwargs(
             merged["model_settings"] = coerced_settings
     if "response_format" in merged:
         response_format = merged.pop("response_format")
+
+        # Normalize response_format to OpenAI Responses API flat format
+        # Expected format: {"type": "json_schema", "name": "...", "schema": {...}, "strict": True}
+        if isinstance(response_format, dict):
+            fmt_type = response_format.get("type")
+
+            # Check if we have nested format with 'json_schema' key
+            # Format: {"type": "json_schema", "json_schema": {"name": "...", "schema": {...}}}
+            if fmt_type == "json_schema" and "json_schema" in response_format:
+                # Flatten to OpenAI Responses API format
+                json_schema_config = response_format.get("json_schema")
+                if isinstance(json_schema_config, dict):
+                    name = json_schema_config.get("name", "custom_output")
+                    schema = json_schema_config.get("schema", {})
+                    strict = json_schema_config.get("strict", True)
+
+                    # Ensure schema has 'type' key
+                    if isinstance(schema, dict) and "type" not in schema:
+                        if "properties" in schema:
+                            schema = {"type": "object", **schema}
+
+                    # Wrap schema with 'response' property for Responses API
+                    wrapped_schema = _wrap_schema_for_responses_api(schema)
+
+                    # Convert to flat format
+                    response_format = {
+                        "type": "json_schema",
+                        "name": name,
+                        "strict": strict,
+                        "schema": wrapped_schema
+                    }
+                    logger.debug(
+                        "response_format converti avec wrapping 'response': %s",
+                        json.dumps(response_format, ensure_ascii=False)
+                    )
+            elif "schema" in response_format:
+                # Already in flat format or compact format {"name": "...", "schema": {...}}
+                schema = response_format.get("schema")
+                if isinstance(schema, dict):
+                    # Wrap schema with 'response' property for Responses API
+                    wrapped_schema = _wrap_schema_for_responses_api(schema)
+
+                    # Build flat format with wrapped schema
+                    response_format = {
+                        "type": response_format.get("type", "json_schema"),
+                        "name": response_format.get("name", "custom_output"),
+                        "strict": response_format.get("strict", True),
+                        "schema": wrapped_schema
+                    }
+
+                    logger.debug(
+                        "response_format normalisé avec wrapping 'response': %s",
+                        json.dumps(response_format, ensure_ascii=False)
+                    )
+
         if sync_output_type:
             output_type = merged.get("output_type")
             resolved = _build_output_type_from_response_format(

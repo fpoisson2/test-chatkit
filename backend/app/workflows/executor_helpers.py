@@ -108,12 +108,28 @@ def create_executor_helpers(
     def _consume_generated_image_urls(step_key: str) -> list[str]:
         return generated_image_urls.pop(step_key, [])
 
+    def _unwrap_response_if_needed(output: Any) -> Any:
+        """Unwrap response if it's wrapped with 'response' property.
+
+        The OpenAI Responses API returns wrapped responses when using structured output.
+        This function unwraps them to return the actual content.
+        """
+        if isinstance(output, dict) and len(output) == 1 and "response" in output:
+            # This looks like a wrapped response from the API
+            return output["response"]
+        return output
+
     def _structured_output_as_json(output: Any) -> tuple[Any, str]:
         """Convert structured output to JSON."""
+        # First, unwrap if needed
+        output = _unwrap_response_if_needed(output)
+
         if isinstance(output, str):
             try:
                 parsed = json.loads(output)
-                return parsed, output
+                # Unwrap parsed content too
+                parsed = _unwrap_response_if_needed(parsed)
+                return parsed, json.dumps(parsed, ensure_ascii=False)
             except (ValueError, TypeError):
                 return output, json.dumps(output, ensure_ascii=False)
         else:
