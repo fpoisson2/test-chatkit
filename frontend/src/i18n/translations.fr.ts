@@ -731,9 +731,33 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.responseFormat.widget": "Widget en sortie",
   "workflowBuilder.agentInspector.jsonSchemaNameLabel": "Nom du schéma",
   "workflowBuilder.agentInspector.jsonSchemaNameHint": "Nom optionnel utilisé pour la documentation.",
+  "workflowBuilder.agentInspector.jsonSchemaEditorModeLabel": "Éditeur de schéma",
+  "workflowBuilder.agentInspector.jsonSchemaEditorModeHint":
+    "Choisissez entre le JSON brut et le constructeur visuel de schémas.",
+  "workflowBuilder.agentInspector.jsonSchemaEditorMode.text": "Éditeur texte (JSON)",
+  "workflowBuilder.agentInspector.jsonSchemaEditorMode.visual": "Éditeur visuel",
   "workflowBuilder.agentInspector.jsonSchemaDefinitionLabel": "Définition du schéma JSON",
   "workflowBuilder.agentInspector.jsonSchemaDefinitionHint":
     "Fournissez un schéma JSON valide (Draft 2020-12).",
+  "workflowBuilder.agentInspector.jsonSchemaModal.title": "Modifier le schéma JSON",
+  "workflowBuilder.agentInspector.jsonSchemaModal.description":
+    "Éditez votre schéma dans une fenêtre plus large. Si vous collez un objet json_schema, son nom et son strict sont conservés.",
+  "workflowBuilder.agentInspector.jsonSchemaModal.cancel": "Annuler",
+  "workflowBuilder.agentInspector.jsonSchemaModal.apply": "Appliquer le schéma",
+  "workflowBuilder.agentInspector.jsonSchemaModal.validationHint":
+    "Accepte un schéma JSON brut ou un objet json_schema (name / schema / strict).",
+  "workflowBuilder.agentInspector.jsonSchemaModal.openButton": "Ouvrir dans le grand éditeur",
+  "workflowBuilder.agentInspector.visualSchemaModal.title": "Constructeur visuel de schéma",
+  "workflowBuilder.agentInspector.visualSchemaModal.description": "Créez et modifiez votre schéma JSON de façon visuelle.",
+  "workflowBuilder.agentInspector.visualSchemaModal.cancel": "Annuler",
+  "workflowBuilder.agentInspector.visualSchemaModal.apply": "Appliquer le schéma",
+  "workflowBuilder.agentInspector.visualSchemaModal.openButton": "Ouvrir le constructeur visuel",
+  "workflowBuilder.agentInspector.visualSchemaEmpty": "Aucune propriété définie",
+  "workflowBuilder.agentInspector.visualSchemaCount": "{{count}} propriété(s) définie(s)",
+  "workflowBuilder.agentInspector.jsonSchemaUnnamed": "Sans nom",
+  "workflowBuilder.agentInspector.jsonSchemaVisualBuilderLabel": "Constructeur visuel",
+  "workflowBuilder.agentInspector.jsonSchemaVisualBuilderHint":
+    "Créez le schéma JSON de façon visuelle en ajoutant des propriétés, types et descriptions.",
   "workflowBuilder.agentInspector.jsonSchemaInvalid": "Schéma JSON invalide",
   "workflowBuilder.agentInspector.behaviorTitle": "Comportement de l'agent",
   "workflowBuilder.agentInspector.behaviorDescription":
