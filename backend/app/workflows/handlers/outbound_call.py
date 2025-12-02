@@ -337,7 +337,7 @@ class OutboundCallNodeHandler(BaseNodeHandler):
                 thread_id=agent_context.thread.id,
                 created_at=datetime.now(),
                 task=CustomTask(
-                    title=f"📞 Appel en cours vers {to_number}...",
+                    title=f"Appel en cours vers {to_number}...",
                     content=json.dumps(
                         outbound_call_event,
                         ensure_ascii=False,

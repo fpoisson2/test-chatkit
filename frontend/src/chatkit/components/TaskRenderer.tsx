@@ -430,6 +430,34 @@ function ApplyPatchTaskRenderer({
     }
   };
 
+  // Helper to get operation icon
+  const getOperationIcon = (opType: string) => {
+    switch (opType) {
+      case 'create_file':
+        return (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="6" y1="2" x2="6" y2="10" />
+            <line x1="2" y1="6" x2="10" y2="6" />
+          </svg>
+        );
+      case 'update_file':
+        return (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 3L4 9L2 7" />
+          </svg>
+        );
+      case 'delete_file':
+        return (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="3" x2="9" y2="9" />
+            <line x1="9" y1="3" x2="3" y2="9" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="chatkit-task-apply-patch">
       <TaskLayout icon={icon}>
@@ -446,16 +474,6 @@ function ApplyPatchTaskRenderer({
                     {getOperationLabel(operation.operation_type)}
                   </span>
                   <code className="chatkit-apply-patch-operation-path">{operation.path}</code>
-                  {operation.status === 'failed' && (
-                    <span className="chatkit-apply-patch-operation-status chatkit-apply-patch-operation-status--failed">
-                      ✗ Failed
-                    </span>
-                  )}
-                  {operation.status === 'completed' && (
-                    <span className="chatkit-apply-patch-operation-status chatkit-apply-patch-operation-status--completed">
-                      ✓
-                    </span>
-                  )}
                 </div>
                 {operation.diff_preview && (
                   <div className="chatkit-apply-patch-diff">

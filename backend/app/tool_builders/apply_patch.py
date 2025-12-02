@@ -176,10 +176,7 @@ def build_apply_patch_tool(payload: Any) -> ApplyPatchTool | None:
     editor = SSHEditor(ssh)
 
     # Create and return ApplyPatchTool
-    # Set needs_approval=False since we trust the agent's decisions
-    # You can change this to True and implement on_approval callback if needed
     logger.info("Creating ApplyPatchTool for SSH environment")
     return ApplyPatchTool(
         editor=editor,
-        needs_approval=False,
     )

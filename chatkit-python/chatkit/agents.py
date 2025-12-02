@@ -1784,7 +1784,7 @@ async def stream_agent_response(
                 item_id=item_id,
                 task=ApplyPatchTask(
                     status_indicator="loading",
-                    title="📝 Apply Patch",
+                    title="Apply Patch",
                     operations=[]
                 ),
                 call_id=call_id,
