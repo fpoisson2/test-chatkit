@@ -7,7 +7,7 @@ import { WorkflowRenderer } from './WorkflowRenderer';
 import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
 import { LoadingIndicator } from './LoadingIndicator';
-import { DevToolsScreencast } from './DevToolsScreencast';
+import { DevToolsScreencast, clearFatalErrorForToken, fatalErrorTokens } from './DevToolsScreencast';
 import { SSHTerminal } from './SSHTerminal';
 import { VNCScreencast } from './VNCScreencast';
 import { FileAttachmentDisplay } from './FileAttachmentDisplay';
@@ -415,6 +415,7 @@ function WorkflowContent({
   activeScreencast,
   lastScreencastScreenshot,
   dismissedScreencastItems,
+  failedScreencastTokens,
   authToken,
   apiUrl,
   backendUrl,
@@ -429,6 +430,7 @@ function WorkflowContent({
   activeScreencast: { token: string; itemId: string } | null;
   lastScreencastScreenshot: { itemId: string; src: string; action?: string } | null;
   dismissedScreencastItems: Set<string>;
+  failedScreencastTokens: Set<string>;
   authToken?: string;
   apiUrl?: string;
   backendUrl?: string;
@@ -563,7 +565,8 @@ function WorkflowContent({
           const showScreenshot = !!src && !showLiveScreencast && !showSSHTerminal && !showVNCScreencast && !isTerminal && !sshToken && !vncToken;
 
           const isDismissed = dismissedScreencastItems.has(item.id);
-          const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
+          const isTokenFailed = debugUrlToken && fatalErrorTokens.has(debugUrlToken);
+          const shouldShowLiveScreencast = showLiveScreencast && !isDismissed && !isTokenFailed;
           // Keep SSH and VNC screencasts visible even when task is complete, until user dismisses
           const shouldShowSSHTerminal = showSSHTerminal && !isDismissed;
           const shouldShowVNCScreencast = showVNCScreencast && !isDismissed;
@@ -606,6 +609,7 @@ function WorkflowContent({
                           activeScreencast?.token === debugUrlToken ? null : activeScreencast
                         );
                       }}
+                      onScreencastConnectionError={onScreencastConnectionError}
                       onLastFrame={onScreencastLastFrame(item.id)}
                     />
                     <div className="chatkit-computer-use-actions">
@@ -768,6 +772,7 @@ export function MessageRenderer({
           activeScreencast={activeScreencast}
           lastScreencastScreenshot={lastScreencastScreenshot}
           dismissedScreencastItems={dismissedScreencastItems}
+          failedScreencastTokens={failedScreencastTokens}
           authToken={authToken}
           apiUrl={apiUrl}
           onScreencastLastFrame={onScreencastLastFrame}
