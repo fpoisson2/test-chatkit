@@ -79,17 +79,29 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   const displayedTask =
     displayedTaskIndex !== null ? workflow.tasks[displayedTaskIndex] || null : null;
 
-  const getCurrentTaskType = (): string | null => {
+  const getCurrentTaskTitle = (): string | null => {
+    if (displayedTask?.title) {
+      return displayedTask.title;
+    }
+
+    const lastTask = workflow.tasks[workflow.tasks.length - 1];
+
+    if (lastTask?.title) {
+      return lastTask.title;
+    }
+
     if (displayedTask) {
-      return displayedTask.type;
+      return t(`chatkit.task.type.${displayedTask.type}`);
     }
-    if (workflow.tasks.length > 0) {
-      return workflow.tasks[workflow.tasks.length - 1].type;
+
+    if (lastTask) {
+      return t(`chatkit.task.type.${lastTask.type}`);
     }
+
     return null;
   };
 
-  const currentTaskType = getCurrentTaskType();
+  const currentTaskTitle = getCurrentTaskTitle();
 
   // Détecter si une image est en cours de génération
   const hasImageGenerating = workflow.tasks.some(
@@ -212,11 +224,10 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
             <SummaryRenderer summary={workflow.summary} />
           ) : (
             <div className="chatkit-workflow-default-title">
-              {currentTaskType
-                ? t(`chatkit.task.type.${currentTaskType}`)
-                : isReasoning
+              {currentTaskTitle
+                ?? (isReasoning
                   ? t('chatkit.workflow.reasoning')
-                  : t('chatkit.workflow.workflow')}
+                  : t('chatkit.workflow.workflow'))}
             </div>
           )}
         </div>
