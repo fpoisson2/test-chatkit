@@ -67,9 +67,11 @@ export const useWorkflowKeyboardShortcuts = ({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const isCtrlOrMeta = event.ctrlKey || event.metaKey;
-      const key = event.key.toLowerCase();
+      const key = event.key?.toLowerCase();
       const now = Date.now();
       const workflowBusy = workflowBusyRef.current;
+
+      if (!key) return;
 
       if (isCtrlOrMeta && key === "c") {
         const previousTimestamp = copySequenceRef.current.lastTimestamp;

@@ -50,10 +50,13 @@ import {
 import { useAgentInspectorState } from "../hooks/useAgentInspectorState";
 import { HelpTooltip } from "../components/HelpTooltip";
 import { ToggleRow } from "../components/ToggleRow";
-import styles from "../NodeInspector.module.css";
-import { ToolSettingsPanel } from "./ToolSettingsPanel";
+ import styles from "../NodeInspector.module.css";
+ import { ToolSettingsPanel } from "./ToolSettingsPanel";
 
-const normalizeHostedWorkflowKey = (value: string): string =>
+ // Filtered environments for agent blocks (only browser, ssh, vnc)
+ const AGENT_COMPUTER_USE_ENVIRONMENTS = ["browser", "ssh", "vnc"] as const;
+
+ const normalizeHostedWorkflowKey = (value: string): string =>
   value.trim().toLowerCase();
 
 type AgentInspectorSectionProps = {
@@ -1111,9 +1114,10 @@ export const AgentInspectorSection = ({
                 />
               </label>
             </>
-          )}
+                 )}
 
-          <label className={styles.nodeInspectorField}>
+                 {computerUseEnvironmentValue === 'browser' && (
+                   <label className={styles.nodeInspectorField}>
             <span className={styles.nodeInspectorLabel}>
               Nombre maximal de tokens générés
               <HelpTooltip label="Limite la longueur maximale des réponses produites par cet agent." />
@@ -1346,8 +1350,9 @@ export const AgentInspectorSection = ({
                         )
                       }
                       placeholder="Ex. state.widget_json"
-                    />
-                  </label>
+                   />
+                 </label>
+                 )}
                   <p className={styles.nodeInspectorHintText}>
                     La valeur doit être un objet JSON valide conforme aux
                     spécifications ChatKit Widget.
@@ -1541,38 +1546,6 @@ export const AgentInspectorSection = ({
               <div className={styles.nodeInspectorPanelInnerAccent}>
                 <label className={styles.nodeInspectorInlineField}>
                   <span className={styles.nodeInspectorLabel}>
-                    {t("workflowBuilder.agentInspector.computerUseWidthLabel")}
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={computerUseDisplayWidthValue}
-                    onChange={(event) =>
-                      handleComputerUseFieldChange({
-                        display_width: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-
-                <label className={styles.nodeInspectorInlineField}>
-                  <span className={styles.nodeInspectorLabel}>
-                    {t("workflowBuilder.agentInspector.computerUseHeightLabel")}
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={computerUseDisplayHeightValue}
-                    onChange={(event) =>
-                      handleComputerUseFieldChange({
-                        display_height: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-
-                <label className={styles.nodeInspectorInlineField}>
-                  <span className={styles.nodeInspectorLabel}>
                     {t(
                       "workflowBuilder.agentInspector.computerUseEnvironmentLabel",
                     )}
@@ -1585,7 +1558,7 @@ export const AgentInspectorSection = ({
                       })
                     }
                   >
-                    {COMPUTER_USE_ENVIRONMENTS.map((environment) => (
+                    {AGENT_COMPUTER_USE_ENVIRONMENTS.map((environment) => (
                       <option key={environment} value={environment}>
                         {t(
                           `workflowBuilder.agentInspector.computerUseEnvironment.${environment}`,
@@ -1595,27 +1568,41 @@ export const AgentInspectorSection = ({
                   </select>
                 </label>
 
-                <label className={styles.nodeInspectorInlineField}>
-                  <span className={styles.nodeInspectorLabel}>
-                    {t("workflowBuilder.agentInspector.computerUseModeLabel")}
-                    <HelpTooltip
-                      label={t("workflowBuilder.agentInspector.computerUseModeHelp")}
-                    />
-                  </span>
-                  <select
-                    value={computerUseModeValue}
-                    onChange={(event) =>
-                      handleComputerUseFieldChange({ mode: event.target.value })
-                    }
-                  >
-                    <option value="agent">
-                      {t("workflowBuilder.agentInspector.computerUseMode.agent")}
-                    </option>
-                    <option value="manual">
-                      {t("workflowBuilder.agentInspector.computerUseMode.manual")}
-                    </option>
-                  </select>
-                </label>
+                {computerUseEnvironmentValue === 'browser' && (
+                  <>
+                    <label className={styles.nodeInspectorInlineField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t("workflowBuilder.agentInspector.computerUseWidthLabel")}
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={computerUseDisplayWidthValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            display_width: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label className={styles.nodeInspectorInlineField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t("workflowBuilder.agentInspector.computerUseHeightLabel")}
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={computerUseDisplayHeightValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            display_height: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  </>
+                )}
 
                 <label className={styles.nodeInspectorField}>
                   <span className={styles.nodeInspectorLabel}>

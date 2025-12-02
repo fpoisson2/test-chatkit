@@ -1604,7 +1604,6 @@
 .chatkit-workflow-last-task .chatkit-task-custom .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown {
   position: relative;
-  min-height: 150px;
   display: block;
   max-height: 150px;
   overflow: hidden;

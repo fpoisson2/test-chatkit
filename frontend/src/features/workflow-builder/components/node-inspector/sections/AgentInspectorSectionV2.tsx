@@ -82,9 +82,12 @@ import {
 import type { ModelSelectionMode, UserModelOption } from '../../../../../utils/workflows';
 import { ToolSettingsPanel } from './ToolSettingsPanel';
 import { AgentPromptModal } from '../components/AgentPromptModal';
-import styles from './AgentInspectorSectionV2.module.css';
+ import styles from './AgentInspectorSectionV2.module.css';
 
-const DEFAULT_TAB = 'basic';
+ // Filtered environments for agent blocks (only browser, ssh, vnc)
+ const AGENT_COMPUTER_USE_ENVIRONMENTS = ["browser", "ssh", "vnc"] as const;
+
+ const DEFAULT_TAB = 'basic';
 
 type AgentInspectorStateSnapshot = ReturnType<typeof useAgentInspectorState>;
 type AgentResponseFormat = AgentInspectorStateSnapshot['responseFormat'];
@@ -1734,9 +1737,9 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
             placeholder={t(
               'workflowBuilder.agentInspector.maxTokensPlaceholder',
             )}
-          />
-        </Field>
-      </div>
+             />
+            </Field>
+       </div>
     </div>
   );
 };
@@ -2140,34 +2143,6 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
           }
           expandedByDefault={computerUseEnabled}
         >
-          <div className={styles.inlineFields}>
-            <Field label={t('workflowBuilder.agentInspector.computerUseWidthLabel')}>
-              <input
-                type="number"
-                min={1}
-                value={computerUseDisplayWidthValue}
-                onChange={(event) =>
-                  handleComputerUseFieldChange({
-                    display_width: event.target.value,
-                  })
-                }
-              />
-            </Field>
-
-            <Field label={t('workflowBuilder.agentInspector.computerUseHeightLabel')}>
-              <input
-                type="number"
-                min={1}
-                value={computerUseDisplayHeightValue}
-                onChange={(event) =>
-                  handleComputerUseFieldChange({
-                    display_height: event.target.value,
-                  })
-                }
-              />
-            </Field>
-          </div>
-
           <Field label={t('workflowBuilder.agentInspector.computerUseEnvironmentLabel')}>
             <select
               value={computerUseEnvironmentValue}
@@ -2175,7 +2150,7 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
                 handleComputerUseFieldChange({ environment: event.target.value })
               }
             >
-              {COMPUTER_USE_ENVIRONMENTS.map((environment) => (
+              {AGENT_COMPUTER_USE_ENVIRONMENTS.map((environment) => (
                 <option key={environment} value={environment}>
                   {t(
                     `workflowBuilder.agentInspector.computerUseEnvironment.${environment}`,
@@ -2185,42 +2160,55 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
             </select>
           </Field>
 
-          <Field
-            label={t('workflowBuilder.agentInspector.computerUseModeLabel')}
-            hint={t('workflowBuilder.agentInspector.computerUseModeHelp')}
-          >
-            <select
-              value={computerUseModeValue}
-              onChange={(event) =>
-                handleComputerUseFieldChange({ mode: event.target.value })
-              }
-            >
-              <option value="agent">
-                {t('workflowBuilder.agentInspector.computerUseMode.agent')}
-              </option>
-              <option value="manual">
-                {t('workflowBuilder.agentInspector.computerUseMode.manual')}
-              </option>
-            </select>
-          </Field>
+          {computerUseEnvironmentValue === 'browser' && (
+            <div className={styles.inlineFields}>
+              <Field label={t('workflowBuilder.agentInspector.computerUseWidthLabel')}>
+                <input
+                  type="number"
+                  min={1}
+                  value={computerUseDisplayWidthValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({
+                      display_width: event.target.value,
+                    })
+                  }
+                />
+              </Field>
 
-          <Field
-            label={t('workflowBuilder.agentInspector.computerUseStartUrlLabel')}
-            hint={t('workflowBuilder.agentInspector.computerUseStartUrlHelp')}
-          >
-            <input
-              type="text"
-              value={computerUseStartUrlValue}
-              onChange={(event) =>
-                handleComputerUseFieldChange({ start_url: event.target.value })
-              }
-              placeholder={t(
-                'workflowBuilder.agentInspector.computerUseStartUrlPlaceholder',
-              )}
-            />
-          </Field>
+              <Field label={t('workflowBuilder.agentInspector.computerUseHeightLabel')}>
+                <input
+                  type="number"
+                  min={1}
+                  value={computerUseDisplayHeightValue}
+                  onChange={(event) =>
+                    handleComputerUseFieldChange({
+                      display_height: event.target.value,
+                    })
+                  }
+                />
+              </Field>
+            </div>
+           )}
 
-          {computerUseEnvironmentIsSsh ? (
+           {computerUseEnvironmentValue === 'browser' && (
+             <Field
+               label={t('workflowBuilder.agentInspector.computerUseStartUrlLabel')}
+               hint={t('workflowBuilder.agentInspector.computerUseStartUrlHelp')}
+             >
+               <input
+                 type="text"
+                 value={computerUseStartUrlValue}
+                 onChange={(event) =>
+                   handleComputerUseFieldChange({ start_url: event.target.value })
+                 }
+                 placeholder={t(
+                   'workflowBuilder.agentInspector.computerUseStartUrlPlaceholder',
+                 )}
+               />
+             </Field>
+           )}
+
+           {computerUseEnvironmentIsSsh ? (
             <>
               <Field
                 label={t('workflowBuilder.agentInspector.computerUseSshHostLabel')}
