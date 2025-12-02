@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Mapping
 
-from agents import ApplyPatchTool, Editor, apply_diff
-from agents.tool import ApplyPatchOperation
+from agents import apply_diff
+from agents.tool import ApplyPatchTool, Editor, ApplyPatchOperation
 
 from ..computer.hosted_ssh import HostedSSH
 
