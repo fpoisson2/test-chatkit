@@ -887,13 +887,7 @@ class ApplyPatchTaskTracker(BaseModel):
                 return changed
 
         # Add new operation
-        diff_preview = None
-        if diff:
-            # Extract first few lines of diff for preview
-            lines = diff.split("\n")[:5]
-            diff_preview = "\n".join(lines)
-            if len(diff.split("\n")) > 5:
-                diff_preview += "\n..."
+        diff_preview = diff if diff else None
 
         operation = ApplyPatchOperation(
             operation_type=operation_type,
