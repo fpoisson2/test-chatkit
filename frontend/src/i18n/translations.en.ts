@@ -1312,6 +1312,7 @@ export const en: TranslationDictionary = {
   "chatkit.workflow.collapse": "Collapse",
   "chatkit.workflow.reasoning": "Reasoning",
   "chatkit.workflow.workflow": "Workflow",
+  "chatkit.workflow.step": "Step {{step}}",
   "chatkit.workflow.executionDuration": "Execution duration {{duration}}",
   "chatkit.workflow.loading": "In progress...",
   "chatkit.task.imageCompleted": "Image generation completed",
