@@ -730,13 +730,16 @@ button {
   border-radius: 12px;
   cursor: pointer;
   text-align: center;
-  transition: background-color 0.2s ease, color 0.2s ease;
   width: 100%;
 }
 
-.chatkit-sidebar__section-button:hover,
-.chatkit-sidebar__section-button:focus-visible {
-  background: rgba(37, 99, 235, 0.08);
+.chatkit-sidebar__section-button.btn-hover-surface {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.chatkit-sidebar__section-button.btn-hover-surface:hover,
+.chatkit-sidebar__section-button.btn-hover-surface:focus-visible {
+  background: var(--btn-hover-bg);
   color: var(--primary-hover);
   outline: none;
 }
@@ -1637,12 +1640,21 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.2s ease;
 }
 
-.chatkit-sidebar__dismiss:hover,
-.chatkit-sidebar__dismiss:focus-visible {
-  background: transparent;
+.chatkit-sidebar__dismiss.btn-hover-surface {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.chatkit-sidebar__dismiss.btn-hover-surface:hover,
+.chatkit-sidebar__dismiss.btn-hover-surface:focus-visible {
+  background: var(--btn-hover-bg);
+  color: var(--color-text-strong);
+}
+
+.chatkit-sidebar__dismiss.btn-hover-surface:hover,
+.chatkit-sidebar__dismiss.btn-hover-surface:focus-visible {
+  background: var(--btn-hover-bg);
   color: var(--color-text-strong);
 }
 
@@ -2778,12 +2790,16 @@ button {
   justify-content: center;
   padding: 0.35rem;
   cursor: pointer;
-  transition: color 0.2s ease;
   color: var(--text-color);
 }
 
-.management-header__icon-button:hover,
-.management-header__icon-button:focus-visible {
+.management-header__icon-button.btn-hover-primary {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.management-header__icon-button.btn-hover-primary:hover,
+.management-header__icon-button.btn-hover-primary:focus-visible {
+  background: var(--btn-hover-bg);
   color: var(--primary-hover);
 }
 
@@ -4154,6 +4170,45 @@ button {
   list-style: none;
   display: grid;
   gap: 16px;
+}
+
+/* ============================================
+   DESIGN SYSTEM - Button Dimensions & Effects
+   ============================================ */
+
+/* Standard button dimensions */
+--btn-icon-size: 2rem; /* 32px - for icon buttons */
+--btn-padding-sm: 0.5rem; /* 8px - for small buttons */
+--btn-padding-md: 0.625rem; /* 10px - for medium buttons */
+--btn-padding-lg: 0.75rem; /* 12px - for large buttons */
+
+/* Standard button hover background */
+--btn-hover-bg: var(--color-surface-secondary);
+
+/* Consistent hover effects for buttons across the app */
+.btn-hover-surface {
+  transition: background-color 0.2s ease, color 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.btn-hover-surface:hover,
+.btn-hover-surface:focus-visible {
+  background: var(--btn-hover-bg);
+  z-index: 2;
+}
+
+.btn-hover-primary {
+  transition: background-color 0.2s ease, color 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.btn-hover-primary:hover,
+.btn-hover-primary:focus-visible {
+  background: var(--btn-hover-bg);
+  color: var(--primary-hover);
+  z-index: 2;
 }
 
 .voice-chat__item {

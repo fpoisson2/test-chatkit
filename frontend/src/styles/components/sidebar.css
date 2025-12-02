@@ -475,9 +475,9 @@
   width: 100%;
 }
 
-.chatkit-sidebar__section-button:hover,
-.chatkit-sidebar__section-button:focus-visible {
-  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+.chatkit-sidebar__section-button.btn-hover-surface:hover,
+.chatkit-sidebar__section-button.btn-hover-surface:focus-visible {
+  background: var(--btn-hover-bg);
   color: var(--primary-hover);
   outline: none;
 }
@@ -2149,10 +2149,11 @@ html[data-theme="dark"] .chatkit-sidebar__dismiss svg path {
 }
 
 /* Hover and focus states */
-:root[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
-html[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
-:root[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible,
-html[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible {
+:root[data-theme="dark"] .chatkit-sidebar__dismiss.btn-hover-surface:hover,
+html[data-theme="dark"] .chatkit-sidebar__dismiss.btn-hover-surface:hover,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss.btn-hover-surface:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__dismiss.btn-hover-surface:focus-visible {
+  background: var(--btn-hover-bg);
   color: #ffffff !important;
 }
 

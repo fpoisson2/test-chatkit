@@ -658,6 +658,10 @@
   color: #000;
 }
 
+.chatkit-header-action.btn-hover-surface {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
 .chatkit-header-action:disabled {
   color: #a3a3a3;
   background: transparent;

@@ -1403,8 +1403,8 @@ export const ChatWorkflowSidebar = ({
           />
         </div>
 
-        {/* Workflows section - hidden when hideWorkflows is true unless searching */}
-        {(!hideWorkflows || searchQuery.trim().length > 0) && (
+        {/* Workflows section - hidden when hideWorkflows is true */}
+        {!hideWorkflows && (
           <WorkflowSidebarSection
             sectionId={sectionId}
             title={t("workflows.defaultSectionTitle")}

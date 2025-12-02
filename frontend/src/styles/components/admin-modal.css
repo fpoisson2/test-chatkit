@@ -41,10 +41,14 @@
   padding: 0.5rem;
   line-height: 1;
   color: var(--color-text-muted);
-  transition: color 0.2s ease;
 }
 
-.admin-modal__close:hover {
+.admin-modal__close.btn-hover-surface {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.admin-modal__close.btn-hover-surface:hover {
+  background: var(--btn-hover-bg);
   color: var(--color-text);
 }
 
