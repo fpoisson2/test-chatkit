@@ -70,9 +70,6 @@ export const DEFAULT_COMPUTER_USE_CONFIG: ComputerUseConfig = {
 
 export const COMPUTER_USE_ENVIRONMENTS = [
   "browser",
-  "mac",
-  "windows",
-  "ubuntu",
   "ssh",
   "vnc",
 ] as const;
