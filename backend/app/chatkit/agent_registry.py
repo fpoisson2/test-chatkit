@@ -45,6 +45,7 @@ from ..models import AvailableModel
 from ..token_sanitizer import sanitize_model_like
 from ..tool_factory import (
     ResolvedMcpServerContext,
+    build_apply_patch_tool,
     build_computer_use_tool,
     build_file_search_tool,
     build_image_generation_tool,
@@ -807,6 +808,12 @@ def _coerce_agent_tools(
                             shell_executor = SSHShellExecutor(tool.computer)
                             shell_tool = ShellTool(executor=shell_executor)
                             coerced.append(shell_tool)
+
+                            # Also add ApplyPatchTool for SSH environment
+                            logger.info("Configuration de ApplyPatchTool pour l'environnement SSH")
+                            apply_patch_tool = build_apply_patch_tool({"ssh": tool.computer})
+                            if apply_patch_tool is not None:
+                                coerced.append(apply_patch_tool)
                         else:
                             coerced.append(tool)
                     else:

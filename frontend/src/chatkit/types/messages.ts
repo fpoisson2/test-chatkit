@@ -244,6 +244,21 @@ export interface ShellCallTask extends BaseTask {
   messages?: ShellCommandMessage[];
 }
 
+export interface ApplyPatchOperation {
+  operation_type: 'create_file' | 'update_file' | 'delete_file';
+  path: string;
+  status?: 'completed' | 'failed';
+  output?: string;
+  diff_preview?: string;
+}
+
+export interface ApplyPatchTask extends BaseTask {
+  type: 'apply_patch';
+  title?: string;
+  operations?: ApplyPatchOperation[];
+  call_id?: string;
+}
+
 export interface VoiceAgentTask extends BaseTask {
   type: 'voice_agent';
   title?: string;
@@ -267,6 +282,7 @@ export type Task =
   | ImageTask
   | ComputerUseTask
   | ShellCallTask
+  | ApplyPatchTask
   | VoiceAgentTask
   | OutboundCallTask;
 

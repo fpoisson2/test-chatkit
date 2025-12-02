@@ -53,6 +53,8 @@ from .server import stream_widget
 from .store import Store, StoreItemType
 from .types import (
     Annotation,
+    ApplyPatchOperation,
+    ApplyPatchTask,
     AssistantMessageContent,
     AssistantMessageContentPartAdded,
     AssistantMessageContentPartDone,
@@ -838,6 +840,72 @@ class ShellTaskTracker(BaseModel):
         return changed
 
 
+class ApplyPatchTaskTracker(BaseModel):
+    """Tracker for apply_patch task operations with visual diff display."""
+
+    item_id: str
+    task: ApplyPatchTask
+    call_id: str | None = None
+
+    def set_call_id(self, call_id: str | None) -> tuple[bool, str | None]:
+        if call_id is None or call_id == self.call_id:
+            return False, None
+        previous = self.call_id
+        self.call_id = call_id
+        return True, previous
+
+    def set_status(self, status: str | None) -> bool:
+        indicator = _shell_status_indicator(status)  # Reuse shell status logic
+        if indicator is None or indicator == self.task.status_indicator:
+            return False
+        self.task.status_indicator = indicator
+        return True
+
+    def add_operation(
+        self,
+        operation_type: str,
+        path: str,
+        status: str | None = None,
+        output: str | None = None,
+        diff: str | None = None,
+    ) -> bool:
+        """Add or update an operation in the task."""
+        # Check if operation already exists
+        for op in self.task.operations:
+            if op.path == path and op.operation_type == operation_type:
+                # Update existing operation
+                changed = False
+                if status and op.status != status:
+                    op.status = status
+                    changed = True
+                if output and op.output != output:
+                    op.output = output
+                    changed = True
+                if diff and op.diff_preview != diff:
+                    op.diff_preview = diff
+                    changed = True
+                return changed
+
+        # Add new operation
+        diff_preview = None
+        if diff:
+            # Extract first few lines of diff for preview
+            lines = diff.split("\n")[:5]
+            diff_preview = "\n".join(lines)
+            if len(diff.split("\n")) > 5:
+                diff_preview += "\n..."
+
+        operation = ApplyPatchOperation(
+            operation_type=operation_type,
+            path=path,
+            status=status or "completed",
+            output=output,
+            diff_preview=diff_preview,
+        )
+        self.task.operations.append(operation)
+        return True
+
+
 @dataclass
 class ImageTaskTracker:
     item_id: str
@@ -1120,6 +1188,8 @@ async def stream_agent_response(
     computer_tasks_by_call_id: dict[str, ComputerTaskTracker] = {}
     shell_tasks: dict[str, ShellTaskTracker] = {}
     shell_tasks_by_call_id: dict[str, ShellTaskTracker] = {}
+    apply_patch_tasks: dict[str, ApplyPatchTaskTracker] = {}
+    apply_patch_tasks_by_call_id: dict[str, ApplyPatchTaskTracker] = {}
     # Registry to store debug_url_tokens by debug_url to reuse across multiple computer_calls
     debug_tokens_by_url: dict[str, str] = {}
     function_tasks: dict[str, FunctionTaskTracker] = {}
@@ -1696,6 +1766,87 @@ async def stream_agent_response(
             updated |= tracker.set_status("completed")
         return updated
 
+    def _is_apply_patch_call(candidate: Any) -> bool:
+        return _get_value(candidate, "type") in {"apply_patch_call"}
+
+    def _is_apply_patch_call_output(candidate: Any) -> bool:
+        return _get_value(candidate, "type") in {"apply_patch_call_output"}
+
+    def ensure_apply_patch_task(
+        item_id: str, *, call_id: str | None = None
+    ) -> tuple[ApplyPatchTaskTracker, bool, list[ThreadStreamEvent]]:
+        events = ensure_workflow()
+        tracker = apply_patch_tasks.get(item_id)
+        task_added = False
+
+        if tracker is None:
+            tracker = ApplyPatchTaskTracker(
+                item_id=item_id,
+                task=ApplyPatchTask(
+                    status_indicator="loading",
+                    title="Apply Patch",
+                    operations=[]
+                ),
+                call_id=call_id,
+            )
+            apply_patch_tasks[item_id] = tracker
+            if ctx.workflow_item and tracker.task not in ctx.workflow_item.workflow.tasks:
+                ctx.workflow_item.workflow.tasks.append(tracker.task)
+                task_added = True
+
+        if call_id:
+            changed_call_id, previous_call_id = tracker.set_call_id(call_id)
+            if changed_call_id and previous_call_id:
+                existing = apply_patch_tasks_by_call_id.get(previous_call_id)
+                if existing is tracker:
+                    del apply_patch_tasks_by_call_id[previous_call_id]
+            apply_patch_tasks_by_call_id[call_id] = tracker
+        elif tracker.call_id:
+            apply_patch_tasks_by_call_id.setdefault(tracker.call_id, tracker)
+
+        return tracker, task_added, events
+
+    def get_apply_patch_task_by_call_id(call_id: str | None) -> ApplyPatchTaskTracker | None:
+        if not call_id:
+            return None
+        tracker = apply_patch_tasks_by_call_id.get(call_id)
+        if tracker:
+            return tracker
+        for candidate in apply_patch_tasks.values():
+            if candidate.call_id == call_id:
+                apply_patch_tasks_by_call_id[call_id] = candidate
+                return candidate
+        return None
+
+    def apply_apply_patch_task_updates(
+        tracker: ApplyPatchTaskTracker,
+        *,
+        operation: Any | None = None,
+        status: str | None = None,
+    ) -> bool:
+        updated = False
+        if status is not None:
+            updated |= tracker.set_status(status)
+
+        if operation is not None:
+            # Extract operation details
+            op_type = _get_value(operation, "type")
+            op_path = _get_value(operation, "path")
+            op_status = _get_value(operation, "status")
+            op_output = _get_value(operation, "output")
+            op_diff = _get_value(operation, "diff")
+
+            if op_type and op_path:
+                updated |= tracker.add_operation(
+                    operation_type=op_type,
+                    path=op_path,
+                    status=op_status,
+                    output=op_output,
+                    diff=op_diff,
+                )
+
+        return updated
+
     def search_status_from_call(call: ResponseFunctionWebSearch) -> str:
         if call.status == "completed":
             return "complete"
@@ -1828,6 +1979,8 @@ async def stream_agent_response(
                             function_tasks_by_call_id.clear()
                             shell_tasks.clear()
                             shell_tasks_by_call_id.clear()
+                            apply_patch_tasks.clear()
+                            apply_patch_tasks_by_call_id.clear()
 
                     # track integration produced items so we can clean them up if
                     # there is a guardrail tripwire
@@ -1944,6 +2097,40 @@ async def stream_agent_response(
                                     task_index=task_index,
                                 ),
                             )
+                    elif _is_apply_patch_call(raw_item):
+                        call_id = _get_value(raw_item, "call_id") or _get_value(
+                            raw_item, "id"
+                        )
+                        item_id = _get_value(raw_item, "id") or call_id or ""
+                        if item_id:
+                            produced_items.add(item_id)
+                        tracker, task_added, workflow_events = ensure_apply_patch_task(
+                            item_id,
+                            call_id=call_id,
+                        )
+                        for workflow_event in workflow_events:
+                            yield workflow_event
+                        # Extract operation from the apply_patch call
+                        operation_data = _get_value(raw_item, "operation")
+                        updated = apply_apply_patch_task_updates(
+                            tracker,
+                            operation=operation_data,
+                            status=_get_value(raw_item, "status"),
+                        )
+                        if ctx.workflow_item and (task_added or updated):
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            update_cls = (
+                                WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=update_cls(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
                 elif (
                     run_item_event.name == "tool_output"
                     and event_item.type == "tool_call_output_item"
@@ -2015,6 +2202,40 @@ async def stream_agent_response(
                                 tracker,
                                 status=_get_value(raw_item, "status"),
                                 output=_get_value(raw_item, "output"),
+                            )
+                            if ctx.workflow_item and (task_added or updated):
+                                task_index = ctx.workflow_item.workflow.tasks.index(
+                                    tracker.task
+                                )
+                                yield ThreadItemUpdated(
+                                    item_id=ctx.workflow_item.id,
+                                    update=WorkflowTaskUpdated(
+                                        task=tracker.task,
+                                        task_index=task_index,
+                                    ),
+                                )
+                    elif _is_apply_patch_call_output(raw_item) or get_apply_patch_task_by_call_id(
+                        call_id
+                    ):
+                        apply_patch_call_id = (
+                            _get_value(raw_item, "call_id")
+                            or _get_value(raw_item, "id")
+                            or call_id
+                        )
+                        tracker = get_apply_patch_task_by_call_id(apply_patch_call_id)
+                        if tracker is None and apply_patch_call_id:
+                            tracker, task_added, workflow_events = ensure_apply_patch_task(
+                                apply_patch_call_id, call_id=apply_patch_call_id
+                            )
+                            for workflow_event in workflow_events:
+                                yield workflow_event
+                        else:
+                            task_added = False
+                        if tracker is not None:
+                            updated = apply_apply_patch_task_updates(
+                                tracker,
+                                status=_get_value(raw_item, "status"),
+                                operation=_get_value(raw_item, "operation"),
                             )
                             if ctx.workflow_item and (task_added or updated):
                                 task_index = ctx.workflow_item.workflow.tasks.index(
@@ -2729,6 +2950,8 @@ async def stream_agent_response(
         function_tasks_by_call_id.clear()
         shell_tasks.clear()
         shell_tasks_by_call_id.clear()
+        apply_patch_tasks.clear()
+        apply_patch_tasks_by_call_id.clear()
 
         raise
 

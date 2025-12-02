@@ -7,6 +7,8 @@ import type {
   FileTask,
   ImageTask,
   ComputerUseTask,
+  ApplyPatchTask,
+  ApplyPatchOperation,
   URLSource,
   FileSource,
 } from '../types';
@@ -79,6 +81,27 @@ const taskTypeIcons: Record<IconKey, React.ReactNode> = {
       <rect x="3.5" y="5.5" width="13" height="9" rx="1.5" />
     </svg>
   ),
+  apply_patch: (
+    <svg {...iconProps}>
+      <path d="M11.5 4h-5c-.5 0-.9.4-.9.9V15c0 .5.4 1 1 1h6.8c.5 0 1-.4 1-.9V7.3L11.5 4Z" />
+      <path d="M14 7.3h-2.9c-.5 0-.9-.4-.9-.9V4" />
+      <path d="M9 9h2" />
+      <path d="M9 11h4" />
+      <path d="M9 13h3" />
+    </svg>
+  ),
+  voice_agent: (
+    <svg {...iconProps}>
+      <circle cx="10" cy="7" r="2.5" />
+      <path d="M6 16c0-2.2 1.8-4 4-4s4 1.8 4 4" />
+    </svg>
+  ),
+  outbound_call: (
+    <svg {...iconProps}>
+      <path d="M7 3.5h6M7 6h6M7 8.5h4" />
+      <rect x="4.5" y="2" width="11" height="13" rx="1.5" />
+    </svg>
+  ),
 };
 
 function getTaskIcon(task: Task): React.ReactNode | null {
@@ -125,6 +148,7 @@ export function TaskRenderer({
         />
       )}
       {task.type === 'shell_call' && <ShellCallTaskRenderer task={task} theme={theme} icon={icon} />}
+      {task.type === 'apply_patch' && <ApplyPatchTaskRenderer task={task} theme={theme} icon={icon} />}
     </div>
   );
 }
@@ -353,6 +377,118 @@ function ComputerUseTaskRenderer({
                 backendUrl={backendUrl}
               />
             </div>
+          </div>
+        )}
+      </TaskLayout>
+    </div>
+  );
+}
+
+function ApplyPatchTaskRenderer({
+  task,
+  icon,
+  theme = 'light',
+}: {
+  task: ApplyPatchTask;
+  icon?: React.ReactNode | null;
+  theme?: 'light' | 'dark';
+}): JSX.Element {
+  const { t } = useI18n();
+
+  // Helper to render diff lines with color
+  const renderDiffLines = (diff: string) => {
+    const lines = diff.split('\n');
+    return lines.map((line, index) => {
+      let lineClass = 'chatkit-diff-line';
+      if (line.startsWith('+')) {
+        lineClass += ' chatkit-diff-line--addition';
+      } else if (line.startsWith('-')) {
+        lineClass += ' chatkit-diff-line--deletion';
+      } else if (line.startsWith('@@')) {
+        lineClass += ' chatkit-diff-line--context';
+      }
+
+      return (
+        <div key={index} className={lineClass}>
+          {line}
+        </div>
+      );
+    });
+  };
+
+  // Helper to get operation type label
+  const getOperationLabel = (opType: string) => {
+    switch (opType) {
+      case 'create_file':
+        return t('chatkit.task.applyPatch.createFile') || 'Create';
+      case 'update_file':
+        return t('chatkit.task.applyPatch.updateFile') || 'Update';
+      case 'delete_file':
+        return t('chatkit.task.applyPatch.deleteFile') || 'Delete';
+      default:
+        return opType;
+    }
+  };
+
+  // Helper to get operation icon
+  const getOperationIcon = (opType: string) => {
+    switch (opType) {
+      case 'create_file':
+        return (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="6" y1="2" x2="6" y2="10" />
+            <line x1="2" y1="6" x2="10" y2="6" />
+          </svg>
+        );
+      case 'update_file':
+        return (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 3L4 9L2 7" />
+          </svg>
+        );
+      case 'delete_file':
+        return (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="3" x2="9" y2="9" />
+            <line x1="9" y1="3" x2="3" y2="9" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="chatkit-task-apply-patch">
+      <TaskLayout icon={icon}>
+        {task.title && <div className="chatkit-task-title">{task.title}</div>}
+        {task.operations && task.operations.length > 0 && (
+          <div className="chatkit-apply-patch-operations">
+            {task.operations.map((operation, index) => (
+              <div
+                key={index}
+                className={`chatkit-apply-patch-operation chatkit-apply-patch-operation--${operation.operation_type}`}
+              >
+                <div className="chatkit-apply-patch-operation-header">
+                  <span className="chatkit-apply-patch-operation-type">
+                    {getOperationLabel(operation.operation_type)}
+                  </span>
+                  <code className="chatkit-apply-patch-operation-path">{operation.path}</code>
+                </div>
+                {operation.diff_preview && (
+                  <div className="chatkit-apply-patch-diff">
+                    <pre className="chatkit-diff-preview">
+                      {renderDiffLines(operation.diff_preview)}
+                    </pre>
+                  </div>
+                )}
+                {operation.output && operation.status === 'failed' && (
+                  <div className="chatkit-apply-patch-error">
+                    {operation.output}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </TaskLayout>

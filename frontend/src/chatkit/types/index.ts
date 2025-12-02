@@ -116,6 +116,8 @@ export type {
   ImageTask,
   ComputerUseScreenshot,
   ComputerUseTask,
+  ApplyPatchOperation,
+  ApplyPatchTask,
   VoiceAgentTask,
   OutboundCallTask,
   Task,
