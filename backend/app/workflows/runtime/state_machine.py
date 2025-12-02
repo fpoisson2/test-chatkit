@@ -308,6 +308,13 @@ class WorkflowStateMachine:
                 # No next slug and not finished = end workflow in waiting state
                 # This allows the workflow to wait for a new user message
                 from ..executor import WorkflowEndState
+                from ...chatkit_server.context import _set_wait_state_metadata
+
+                # If no explicit final output, use the last step output when available
+                if context.final_output is None:
+                    last_context = context.last_step_context
+                    if isinstance(last_context, dict) and "output" in last_context:
+                        context.final_output = last_context["output"]
 
                 # Set end state to waiting if not already set
                 if "final_end_state" not in context.runtime_vars:
@@ -317,6 +324,11 @@ class WorkflowStateMachine:
                         status_reason="En attente d'un nouveau message utilisateur.",
                         message="En attente d'un nouveau message utilisateur.",
                     )
+
+                # Clear any stale wait state metadata to avoid unintended resumes
+                thread = context.runtime_vars.get("thread")
+                if thread is not None:
+                    _set_wait_state_metadata(thread, None)
 
                 context.is_finished = True
                 break

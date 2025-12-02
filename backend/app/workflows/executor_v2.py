@@ -299,6 +299,9 @@ async def run_workflow_v2(
     definition = initialization.definition
     current_input_item_id = initialization.current_input_item_id
     initial_user_text = initialization.initial_user_text
+    pending_wait_state = initialization.pending_wait_state
+    if pending_wait_state is None and runtime_snapshot:
+        pending_wait_state = runtime_snapshot.wait_state
 
     # Build node maps
     nodes_by_slug: dict[str, WorkflowStep] = {
@@ -349,6 +352,8 @@ async def run_workflow_v2(
     start_slug: str | None = None
     if runtime_snapshot and runtime_snapshot.current_slug:
         start_slug = runtime_snapshot.current_slug
+    elif pending_wait_state and pending_wait_state.get("slug"):
+        start_slug = str(pending_wait_state["slug"])
     else:
         for node in nodes_by_slug.values():
             if node.kind == "start":
@@ -421,9 +426,6 @@ async def run_workflow_v2(
 
     # Get agent provider bindings
     agent_provider_bindings = agent_setup.agent_provider_bindings
-
-    # Get pending wait state
-    pending_wait_state = runtime_snapshot.wait_state if runtime_snapshot else None
 
     # Local helper functions (originally closures in run_workflow_v1)
     def _extract_delta(event: Any) -> str:

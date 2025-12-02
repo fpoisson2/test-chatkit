@@ -95,6 +95,23 @@ def _load_workflow_modules():
         sys.modules["agents.realtime.config"] = realtime_config_module
         sys.modules["agents.realtime.runner"] = realtime_runner_module
 
+        computer_module = types.ModuleType("agents.computer")
+
+        class _StubAsyncComputer:  # pragma: no cover - stub
+            pass
+
+        class _StubButton:  # pragma: no cover - stub
+            pass
+
+        class _StubEnvironment:  # pragma: no cover - stub
+            pass
+
+        computer_module.AsyncComputer = _StubAsyncComputer  # type: ignore[attr-defined]
+        computer_module.Button = _StubButton  # type: ignore[attr-defined]
+        computer_module.Environment = _StubEnvironment  # type: ignore[attr-defined]
+        sys.modules["agents.computer"] = computer_module
+        agents_module.computer = computer_module  # type: ignore[attr-defined]
+
         tool_module = types.ModuleType("agents.tool")
 
         class _StubTool:  # pragma: no cover - stub
@@ -156,6 +173,9 @@ def _load_workflow_modules():
             "WorkflowTaskUpdated",
         ]:
             setattr(types_module, class_name, _simple_type(class_name))
+
+        # Create stubs lazily for any additional types accessed during imports
+        types_module.__getattr__ = lambda name: _simple_type(name)
 
         sys.modules["chatkit.types"] = types_module
 
@@ -360,6 +380,9 @@ def _load_workflow_modules():
         )
         registry_module.get_agent_provider_binding = (  # type: ignore[attr-defined]
             lambda provider_id, provider_slug: None
+        )
+        registry_module.get_current_computer_tool = (  # type: ignore[attr-defined]
+            lambda *args, **kwargs: None
         )
         sys.modules["app.chatkit.agent_registry"] = registry_module
 

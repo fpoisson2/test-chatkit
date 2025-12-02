@@ -112,12 +112,23 @@ class EndNodeHandler(BaseNodeHandler):
         if ags_payload:
             end_state_payload["ags"] = ags_payload
 
+        previous_output = None
+        previous_context = context.last_step_context or {}
+        if isinstance(previous_context, dict):
+            previous_output = previous_context.get("output")
+
+        # Prefer previous output when the end node has no message
+        result_output = end_payload
+        if not resolved_message and previous_output:
+            result_output = previous_output
+
         last_step_context = {
-            "output": end_payload,
-            "output_structured": end_payload,
-            "output_parsed": end_payload,
-            "output_text": resolved_message,
-            "assistant_message": resolved_message,
+            **previous_context,
+            "output": result_output,
+            "output_structured": result_output,
+            "output_parsed": result_output,
+            "output_text": resolved_message or previous_context.get("output_text", ""),
+            "assistant_message": resolved_message or previous_context.get("assistant_message"),
             "end_state": end_state_payload,
         }
 
@@ -126,7 +137,7 @@ class EndNodeHandler(BaseNodeHandler):
 
         return NodeResult(
             finished=True,
-            output=end_payload,
+            output=result_output,
             context_updates={
                 "last_step_context": last_step_context,
             }
