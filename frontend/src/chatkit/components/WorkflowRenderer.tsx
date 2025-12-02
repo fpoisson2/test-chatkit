@@ -102,6 +102,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   };
 
   const currentTaskTitle = getCurrentTaskTitle();
+  const currentStepNumber = displayedTaskIndex !== null ? displayedTaskIndex + 1 : Math.max(workflow.tasks.length, 1);
 
   // Détecter si une image est en cours de génération
   const hasImageGenerating = workflow.tasks.some(
@@ -216,21 +217,26 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
     };
   }, []);
 
+  const renderHeaderContent = (): JSX.Element => {
+    if (currentTaskTitle) {
+      return <div className="chatkit-workflow-default-title">{currentTaskTitle}</div>;
+    }
+
+    if (workflow.summary) {
+      return <SummaryRenderer summary={workflow.summary} />;
+    }
+
+    return (
+      <div className="chatkit-workflow-default-title">
+        {t('chatkit.workflow.step', { step: currentStepNumber })}
+      </div>
+    );
+  };
+
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
       <div className="chatkit-workflow-header" onClick={toggleExpanded}>
-        <div className="chatkit-workflow-summary">
-          {workflow.summary ? (
-            <SummaryRenderer summary={workflow.summary} />
-          ) : (
-            <div className="chatkit-workflow-default-title">
-              {currentTaskTitle
-                ?? (isReasoning
-                  ? t('chatkit.workflow.reasoning')
-                  : t('chatkit.workflow.workflow'))}
-            </div>
-          )}
-        </div>
+        <div className="chatkit-workflow-summary">{renderHeaderContent()}</div>
         <button className="chatkit-workflow-toggle" aria-expanded={expanded} aria-label={expanded ? t('chatkit.workflow.collapse') : t('chatkit.workflow.expand')}>
           {expanded ? (
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
