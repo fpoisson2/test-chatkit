@@ -77,6 +77,7 @@ class TokenUsage:
     output_tokens: int = 0
     cost: float = 0.0
 
+
 if TYPE_CHECKING:  # pragma: no cover
     from chatkit.types import ThreadItem, ThreadStreamEvent, UserMessageItem
 
@@ -240,7 +241,9 @@ async def run_workflow_v2(
                 if cost and cost > 0:
                     return float(cost)
             except Exception as e:
-                logger.debug("litellm.completion_cost failed for model %s: %s", model_name, e)
+                logger.debug(
+                    "litellm.completion_cost failed for model %s: %s", model_name, e
+                )
 
         # Fall back to manual pricing from settings
         pricing = _pricing_for_model(model_name)
@@ -260,7 +263,9 @@ async def run_workflow_v2(
 
         return (usage.input_tokens * input_rate) + (usage.output_tokens * output_rate)
 
-    def _record_usage(agent_key: str, model_name: str | None, usage: TokenUsage | None) -> None:
+    def _record_usage(
+        agent_key: str, model_name: str | None, usage: TokenUsage | None
+    ) -> None:
         if usage is None:
             return
 
@@ -489,7 +494,9 @@ async def run_workflow_v2(
         if on_step_stream is not None:
             await on_step_stream(update)
 
-    def _register_image_generation_task(task: Any, metadata: dict[str, Any]) -> tuple[dict[str, Any], str] | None:
+    def _register_image_generation_task(
+        task: Any, metadata: dict[str, Any]
+    ) -> tuple[dict[str, Any], str] | None:
         """Register image generation task for tracking."""
         call_id = getattr(task, "id", None) or getattr(task, "call_id", None)
         if not call_id:
@@ -500,7 +507,9 @@ async def run_workflow_v2(
         agent_image_tasks[key] = context
         return context, key
 
-    async def _persist_agent_image(context_data: dict[str, Any], key: str, task: Any, image: Any) -> None:
+    async def _persist_agent_image(
+        context_data: dict[str, Any], key: str, task: Any, image: Any
+    ) -> None:
         """Persist generated image."""
         import uuid
         from pathlib import Path
@@ -526,15 +535,21 @@ async def run_workflow_v2(
         raw_thread_id = str(context_data.get("thread_id") or "unknown-thread")
         normalized_thread = _sanitize_identifier(raw_thread_id, "thread")
         step_identifier_for_doc = step_key
-        normalized_step_identifier = _sanitize_identifier(str(step_identifier_for_doc), "step")
+        normalized_step_identifier = _sanitize_identifier(
+            str(step_identifier_for_doc), "step"
+        )
 
         # Parse key to extract call_id and output_index
         # key format is "step_slug:call_id"
         call_id = key.split(":")[-1] if ":" in key else key
         output_index = 0
 
-        raw_doc_id = f"{normalized_thread}-{call_id}-{output_index}-{normalized_step_identifier}"
-        doc_id = _sanitize_identifier(raw_doc_id, f"{normalized_thread}-{uuid.uuid4().hex[:8]}")
+        raw_doc_id = (
+            f"{normalized_thread}-{call_id}-{output_index}-{normalized_step_identifier}"
+        )
+        doc_id = _sanitize_identifier(
+            raw_doc_id, f"{normalized_thread}-{uuid.uuid4().hex[:8]}"
+        )
 
         b64_payload = image.b64_json or ""
         if not b64_payload:
@@ -557,7 +572,10 @@ async def run_workflow_v2(
                 user_id=str(token_user) if token_user else None,
                 thread_id=raw_thread_id,
             )
-            base_url = context_data.get("backend_public_base_url") or get_settings().backend_public_base_url
+            base_url = (
+                context_data.get("backend_public_base_url")
+                or get_settings().backend_public_base_url
+            )
             absolute_file_url = build_agent_image_absolute_url(
                 local_file_url,
                 base_url=base_url,
@@ -593,13 +611,19 @@ async def run_workflow_v2(
         step_index = len(steps) + 1
         metadata_for_images = dict(step_metadata or {})
         metadata_for_images["step_key"] = step_key
-        metadata_for_images["step_slug"] = metadata_for_images.get("step_slug") or step_key
-        metadata_for_images["step_title"] = metadata_for_images.get("step_title") or title
+        metadata_for_images["step_slug"] = (
+            metadata_for_images.get("step_slug") or step_key
+        )
+        metadata_for_images["step_title"] = (
+            metadata_for_images.get("step_title") or title
+        )
 
         if not metadata_for_images.get("agent_key"):
             metadata_for_images["agent_key"] = getattr(agent, "name", None)
         if not metadata_for_images.get("agent_label"):
-            metadata_for_images["agent_label"] = getattr(agent, "name", None) or getattr(agent, "model", None)
+            metadata_for_images["agent_label"] = getattr(
+                agent, "name", None
+            ) or getattr(agent, "model", None)
 
         thread_meta = getattr(agent_context, "thread", None)
         if not metadata_for_images.get("thread_id") and thread_meta is not None:
@@ -607,11 +631,18 @@ async def run_workflow_v2(
 
         request_context = getattr(agent_context, "request_context", None)
         if request_context is not None:
-            metadata_for_images.setdefault("user_id", getattr(request_context, "user_id", None))
-            metadata_for_images.setdefault("backend_public_base_url", getattr(request_context, "public_base_url", None))
+            metadata_for_images.setdefault(
+                "user_id", getattr(request_context, "user_id", None)
+            )
+            metadata_for_images.setdefault(
+                "backend_public_base_url",
+                getattr(request_context, "public_base_url", None),
+            )
 
         if not metadata_for_images.get("backend_public_base_url"):
-            metadata_for_images["backend_public_base_url"] = get_settings().backend_public_base_url
+            metadata_for_images["backend_public_base_url"] = (
+                get_settings().backend_public_base_url
+            )
 
         async def _inspect_event_for_images(event: Any) -> None:
             """Inspect events for image generation tasks."""
@@ -622,15 +653,24 @@ async def run_workflow_v2(
             if not isinstance(task, ImageTask):
                 return
 
-            logger.debug(f"_inspect_event_for_images: Found ImageTask, call_id={task.call_id}, status={task.status_indicator}")
-            registration = _register_image_generation_task(task, metadata=metadata_for_images)
+            logger.debug(
+                f"_inspect_event_for_images: Found ImageTask, call_id={task.call_id}, status={task.status_indicator}"
+            )
+            registration = _register_image_generation_task(
+                task, metadata=metadata_for_images
+            )
             if registration is None:
                 return
             context_data, key = registration
             image = task.images[0] if task.images else None
             status = getattr(task, "status_indicator", None) or "none"
 
-            if status == "complete" and image and isinstance(image.b64_json, str) and image.b64_json:
+            if (
+                status == "complete"
+                and image
+                and isinstance(image.b64_json, str)
+                and image.b64_json
+            ):
                 if context_data.get("last_stored_b64") == image.b64_json:
                     return
                 logger.info(f"_persist_agent_image: Persisting image for key={key}")
@@ -677,7 +717,10 @@ async def run_workflow_v2(
                 last_step_context=last_step_context,
                 run_context=run_context if isinstance(run_context, Mapping) else None,
             )
-            if rendered_instructions is not None and rendered_instructions != raw_instructions:
+            if (
+                rendered_instructions is not None
+                and rendered_instructions != raw_instructions
+            ):
                 overridden_instructions = raw_instructions
                 try:
                     agent.instructions = rendered_instructions
@@ -725,39 +768,58 @@ async def run_workflow_v2(
             base_history = [
                 item
                 for item in conversation_history
-                if (getattr(item, "role", None) or (item.get("role") if hasattr(item, "get") else None))
+                if (
+                    getattr(item, "role", None)
+                    or (item.get("role") if hasattr(item, "get") else None)
+                )
                 != "user"
             ]
 
         conversation_history_input = _normalize_conversation_history_for_provider(
             base_history,
-            getattr(provider_binding, "provider_slug", None) if provider_binding else None,
+            getattr(provider_binding, "provider_slug", None)
+            if provider_binding
+            else None,
         )
-        conversation_history_input = _deduplicate_conversation_history_items(conversation_history_input)
+        conversation_history_input = _deduplicate_conversation_history_items(
+            conversation_history_input
+        )
 
         # Handle previous_response_id
         sanitized_previous_response_id = _sanitize_previous_response_id(
             getattr(agent_context, "previous_response_id", None)
         )
-        if sanitized_previous_response_id != getattr(agent_context, "previous_response_id", None):
+        if sanitized_previous_response_id != getattr(
+            agent_context, "previous_response_id", None
+        ):
             try:
                 agent_context.previous_response_id = sanitized_previous_response_id
             except Exception:
                 pass
 
         if sanitized_previous_response_id:
-            filtered_input = _filter_conversation_history_for_previous_response(conversation_history_input)
+            filtered_input = _filter_conversation_history_for_previous_response(
+                conversation_history_input
+            )
             conversation_history_input = filtered_input
 
         # Check for while loop iteration
         in_while_loop_iteration = False
         if "state" in state and isinstance(state["state"], dict):
             for key, value in state["state"].items():
-                if isinstance(key, str) and key.startswith("__while_") and key.endswith("_counter") and isinstance(value, int) and value >= 1:
+                if (
+                    isinstance(key, str)
+                    and key.startswith("__while_")
+                    and key.endswith("_counter")
+                    and isinstance(value, int)
+                    and value >= 1
+                ):
                     in_while_loop_iteration = True
                     break
 
-        if in_while_loop_iteration and (sanitized_previous_response_id or pending_wait_state):
+        if in_while_loop_iteration and (
+            sanitized_previous_response_id or pending_wait_state
+        ):
             conversation_history_input = []
 
         # Debug: log what's being sent to the LLM
@@ -781,30 +843,42 @@ async def run_workflow_v2(
                     result.append(str(type(item).__name__))
             return result
 
-        for idx, msg in enumerate(conversation_history_input[:5]):  # Log first 5 messages
+        for idx, msg in enumerate(
+            conversation_history_input[:5]
+        ):  # Log first 5 messages
             if isinstance(msg, dict):
                 role = msg.get("role", "unknown")
                 content = msg.get("content", [])
             else:
                 role = getattr(msg, "role", "unknown")
                 content = getattr(msg, "content", [])
-            content_summary = _summarize_content(content) if isinstance(content, list) else str(type(content))
+            content_summary = (
+                _summarize_content(content)
+                if isinstance(content, list)
+                else str(type(content))
+            )
             logger.info(
                 "📎 LLM Input[%d]: role=%s, content_types=%s",
-                idx, role, content_summary,
+                idx,
+                role,
+                content_summary,
             )
 
         try:
             result = Runner.run_streamed(
                 agent,
                 input=[*conversation_history_input],
-                run_config=_workflow_run_config(response_format_override, provider_binding=provider_binding),
+                run_config=_workflow_run_config(
+                    response_format_override, provider_binding=provider_binding
+                ),
                 context=runner_context,
                 previous_response_id=sanitized_previous_response_id,
             )
             try:
                 async for event in stream_agent_response(agent_context, result):
-                    if _should_forward_agent_event(event, suppress=suppress_stream_events):
+                    if _should_forward_agent_event(
+                        event, suppress=suppress_stream_events
+                    ):
                         await _emit_stream_event(event)
                     # Debug: log event type and check for usage attributes
                     event_usage = getattr(event, "usage", None)
@@ -814,7 +888,9 @@ async def run_workflow_v2(
                         logger.info(
                             "Event with usage: type=%s, usage=%s, model_usage=%s, usage_info=%s",
                             getattr(event, "type", type(event)),
-                            event_usage, event_model_usage, event_usage_info,
+                            event_usage,
+                            event_model_usage,
+                            event_usage_info,
                         )
                     usage_from_event = _coerce_usage(
                         event_usage or event_model_usage or event_usage_info
@@ -847,30 +923,43 @@ async def run_workflow_v2(
                 if thread_metadata is not None:
                     existing_metadata = getattr(thread_metadata, "metadata", None)
                     if isinstance(existing_metadata, Mapping):
-                        stored_response_id = existing_metadata.get("previous_response_id")
+                        stored_response_id = existing_metadata.get(
+                            "previous_response_id"
+                        )
                         if stored_response_id != last_response_id:
                             existing_metadata["previous_response_id"] = last_response_id
                             should_persist_thread = True
                     else:
-                        thread_metadata.metadata = {"previous_response_id": last_response_id}
+                        thread_metadata.metadata = {
+                            "previous_response_id": last_response_id
+                        }
                         should_persist_thread = True
 
                 store = getattr(agent_context, "store", None)
                 request_context = getattr(agent_context, "request_context", None)
-                if should_persist_thread and store is not None and request_context is not None and hasattr(store, "save_thread"):
+                if (
+                    should_persist_thread
+                    and store is not None
+                    and request_context is not None
+                    and hasattr(store, "save_thread")
+                ):
                     try:
-                        await store.save_thread(thread_metadata, context=request_context)
+                        await store.save_thread(
+                            thread_metadata, context=request_context
+                        )
                     except Exception:
                         pass
 
             # Update conversation history
-            conversation_history.extend([item.to_input_item() for item in result.new_items])
+            conversation_history.extend(
+                [item.to_input_item() for item in result.new_items]
+            )
 
             # Debug: log result attributes for usage extraction
             logger.info(
                 "Result type: %s, all_attrs: %s",
                 type(result),
-                [a for a in dir(result) if not a.startswith('_')],
+                [a for a in dir(result) if not a.startswith("_")],
             )
             logger.info(
                 "Result attributes: usage=%s, response=%s, model_usage=%s",
@@ -883,7 +972,7 @@ async def run_workflow_v2(
                 logger.info(
                     "Response type: %s, all_attrs: %s",
                     type(response_obj),
-                    [a for a in dir(response_obj) if not a.startswith('_')],
+                    [a for a in dir(response_obj) if not a.startswith("_")],
                 )
                 logger.info(
                     "Response attributes: usage=%s",
@@ -895,7 +984,9 @@ async def run_workflow_v2(
                     logger.info("Response _hidden_params: %s", hidden_params)
 
             # Also check for raw_responses or _raw_responses
-            raw_responses = getattr(result, "raw_responses", None) or getattr(result, "_raw_responses", None)
+            raw_responses = getattr(result, "raw_responses", None) or getattr(
+                result, "_raw_responses", None
+            )
             if raw_responses:
                 logger.info("Found raw_responses: %s", type(raw_responses))
 
@@ -909,11 +1000,19 @@ async def run_workflow_v2(
                 _record_usage(agent_identifier, model_name, usage_from_result)
 
             # Debug: log agent_usage state
-            logger.debug("agent_usage dict after recording: %s", {k: (v.input_tokens, v.output_tokens, v.cost) for k, v in agent_usage.items()})
+            logger.debug(
+                "agent_usage dict after recording: %s",
+                {
+                    k: (v.input_tokens, v.output_tokens, v.cost)
+                    for k, v in agent_usage.items()
+                },
+            )
 
             # Emit usage event for this agent step
             agent_step_usage = agent_usage.get(agent_identifier)
-            logger.debug("agent_step_usage for %s: %s", agent_identifier, agent_step_usage)
+            logger.debug(
+                "agent_step_usage for %s: %s", agent_identifier, agent_step_usage
+            )
 
             # Debug: log new_items
             for idx, item in enumerate(result.new_items):
@@ -922,12 +1021,16 @@ async def run_workflow_v2(
                 raw_item = getattr(item, "raw_item", None)
                 logger.debug(
                     "result.new_items[%d]: type=%s, id=%s, raw_item_type=%s, raw_item_id=%s",
-                    idx, item_type, item_id,
+                    idx,
+                    item_type,
+                    item_id,
                     getattr(raw_item, "type", None) if raw_item else None,
                     getattr(raw_item, "id", None) if raw_item else None,
                 )
 
-            if agent_step_usage and (agent_step_usage.input_tokens > 0 or agent_step_usage.output_tokens > 0):
+            if agent_step_usage and (
+                agent_step_usage.input_tokens > 0 or agent_step_usage.output_tokens > 0
+            ):
                 # Find the assistant message item ID from result.new_items
                 assistant_item_id = None
                 for item in result.new_items:
@@ -981,6 +1084,41 @@ async def run_workflow_v2(
     # Populate runtime_vars with all dependencies
     thread = getattr(agent_context, "thread", None)
     debug_enabled = os.getenv("WORKFLOW_DEBUG") == "true"
+
+    # Démarrer un workflow ChatKit par défaut pour l'affichage
+    try:
+        from chatkit.types import (
+            Workflow as ChatkitWorkflow,
+            CustomSummary,
+            WorkflowItem,
+        )
+
+        if agent_context.workflow_item is None:
+            default_workflow = ChatkitWorkflow(
+                type="reasoning",
+                tasks=[],
+                summary=CustomSummary(title="Workflow"),  # Titre par défaut
+                expanded=True,
+            )
+            await agent_context.start_workflow(default_workflow)
+
+            # Ajouter le workflow item au thread pour qu'il soit visible
+            if agent_context.workflow_item is not None and on_stream_event is not None:
+                workflow_item = WorkflowItem(
+                    id=agent_context.workflow_item.id,
+                    type="workflow",
+                    workflow=agent_context.workflow_item.workflow,
+                )
+                from chatkit.types import ThreadItemAddedEvent
+
+                await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
+                logger.info(
+                    f"[WORKFLOW_INIT] Added workflow item {workflow_item.id} to thread"
+                )
+
+            logger.info("[WORKFLOW_INIT] Started default ChatKit workflow for display")
+    except Exception as exc:
+        logger.debug(f"Failed to start default workflow: {exc}")
 
     context.runtime_vars.update(
         {

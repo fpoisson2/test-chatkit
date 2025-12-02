@@ -6,12 +6,13 @@ interface DevToolsScreencastProps {
   className?: string;
   onConnectionError?: () => void; // Callback when connection fails
   onLastFrame?: (frameDataUrl: string) => void; // Callback with last frame before closing
+  onScreencastConnectionError?: (token: string) => void; // Callback when screencast connection fails
   enableInput?: boolean; // Capture keyboard/mouse events and forward to CDP
 }
 
 // Global map to track tokens that have fatal errors (like 403)
 // This persists across component remounts (important for React Strict Mode)
-const fatalErrorTokens = new Set<string>();
+export const fatalErrorTokens = new Set<string>();
 
 // Global map to track active WebSocket connections by token
 // This prevents multiple simultaneous connections to the same token
@@ -39,14 +40,18 @@ export function DevToolsScreencast({
   enableInput = false,
   onConnectionError,
   onLastFrame,
-}: DevToolsScreencastProps): JSX.Element {
+  onScreencastConnectionError,
+}: DevToolsScreencastProps): JSX.Element | null {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   // Initialize error state based on whether the token has a fatal error
-  const [error, setError] = useState<string | null>(() =>
-    fatalErrorTokens.has(debugUrlToken) ? 'Token invalide ou expiré' : null
-  );
+  const [error, setError] = useState<string | null>(null);
+
+  // Don't render the component if the token has a fatal error
+  if (fatalErrorTokens.has(debugUrlToken)) {
+    return null;
+  }
   const [frameCount, setFrameCount] = useState(0);
   const [currentUrl, setCurrentUrl] = useState('');
   const [urlInput, setUrlInput] = useState('');
@@ -138,6 +143,9 @@ export function DevToolsScreencast({
           fatalErrorTokens.add(debugUrlToken);
           if (onConnectionError) {
             onConnectionError();
+          }
+          if (onScreencastConnectionError) {
+            onScreencastConnectionError(debugUrlToken);
           }
           return;
         }
@@ -348,6 +356,9 @@ export function DevToolsScreencast({
           fatalErrorTokens.add(debugUrlToken); // Mark this token as having a fatal error
           if (onConnectionError) {
             onConnectionError();
+          }
+          if (onScreencastConnectionError) {
+            onScreencastConnectionError(debugUrlToken);
           }
           return;
         }

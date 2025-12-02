@@ -61,7 +61,17 @@ def create_executor_helpers(
 
     def _node_title(step) -> str:
         """Get display title for a node."""
-        return str(step.parameters.get("title", "")) if step.parameters else ""
+        # Priority: display_name > parameters["title"] > slug
+        logger.info(f"[TITLE_TRACE] _node_title called for step={step.slug}, display_name={step.display_name}, params_title={step.parameters.get('title') if step.parameters else None}")
+        if step.display_name:
+            logger.info(f"[TITLE_TRACE] Using display_name: {step.display_name}")
+            return step.display_name
+        if step.parameters and step.parameters.get("title"):
+            title = str(step.parameters.get("title"))
+            logger.info(f"[TITLE_TRACE] Using parameters title: {title}")
+            return title
+        logger.info(f"[TITLE_TRACE] Using slug fallback: {step.slug}")
+        return step.slug
 
     async def _emit_stream_event_wrapper(event: ThreadStreamEvent) -> None:
         if on_stream_event is None:

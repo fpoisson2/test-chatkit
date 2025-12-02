@@ -1721,8 +1721,8 @@
   overflow: hidden;
 }
 
-.chatkit-workflow-header .chatkit-workflow-title::after,
-.chatkit-workflow-header .chatkit-workflow-default-title::after {
+.chatkit-workflow-header.chatkit-workflow-active .chatkit-workflow-title::after,
+.chatkit-workflow-header.chatkit-workflow-active .chatkit-workflow-default-title::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1732,9 +1732,14 @@
   opacity: 0.9;
   background-size: 58% 100%;
   background-repeat: no-repeat;
-  background-position: -70% 0;
+  background-position: 0 0;
   animation: chatkit-last-task-scan 3s linear infinite;
-  animation-delay: -1.5s;
+}
+
+/* Stop animation completely when workflow is completed */
+.chatkit-workflow-header.chatkit-workflow-completed .chatkit-workflow-title::after,
+.chatkit-workflow-header.chatkit-workflow-completed .chatkit-workflow-default-title::after {
+  display: none;
 }
 
 .chatkit-workflow-last-task .chatkit-task {

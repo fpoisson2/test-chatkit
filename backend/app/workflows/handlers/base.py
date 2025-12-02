@@ -83,7 +83,12 @@ class BaseNodeHandler(NodeHandler):
 
     def _node_title(self, step) -> str:
         """Get display title for a node."""
-        return str(step.parameters.get("title", "")) if step.parameters else ""
+        # Priority: display_name > parameters["title"] > slug
+        if step.display_name:
+            return step.display_name
+        if step.parameters and step.parameters.get("title"):
+            return str(step.parameters.get("title"))
+        return step.slug
 
     def _next_slug_or_fallback(self, node_slug: str, context) -> str | None:
         """Find next slug with fallback to while parent or None (waiting).

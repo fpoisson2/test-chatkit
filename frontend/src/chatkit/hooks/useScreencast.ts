@@ -168,7 +168,7 @@ export function useScreencast({
       // if the user hasn't explicitly interacted. But if they were just watching it,
       // the logic above (currentActiveScreencast) keeps it.
       if (!newActiveScreencast && isLoading) {
-        const latestEntry = [...tokenEntries]
+        const latestEntry = [...loadingTokenEntries]
           .reverse()
           .find(({ token }) => !failedScreencastTokens.has(token));
 

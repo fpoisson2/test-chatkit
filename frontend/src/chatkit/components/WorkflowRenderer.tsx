@@ -42,6 +42,9 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
+  // Stop animation when step has produced content (has tasks)
+  const hasStepContent = currentTaskCount > 0;
+
   const hasRenderableContent = (task: Task): boolean => {
     if (task.type !== 'computer_use') {
       return true;
@@ -102,6 +105,16 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   };
 
   const currentTaskTitle = getCurrentTaskTitle();
+
+  // DEBUG: Log what title will be displayed
+  console.log('[WORKFLOW_DEBUG] WorkflowRenderer render:', {
+    summaryTitle: workflow.summary?.title,
+    currentTaskTitle,
+    tasksCount: workflow.tasks.length,
+    displayedTask: displayedTask?.title,
+    lastTask: workflow.tasks[workflow.tasks.length - 1]?.title,
+    willShowSummary: workflow.summary && workflow.summary.title && workflow.summary.title !== 'Workflow'
+  });
 
   // Détecter si une image est en cours de génération
   const hasImageGenerating = workflow.tasks.some(
@@ -218,18 +231,20 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
-      <div className="chatkit-workflow-header" onClick={toggleExpanded}>
+      <div className={`chatkit-workflow-header ${!hasStepContent ? 'chatkit-workflow-active' : 'chatkit-workflow-completed'}`} onClick={toggleExpanded}>
         <div className="chatkit-workflow-summary">
-          {workflow.summary ? (
-            <SummaryRenderer summary={workflow.summary} />
-          ) : (
-            <div className="chatkit-workflow-default-title">
-              {currentTaskTitle
-                ?? (isReasoning
-                  ? t('chatkit.workflow.reasoning')
-                  : t('chatkit.workflow.workflow'))}
-            </div>
-          )}
+          {(() => {
+            const willShowSummary = workflow.summary && workflow.summary.title && workflow.summary.title !== 'Workflow';
+            const displayedTitle = willShowSummary ? workflow.summary.title : (currentTaskTitle || workflow.summary?.title || t('chatkit.workflow.workflow'));
+            console.log('[WORKFLOW_DEBUG] Displaying title:', displayedTitle, { willShowSummary, currentTaskTitle, summaryTitle: workflow.summary?.title, isCompleted, hasStepContent });
+            return willShowSummary ? (
+              <SummaryRenderer summary={workflow.summary} />
+            ) : (
+              <div className="chatkit-workflow-default-title">
+                {displayedTitle}
+              </div>
+            );
+          })()}
         </div>
         <button className="chatkit-workflow-toggle" aria-expanded={expanded} aria-label={expanded ? t('chatkit.workflow.collapse') : t('chatkit.workflow.expand')}>
           {expanded ? (
