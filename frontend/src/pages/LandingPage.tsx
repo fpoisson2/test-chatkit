@@ -14,9 +14,12 @@ import {
 } from "lucide-react";
 import edxoLogo from "../assets/favicon.svg";
 import styles from "./LandingPage.module.css";
+import { useI18n } from "../i18n";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   return (
     <div className={styles.landingPage}>
@@ -27,12 +30,15 @@ const LandingPage = () => {
               <img src={edxoLogo} alt="edxo" style={{ height: 32 }} />
               <span>edxo</span>
             </div>
-            <button
-              className="button button--primary"
-              onClick={() => navigate("/login")}
-            >
-              Login
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <LanguageSwitcher />
+              <button
+                className="button button--primary"
+                onClick={() => navigate("/login")}
+              >
+                {t("landing.nav.login")}
+              </button>
+            </div>
           </nav>
         </div>
       </header>
@@ -42,12 +48,10 @@ const LandingPage = () => {
         <section className={styles.hero}>
           <div className={styles.container}>
             <h1 className={styles.heroTitle}>
-              Open-source workflow builder for conversational AI
+              {t("landing.hero.title")}
             </h1>
             <p className={styles.heroSubtitle}>
-              Build intelligent conversational assistants with a visual no-code interface.
-              Started as an enhancement to OpenAI's AgentKit, now a complete platform
-              for creating custom AI workflows, LMS integrations, and voice-enabled assistants.
+              {t("landing.hero.subtitle")}
             </p>
             <div className={styles.heroButtons}>
               <button
@@ -55,7 +59,7 @@ const LandingPage = () => {
                 style={{ padding: "16px 32px", fontSize: "1.1rem" }}
                 onClick={() => navigate("/login")}
               >
-                Get Started <ArrowRight size={20} />
+                {t("landing.hero.getStarted")} <ArrowRight size={20} />
               </button>
               <a
                 href="https://github.com/fpoisson2/test-chatkit"
@@ -64,7 +68,7 @@ const LandingPage = () => {
                 className="button button--subtle"
                 style={{ padding: "16px 32px", fontSize: "1.1rem" }}
               >
-                <Github size={20} /> GitHub
+                <Github size={20} /> {t("landing.hero.github")}
               </a>
             </div>
           </div>
@@ -73,16 +77,15 @@ const LandingPage = () => {
         {/* Features Section */}
         <section className={styles.features}>
           <div className={styles.container}>
-            <h2 className={styles.sectionTitle}>Why edxo?</h2>
+            <h2 className={styles.sectionTitle}>{t("landing.features.title")}</h2>
             <div className={styles.featureGrid}>
               <div className={styles.featureCard}>
                 <div className={styles.featureIcon}>
                   <Workflow size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Visual Workflow Builder</h3>
+                <h3 className={styles.featureTitle}>{t("landing.features.workflow.title")}</h3>
                 <p className={styles.featureDescription}>
-                  Intuitive no-code interface to create complex conversational
-                  flows with drag-and-drop simplicity.
+                  {t("landing.features.workflow.desc")}
                 </p>
               </div>
 
@@ -90,10 +93,9 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <Bot size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Multi-model AI</h3>
+                <h3 className={styles.featureTitle}>{t("landing.features.multimodel.title")}</h3>
                 <p className={styles.featureDescription}>
-                  Use the best of AI: GPT-4, Claude, Gemini, Mistral.
-                  Switch between models based on your needs.
+                  {t("landing.features.multimodel.desc")}
                 </p>
               </div>
 
@@ -101,10 +103,9 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <Database size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Vector Stores</h3>
+                <h3 className={styles.featureTitle}>{t("landing.features.vectorstore.title")}</h3>
                 <p className={styles.featureDescription}>
-                  Index your documents (PDF, Markdown) so AI can answer
-                  accurately based on your content.
+                  {t("landing.features.vectorstore.desc")}
                 </p>
               </div>
 
@@ -112,10 +113,9 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <Mic size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Voice Mode</h3>
+                <h3 className={styles.featureTitle}>{t("landing.features.voice.title")}</h3>
                 <p className={styles.featureDescription}>
-                  Real-time voice conversations with OpenAI Realtime API
-                  and SIP telephony support.
+                  {t("landing.features.voice.desc")}
                 </p>
               </div>
 
@@ -123,10 +123,9 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <GraduationCap size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>LMS Integration</h3>
+                <h3 className={styles.featureTitle}>{t("landing.features.lms.title")}</h3>
                 <p className={styles.featureDescription}>
-                  Native LTI 1.3 integration with Moodle, Canvas, and Blackboard.
-                  Automatic grade sync and deep linking.
+                  {t("landing.features.lms.desc")}
                 </p>
               </div>
 
@@ -134,10 +133,9 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <ShieldCheck size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Self-hosting Ready</h3>
+                <h3 className={styles.featureTitle}>{t("landing.features.selfhost.title")}</h3>
                 <p className={styles.featureDescription}>
-                  Full control over your data. Deploy on your own infrastructure
-                  for complete data sovereignty.
+                  {t("landing.features.selfhost.desc")}
                 </p>
               </div>
             </div>
@@ -147,11 +145,10 @@ const LandingPage = () => {
         {/* Architecture Section */}
         <section className={styles.architecture}>
           <div className={styles.container}>
-            <h2 className={styles.sectionTitle}>Modern Tech Stack</h2>
+            <h2 className={styles.sectionTitle}>{t("landing.tech.title")}</h2>
             <div style={{ textAlign: 'center', maxWidth: '800px', margin: '0 auto' }}>
               <p style={{ fontSize: '1.1rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Built on a robust, open-source stack designed for performance and scalability.
-                Started with AgentKit, evolved into a complete platform.
+                {t("landing.tech.subtitle")}
               </p>
 
               <div className={styles.techStack}>
@@ -174,7 +171,7 @@ const LandingPage = () => {
               <span>edxo</span>
             </div>
             <div className={styles.copyright}>
-              © {new Date().getFullYear()} edxo. Built for fun. Shared in case it helps others.
+              © {new Date().getFullYear()} edxo. {t("landing.footer.tagline")}
             </div>
             <div className={styles.socials}>
               <a href="https://github.com/fpoisson2/test-chatkit" className={styles.socialLink} target="_blank" rel="noreferrer">

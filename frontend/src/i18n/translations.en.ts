@@ -1375,5 +1375,28 @@ export const en: TranslationDictionary = {
   "admin.cleanup.success.factoryReset": "Factory reset complete. Deleted {{conversations}} conversations, {{workflows}} workflows, and {{viewports}} viewports.",
   "admin.cleanup.errors.sessionExpired": "Your session has expired. Please log in again.",
   "admin.cleanup.errors.operationFailed": "The operation failed. Please try again.",
+
+  // Landing page
+  "landing.nav.login": "Login",
+  "landing.hero.title": "Open-source workflow builder for conversational AI",
+  "landing.hero.subtitle": "Build intelligent conversational assistants with a visual no-code interface. Started as an enhancement to OpenAI's AgentKit, now a complete platform for creating custom AI workflows, LMS integrations, and voice-enabled assistants.",
+  "landing.hero.getStarted": "Get Started",
+  "landing.hero.github": "GitHub",
+  "landing.features.title": "Why edxo?",
+  "landing.features.workflow.title": "Visual Workflow Builder",
+  "landing.features.workflow.desc": "Intuitive no-code interface to create complex conversational flows with drag-and-drop simplicity.",
+  "landing.features.multimodel.title": "Multi-model AI",
+  "landing.features.multimodel.desc": "Use the best of AI: GPT-4, Claude, Gemini, Mistral. Switch between models based on your needs.",
+  "landing.features.vectorstore.title": "Vector Stores",
+  "landing.features.vectorstore.desc": "Index your documents (PDF, Markdown) so AI can answer accurately based on your content.",
+  "landing.features.voice.title": "Voice Mode",
+  "landing.features.voice.desc": "Real-time voice conversations with OpenAI Realtime API and SIP telephony support.",
+  "landing.features.lms.title": "LMS Integration",
+  "landing.features.lms.desc": "Native LTI 1.3 integration with Moodle, Canvas, and Blackboard. Automatic grade sync and deep linking.",
+  "landing.features.selfhost.title": "Self-hosting Ready",
+  "landing.features.selfhost.desc": "Full control over your data. Deploy on your own infrastructure for complete data sovereignty.",
+  "landing.tech.title": "Modern Tech Stack",
+  "landing.tech.subtitle": "Built on a robust, open-source stack designed for performance and scalability. Started with AgentKit, evolved into a complete platform.",
+  "landing.footer.tagline": "Built for fun. Shared in case it helps others.",
 };
   
