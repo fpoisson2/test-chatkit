@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 
 from agents import apply_diff
-from agents.tool import ApplyPatchTool, Editor, ApplyPatchOperation
+from agents.tool import ApplyPatchTool, ApplyPatchOperation
 
 from ..computer.hosted_ssh import HostedSSH
 
@@ -15,11 +15,31 @@ logger = logging.getLogger("chatkit.server")
 __all__ = ["build_apply_patch_tool", "SSHEditor"]
 
 
-class SSHEditor(Editor):
+class Editor(Protocol):
+    """Protocol defining the interface for file editing operations.
+
+    This protocol is expected by ApplyPatchTool to execute file operations.
+    """
+
+    async def create_file(self, operation: ApplyPatchOperation) -> dict[str, Any]:
+        """Create a new file at the specified path."""
+        ...
+
+    async def update_file(self, operation: ApplyPatchOperation) -> dict[str, Any]:
+        """Update an existing file at the specified path."""
+        ...
+
+    async def delete_file(self, operation: ApplyPatchOperation) -> dict[str, Any]:
+        """Delete a file at the specified path."""
+        ...
+
+
+class SSHEditor:
     """Editor implementation for SSH environments.
 
     This editor executes file operations via SSH using the HostedSSH connection.
     It uses apply_diff from the agents SDK to process diffs into file content.
+    Implements the Editor protocol expected by ApplyPatchTool.
     """
 
     def __init__(self, ssh: HostedSSH):
