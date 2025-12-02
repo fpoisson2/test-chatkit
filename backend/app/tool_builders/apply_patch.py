@@ -6,7 +6,8 @@ import logging
 from typing import Any, Mapping, Protocol
 
 from agents import apply_diff
-from agents.tool import ApplyPatchTool, ApplyPatchOperation
+from agents.editor import ApplyPatchOperation, ApplyPatchResult
+from agents.tool import ApplyPatchTool
 
 from ..computer.hosted_ssh import HostedSSH
 
