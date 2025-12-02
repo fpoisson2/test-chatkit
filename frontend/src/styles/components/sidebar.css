@@ -235,7 +235,7 @@
 }
 
 .react-flow__handle {
-  --handle-size: calc(var(--spacing) * 3.5);
+  --handle-size: calc(var(--spacing) * 7);
   width: var(--handle-size);
   height: var(--handle-size);
   border-radius: var(--radius-full);
@@ -243,30 +243,61 @@
   border: 2px solid var(--surface-border);
   box-shadow: var(--shadow-soft);
   box-sizing: border-box;
+  padding: calc(var(--spacing) * 1.5);
+  touch-action: none;
 }
 
 .react-flow__handle-left {
-  left: calc(var(--handle-size) * -0.5);
+  left: calc((var(--handle-size) + calc(var(--spacing) * 3)) * -0.5);
 }
 
 .react-flow__handle-right {
-  right: calc(var(--handle-size) * -0.5);
+  right: calc((var(--handle-size) + calc(var(--spacing) * 3)) * -0.5);
 }
 
 .react-flow__handle-top {
-  top: calc(var(--handle-size) * -0.5);
+  top: calc((var(--handle-size) + calc(var(--spacing) * 3)) * -0.5);
 }
 
 .react-flow__handle-bottom {
-  bottom: calc(var(--handle-size) * -0.5);
+  bottom: calc((var(--handle-size) + calc(var(--spacing) * 3)) * -0.5);
 }
 
 @media (max-width: 768px) {
   .react-flow__handle {
-    --handle-size: calc(var(--spacing) * 5.5);
+    --handle-size: calc(var(--spacing) * 9);
     width: var(--handle-size);
     height: var(--handle-size);
     border-width: 2px;
+    padding: calc(var(--spacing) * 2);
+  }
+
+  /* Styles spécifiques pour les appareils tactiles */
+  @media (hover: none) and (pointer: coarse) {
+    .react-flow__handle {
+      --handle-size: calc(var(--spacing) * 10);
+      width: var(--handle-size);
+      height: var(--handle-size);
+      padding: calc(var(--spacing) * 2.5);
+      border-width: 3px;
+      box-shadow: var(--shadow-card);
+    }
+
+    .react-flow__handle-left {
+      left: calc((var(--handle-size) + calc(var(--spacing) * 5)) * -0.5);
+    }
+
+    .react-flow__handle-right {
+      right: calc((var(--handle-size) + calc(var(--spacing) * 5)) * -0.5);
+    }
+
+    .react-flow__handle-top {
+      top: calc((var(--handle-size) + calc(var(--spacing) * 5)) * -0.5);
+    }
+
+    .react-flow__handle-bottom {
+      bottom: calc((var(--handle-size) + calc(var(--spacing) * 5)) * -0.5);
+    }
   }
 }
 

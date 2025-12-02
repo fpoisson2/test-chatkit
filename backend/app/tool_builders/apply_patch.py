@@ -62,7 +62,7 @@ class SSHEditor:
         """
         try:
             # Convert diff to file content using apply_diff
-            content = apply_diff("", operation.diff, create=True)
+            content = apply_diff("", operation.diff, mode="create")
 
             # Escape single quotes in content for shell command
             escaped_content = content.replace("'", "'\"'\"'")
@@ -70,7 +70,8 @@ class SSHEditor:
             # Use echo with heredoc to create file via SSH
             # We use base64 encoding to safely transfer content that may contain special characters
             import base64
-            encoded_content = base64.b64encode(content.encode('utf-8')).decode('ascii')
+
+            encoded_content = base64.b64encode(content.encode("utf-8")).decode("ascii")
 
             command = f"echo '{encoded_content}' | base64 -d > '{operation.path}'"
             await self.ssh.run_command(command)
@@ -81,7 +82,9 @@ class SSHEditor:
                 "output": f"Created {operation.path}",
             }
         except Exception as exc:
-            logger.exception(f"Failed to create file {operation.path} via SSH", exc_info=exc)
+            logger.exception(
+                f"Failed to create file {operation.path} via SSH", exc_info=exc
+            )
             return {
                 "status": "failed",
                 "output": f"Error creating {operation.path}: {str(exc)}",
@@ -106,7 +109,10 @@ class SSHEditor:
 
             # Write updated content back via SSH using base64 encoding
             import base64
-            encoded_content = base64.b64encode(new_content.encode('utf-8')).decode('ascii')
+
+            encoded_content = base64.b64encode(new_content.encode("utf-8")).decode(
+                "ascii"
+            )
 
             write_command = f"echo '{encoded_content}' | base64 -d > '{operation.path}'"
             await self.ssh.run_command(write_command)
@@ -117,7 +123,9 @@ class SSHEditor:
                 "output": f"Updated {operation.path}",
             }
         except Exception as exc:
-            logger.exception(f"Failed to update file {operation.path} via SSH", exc_info=exc)
+            logger.exception(
+                f"Failed to update file {operation.path} via SSH", exc_info=exc
+            )
             return {
                 "status": "failed",
                 "output": f"Error updating {operation.path}: {str(exc)}",
@@ -143,7 +151,9 @@ class SSHEditor:
                 "output": f"Deleted {operation.path}",
             }
         except Exception as exc:
-            logger.exception(f"Failed to delete file {operation.path} via SSH", exc_info=exc)
+            logger.exception(
+                f"Failed to delete file {operation.path} via SSH", exc_info=exc
+            )
             return {
                 "status": "failed",
                 "output": f"Error deleting {operation.path}: {str(exc)}",

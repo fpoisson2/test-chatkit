@@ -505,7 +505,7 @@ button {
 }
 
 .react-flow__handle {
-  --handle-size: 14px;
+  --handle-size: 28px;
   width: var(--handle-size);
   height: var(--handle-size);
   border-radius: 9999px;
@@ -513,30 +513,61 @@ button {
   border: 2px solid var(--surface-border);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
   box-sizing: border-box;
+  padding: 6px;
+  touch-action: none;
 }
 
 .react-flow__handle-left {
-  left: calc(var(--handle-size) * -0.5);
+  left: calc((var(--handle-size) + 12px) * -0.5);
 }
 
 .react-flow__handle-right {
-  right: calc(var(--handle-size) * -0.5);
+  right: calc((var(--handle-size) + 12px) * -0.5);
 }
 
 .react-flow__handle-top {
-  top: calc(var(--handle-size) * -0.5);
+  top: calc((var(--handle-size) + 12px) * -0.5);
 }
 
 .react-flow__handle-bottom {
-  bottom: calc(var(--handle-size) * -0.5);
+  bottom: calc((var(--handle-size) + 12px) * -0.5);
 }
 
 @media (max-width: 768px) {
   .react-flow__handle {
-    --handle-size: 22px;
+    --handle-size: 36px;
     width: var(--handle-size);
     height: var(--handle-size);
     border-width: 2px;
+    padding: 8px;
+  }
+}
+
+/* Styles spécifiques pour les appareils tactiles */
+@media (hover: none) and (pointer: coarse) {
+  .react-flow__handle {
+    --handle-size: 40px;
+    width: var(--handle-size);
+    height: var(--handle-size);
+    padding: 10px;
+    border-width: 3px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.3);
+  }
+
+  .react-flow__handle-left {
+    left: calc((var(--handle-size) + 20px) * -0.5);
+  }
+
+  .react-flow__handle-right {
+    right: calc((var(--handle-size) + 20px) * -0.5);
+  }
+
+  .react-flow__handle-top {
+    top: calc((var(--handle-size) + 20px) * -0.5);
+  }
+
+  .react-flow__handle-bottom {
+    bottom: calc((var(--handle-size) + 20px) * -0.5);
   }
 }
 
