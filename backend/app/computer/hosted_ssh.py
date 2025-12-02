@@ -46,6 +46,25 @@ class SSHConfig:
     private_key: str | None = None
 
 
+@dataclass
+class SSHCommandResult:
+    """Rich result for a single SSH command execution."""
+
+    command: str
+    stdout: str
+    stderr: str
+    exit_status: int | None
+    cwd: str | None
+
+    @property
+    def combined_output(self) -> str:
+        if self.stderr:
+            if self.stdout:
+                return f"{self.stdout}\n[stderr]: {self.stderr}"
+            return f"[stderr]: {self.stderr}"
+        return self.stdout
+
+
 class _SSHDriver:
     """Driver for SSH-based computer control."""
 
@@ -203,24 +222,59 @@ class _SSHDriver:
         """Invalidate the screenshot cache after any action."""
         self._placeholder_cache = None
 
-    async def run_command(self, command: str) -> str:
-        """Execute a command via SSH and return the output."""
+    async def run_command_with_context(self, command: str) -> SSHCommandResult:
+        """Execute a command via SSH and return structured details."""
+
         await self.ensure_ready()
         conn = self._require_connection()
+
+        cwd: str | None = None
+        try:
+            pwd_result = await conn.run("pwd", check=False, timeout=10)
+            cwd = (pwd_result.stdout or "").strip() or None
+        except Exception:
+            logger.debug("Impossible de récupérer le cwd avant la commande", exc_info=True)
+
         try:
             result = await conn.run(command, check=False, timeout=30)
-            output = result.stdout or ""
-            if result.stderr:
-                output += f"\n[stderr]: {result.stderr}"
-            self._last_output = output
-            self._command_history.append(command)
-            self._invalidate_cache()
-            logger.debug(f"Commande SSH exécutée: {command[:50]}...")
-            await self._notify_output_listeners(command, output)
-            return output
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
+            exit_status = result.exit_status
         except asyncssh.Error as exc:
             logger.warning(f"Erreur lors de l'exécution de la commande SSH: {exc}")
-            return f"[Erreur]: {exc}"
+            stdout = ""
+            stderr = str(exc)
+            exit_status = None
+        except Exception as exc:  # pragma: no cover - unexpected transport errors
+            logger.warning(
+                "Erreur inattendue lors de l'exécution de la commande SSH", exc_info=True
+            )
+            stdout = ""
+            stderr = str(exc)
+            exit_status = None
+
+        combined_output = stdout
+        if stderr:
+            combined_output = f"{stdout}\n[stderr]: {stderr}" if stdout else f"[stderr]: {stderr}"
+
+        self._last_output = combined_output
+        self._command_history.append(command)
+        self._invalidate_cache()
+        logger.debug(f"Commande SSH exécutée: {command[:50]}...")
+        await self._notify_output_listeners(command, combined_output)
+
+        return SSHCommandResult(
+            command=command,
+            stdout=stdout,
+            stderr=stderr,
+            exit_status=exit_status,
+            cwd=cwd,
+        )
+
+    async def run_command(self, command: str) -> str:
+        """Execute a command via SSH and return the combined output."""
+        result = await self.run_command_with_context(command)
+        return result.combined_output
 
     async def click(self, x: int, y: int, button: Button) -> None:
         """For SSH, clicks are not directly supported. Log the action."""
@@ -334,6 +388,11 @@ class HostedSSH(AsyncComputer):
         """Return SSH connection info."""
         return f"{self._config.username}@{self._config.host}:{self._config.port}"
 
+    @property
+    def config(self) -> SSHConfig:
+        """Expose SSH configuration for downstream tooling."""
+        return self._config
+
     async def _get_driver(self) -> _SSHDriver:
         if self._driver is not None:
             return self._driver
@@ -399,6 +458,12 @@ class HostedSSH(AsyncComputer):
         """Execute a command via SSH."""
         driver = await self._get_driver()
         return await driver.run_command(command)
+
+    async def run_command_with_context(self, command: str) -> SSHCommandResult:
+        """Execute a command and return structured SSH metadata."""
+
+        driver = await self._get_driver()
+        return await driver.run_command_with_context(command)
 
     async def subscribe_output(
         self, listener: Callable[[str, str], object]
