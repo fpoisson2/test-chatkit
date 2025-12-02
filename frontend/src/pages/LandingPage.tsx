@@ -24,14 +24,14 @@ const LandingPage = () => {
         <div className={styles.container}>
           <nav className={styles.nav}>
             <div className={styles.logo}>
-              <img src={edxoLogo} alt="EDxo" style={{ height: 32 }} />
-              <span>EDxo</span>
+              <img src={edxoLogo} alt="edxo" style={{ height: 32 }} />
+              <span>edxo</span>
             </div>
             <button
               className="button button--primary"
               onClick={() => navigate("/login")}
             >
-              Connexion
+              Login
             </button>
           </nav>
         </div>
@@ -42,12 +42,12 @@ const LandingPage = () => {
         <section className={styles.hero}>
           <div className={styles.container}>
             <h1 className={styles.heroTitle}>
-              Créez des assistants IA pédagogiques intelligents
+              Open-source workflow builder for conversational AI
             </h1>
             <p className={styles.heroSubtitle}>
-              La plateforme complète pour les éducateurs et institutions.
-              Intégration LMS native, workflow builder visuel et assistants IA conversationnels
-              sans écrire une seule ligne de code.
+              Build intelligent conversational assistants with a visual no-code interface.
+              Started as an enhancement to OpenAI's AgentKit, now a complete platform
+              for creating custom AI workflows, LMS integrations, and voice-enabled assistants.
             </p>
             <div className={styles.heroButtons}>
               <button
@@ -55,10 +55,10 @@ const LandingPage = () => {
                 style={{ padding: "16px 32px", fontSize: "1.1rem" }}
                 onClick={() => navigate("/login")}
               >
-                Démarrer maintenant <ArrowRight size={20} />
+                Get Started <ArrowRight size={20} />
               </button>
               <a
-                href="https://github.com/edxo/edxo"
+                href="https://github.com/fpoisson2/test-chatkit"
                 target="_blank"
                 rel="noreferrer"
                 className="button button--subtle"
@@ -73,27 +73,16 @@ const LandingPage = () => {
         {/* Features Section */}
         <section className={styles.features}>
           <div className={styles.container}>
-            <h2 className={styles.sectionTitle}>Pourquoi choisir EDxo ?</h2>
+            <h2 className={styles.sectionTitle}>Why edxo?</h2>
             <div className={styles.featureGrid}>
-              <div className={styles.featureCard}>
-                <div className={styles.featureIcon}>
-                  <GraduationCap size={24} />
-                </div>
-                <h3 className={styles.featureTitle}>Conçu pour l'éducation</h3>
-                <p className={styles.featureDescription}>
-                  Intégration native LTI 1.3 avec Moodle, Canvas et Blackboard.
-                  Synchronisation automatique des notes et conformité RGPD.
-                </p>
-              </div>
-
               <div className={styles.featureCard}>
                 <div className={styles.featureIcon}>
                   <Workflow size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Workflow Builder Visuel</h3>
+                <h3 className={styles.featureTitle}>Visual Workflow Builder</h3>
                 <p className={styles.featureDescription}>
-                  Interface no-code intuitive pour créer des parcours pédagogiques
-                  complexes par simple glisser-déposer.
+                  Intuitive no-code interface to create complex conversational
+                  flows with drag-and-drop simplicity.
                 </p>
               </div>
 
@@ -101,10 +90,10 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <Bot size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>IA Multi-modèles</h3>
+                <h3 className={styles.featureTitle}>Multi-model AI</h3>
                 <p className={styles.featureDescription}>
-                  Utilisez le meilleur de l'IA : GPT-4, Claude, Gemini, Mistral.
-                  Changez de modèle selon vos besoins pédagogiques.
+                  Use the best of AI: GPT-4, Claude, Gemini, Mistral.
+                  Switch between models based on your needs.
                 </p>
               </div>
 
@@ -112,10 +101,10 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <Database size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Bases de Connaissances</h3>
+                <h3 className={styles.featureTitle}>Vector Stores</h3>
                 <p className={styles.featureDescription}>
-                  Indexez vos cours (PDF, Markdown) pour que l'IA réponde
-                  précisément en se basant sur votre contenu.
+                  Index your documents (PDF, Markdown) so AI can answer
+                  accurately based on your content.
                 </p>
               </div>
 
@@ -123,10 +112,21 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <Mic size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Mode Vocal</h3>
+                <h3 className={styles.featureTitle}>Voice Mode</h3>
                 <p className={styles.featureDescription}>
-                  Conversations vocales en temps réel pour l'apprentissage des langues
-                  et l'accessibilité.
+                  Real-time voice conversations with OpenAI Realtime API
+                  and SIP telephony support.
+                </p>
+              </div>
+
+              <div className={styles.featureCard}>
+                <div className={styles.featureIcon}>
+                  <GraduationCap size={24} />
+                </div>
+                <h3 className={styles.featureTitle}>LMS Integration</h3>
+                <p className={styles.featureDescription}>
+                  Native LTI 1.3 integration with Moodle, Canvas, and Blackboard.
+                  Automatic grade sync and deep linking.
                 </p>
               </div>
 
@@ -134,10 +134,10 @@ const LandingPage = () => {
                 <div className={styles.featureIcon}>
                   <ShieldCheck size={24} />
                 </div>
-                <h3 className={styles.featureTitle}>Confidentialité Totale</h3>
+                <h3 className={styles.featureTitle}>Self-hosting Ready</h3>
                 <p className={styles.featureDescription}>
-                  Gestion sécurisée des données étudiants. Auto-hébergement possible
-                  pour une souveraineté totale.
+                  Full control over your data. Deploy on your own infrastructure
+                  for complete data sovereignty.
                 </p>
               </div>
             </div>
@@ -147,17 +147,18 @@ const LandingPage = () => {
         {/* Architecture Section */}
         <section className={styles.architecture}>
           <div className={styles.container}>
-            <h2 className={styles.sectionTitle}>Architecture Moderne</h2>
+            <h2 className={styles.sectionTitle}>Modern Tech Stack</h2>
             <div style={{ textAlign: 'center', maxWidth: '800px', margin: '0 auto' }}>
               <p style={{ fontSize: '1.1rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                EDxo repose sur une stack technique robuste et open source, conçue pour la performance et l'évolutivité.
+                Built on a robust, open-source stack designed for performance and scalability.
+                Started with AgentKit, evolved into a complete platform.
               </p>
 
               <div className={styles.techStack}>
                 <span className={styles.techBadge}><Layers size={14} style={{ marginRight: 6 }}/> FastAPI</span>
                 <span className={styles.techBadge}><Cpu size={14} style={{ marginRight: 6 }}/> React 18 + Vite</span>
                 <span className={styles.techBadge}><Database size={14} style={{ marginRight: 6 }}/> PostgreSQL + pgVector</span>
-                <span className={styles.techBadge}><Bot size={14} style={{ marginRight: 6 }}/> LangChain / LiteLLM</span>
+                <span className={styles.techBadge}><Bot size={14} style={{ marginRight: 6 }}/> LiteLLM</span>
                 <span className={styles.techBadge}><Workflow size={14} style={{ marginRight: 6 }}/> React Flow</span>
               </div>
             </div>
@@ -169,14 +170,14 @@ const LandingPage = () => {
         <div className={styles.container}>
           <div className={styles.footerContent}>
             <div className={styles.logo} style={{ fontSize: '1.2rem' }}>
-              <img src={edxoLogo} alt="EDxo" style={{ height: 24 }} />
-              <span>EDxo</span>
+              <img src={edxoLogo} alt="edxo" style={{ height: 24 }} />
+              <span>edxo</span>
             </div>
             <div className={styles.copyright}>
-              © {new Date().getFullYear()} EDxo. Open Source Education.
+              © {new Date().getFullYear()} edxo. Built for fun. Shared in case it helps others.
             </div>
             <div className={styles.socials}>
-              <a href="https://github.com/edxo/edxo" className={styles.socialLink} target="_blank" rel="noreferrer">
+              <a href="https://github.com/fpoisson2/test-chatkit" className={styles.socialLink} target="_blank" rel="noreferrer">
                 <Github size={20} />
               </a>
             </div>
