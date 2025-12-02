@@ -134,7 +134,8 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
         minDisplayTimeRef.current = null;
         processQueue();
       } else if (isCompletedRef.current) {
-        // Workflow terminé et pas de tâche en attente, conserver la dernière tâche affichée
+        // Workflow terminé et pas de tâche en attente, masquer la dernière tâche affichée
+        setDisplayedTaskIndex(null);
         isProcessingRef.current = false;
         minDisplayTimeRef.current = null;
       }
@@ -240,14 +241,14 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
       )}
 
       {/* Afficher la dernière tâche complète (avec animation) */}
-      {!expanded && displayedTask && (
+      {!expanded && displayedTask && !isCompleted && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
           <TaskRenderer task={displayedTask} theme={theme} hideComputerUseScreenshot authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
         </div>
       )}
 
-      {/* Afficher la dernière tâche si rien n'est en cours de streaming et pas de summary */}
-      {!expanded && !streamingTask && !displayedTask && !workflow.summary && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
+      {/* Afficher la dernière tâche si rien n'est en cours de streaming et pas terminé */}
+      {!expanded && !streamingTask && !displayedTask && !isCompleted && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
         <div className="chatkit-workflow-last-task">
             <TaskRenderer
               task={workflow.tasks[currentTaskCount - 1]}

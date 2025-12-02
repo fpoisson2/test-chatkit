@@ -49,6 +49,8 @@ import {
 } from "../utils/computerUse";
 import { useAgentInspectorState } from "../hooks/useAgentInspectorState";
 import { HelpTooltip } from "../components/HelpTooltip";
+import { SchemaBuilder, type SchemaProperty } from "../components/SchemaBuilder";
+import { jsonToVisualSchema, visualToJsonSchema } from "../utils/schemaUtils";
 import { ToggleRow } from "../components/ToggleRow";
  import styles from "../NodeInspector.module.css";
  import { ToolSettingsPanel } from "./ToolSettingsPanel";
@@ -282,6 +284,34 @@ export const AgentInspectorSection = ({
     isReasoningModel,
     onAgentImageGenerationChange,
   });
+
+  // Schema editor mode
+  const [schemaEditorMode, setSchemaEditorMode] = useState<"text" | "visual">("text");
+
+
+
+  // Get current visual schema
+  const visualSchema = useMemo(() => {
+    try {
+      const parsed = JSON.parse(schemaText);
+      return jsonToVisualSchema(parsed);
+    } catch {
+      return [];
+    }
+  }, [schemaText]);
+
+  // Handle visual schema changes
+  const handleVisualSchemaChange = useCallback((newVisualSchema: SchemaProperty[]) => {
+    try {
+      const jsonSchema = visualToJsonSchema(newVisualSchema);
+      const jsonString = JSON.stringify(jsonSchema, null, 2);
+      setSchemaText(jsonString);
+      setSchemaError(null);
+      onAgentResponseFormatSchemaChange(nodeId, jsonSchema);
+    } catch (error) {
+      setSchemaError(error instanceof Error ? error.message : "Erreur de conversion du schéma");
+    }
+  }, [setSchemaText, setSchemaError, onAgentResponseFormatSchemaChange, nodeId]);
 
   const handleProviderChange = useCallback(
     (value: string) => {
@@ -1186,6 +1216,7 @@ export const AgentInspectorSection = ({
             </select>
           </label>
 
+<<<<<<< Updated upstream
           {responseFormat.kind === "json_schema" ? (
             <label className={styles.nodeInspectorField}>
               <span className={styles.nodeInspectorLabel}>
@@ -1224,6 +1255,91 @@ export const AgentInspectorSection = ({
                 ) : null}
               </label>
           ) : null}
+=======
+           {responseFormat.kind === "json_schema" ? (
+             <>
+               <label className={styles.nodeInspectorField}>
+                 <span>Nom du schéma JSON</span>
+                 <input
+                   type="text"
+                   value={responseFormat.name}
+                   onChange={(event) =>
+                     onAgentResponseFormatNameChange(nodeId, event.target.value)
+                   }
+                 />
+               </label>
+
+               <label className={styles.nodeInspectorField}>
+                 <span className={styles.nodeInspectorLabel}>
+                   Éditeur de schéma
+                   <HelpTooltip label="Choisissez entre l'édition texte (JSON brut) ou l'interface graphique pour construire votre schéma." />
+                 </span>
+                 <select
+                   value={schemaEditorMode}
+                   onChange={(event) => setSchemaEditorMode(event.target.value as "text" | "visual")}
+                 >
+                   <option value="text">Éditeur texte (JSON)</option>
+                   <option value="visual">Éditeur graphique</option>
+                 </select>
+               </label>
+
+               {schemaEditorMode === "text" ? (
+                 <label className={styles.nodeInspectorField}>
+                   <span className={styles.nodeInspectorLabel}>
+                     Définition du schéma JSON
+                     <HelpTooltip label="Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie." />
+                   </span>
+                   <textarea
+                     value={schemaText}
+                     rows={8}
+                     onChange={(event) => {
+                       const value = event.target.value;
+                       setSchemaText(value);
+                       try {
+                         const parsed = JSON.parse(value);
+                         setSchemaError(null);
+                         onAgentResponseFormatSchemaChange(nodeId, parsed);
+                       } catch (error) {
+                         setSchemaError(
+                           error instanceof Error
+                             ? error.message
+                             : "Schéma JSON invalide",
+                         );
+                       }
+                     }}
+                     className={[
+                       styles.nodeInspectorTextareaLarge,
+                       schemaError ? styles.nodeInspectorInputError : "",
+                     ]
+                       .filter(Boolean)
+                       .join(" ")}
+                   />
+                   {schemaError ? (
+                     <span className={styles.nodeInspectorErrorTextSmall}>
+                       {schemaError}
+                     </span>
+                   ) : null}
+                 </label>
+               ) : (
+                 <div className={styles.nodeInspectorField}>
+                   <span className={styles.nodeInspectorLabel}>
+                     Constructeur de schéma graphique
+                     <HelpTooltip label="Construisez votre schéma JSON de manière visuelle en ajoutant des propriétés avec leurs types et descriptions." />
+                   </span>
+                   <SchemaBuilder
+                     schema={visualSchema}
+                     onChange={handleVisualSchemaChange}
+                   />
+                   {schemaError ? (
+                     <span className={styles.nodeInspectorErrorTextSmall}>
+                       {schemaError}
+                     </span>
+                   ) : null}
+                 </div>
+               )}
+             </>
+           ) : null}
+>>>>>>> Stashed changes
 
           {responseFormat.kind === "widget" ? (
             <>

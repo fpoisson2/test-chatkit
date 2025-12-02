@@ -25,13 +25,13 @@ export const ConditionInspectorSection = ({
     <label className={styles.nodeInspectorField}>
       <span className={styles.nodeInspectorLabel}>
         Variable observée
-        <HelpTooltip label="Référencez une valeur disponible dans l'état (ex. state.status ou globals.client_type)." />
+        <HelpTooltip label="Référencez une valeur disponible dans l'état ou le résultat de l'étape précédente (ex. state.status, input.output_structured.champ, ou input.output_parsed)." />
       </span>
       <input
         type="text"
         value={conditionPath}
         onChange={(event) => onConditionPathChange(nodeId, event.target.value)}
-        placeholder="Ex. state.statut_demande"
+         placeholder="Ex. input.output_structured.status"
       />
     </label>
 
