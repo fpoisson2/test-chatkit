@@ -712,6 +712,14 @@ export const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.jsonSchemaModal.validationHint":
     "Accepts either a raw JSON schema or an OpenAI json_schema object with name/schema/strict.",
   "workflowBuilder.agentInspector.jsonSchemaModal.openButton": "Open large editor",
+  "workflowBuilder.agentInspector.visualSchemaModal.title": "Visual Schema Builder",
+  "workflowBuilder.agentInspector.visualSchemaModal.description": "Create and edit your JSON schema visually.",
+  "workflowBuilder.agentInspector.visualSchemaModal.cancel": "Cancel",
+  "workflowBuilder.agentInspector.visualSchemaModal.apply": "Apply schema",
+  "workflowBuilder.agentInspector.visualSchemaModal.openButton": "Open visual builder",
+  "workflowBuilder.agentInspector.visualSchemaEmpty": "No properties defined",
+  "workflowBuilder.agentInspector.visualSchemaCount": "{{count}} propert(y/ies) defined",
+  "workflowBuilder.agentInspector.jsonSchemaUnnamed": "Unnamed",
   "workflowBuilder.agentInspector.jsonSchemaVisualBuilderLabel": "Visual schema builder",
   "workflowBuilder.agentInspector.jsonSchemaVisualBuilderHint":
     "Construct the JSON schema visually by adding properties, types, and descriptions.",

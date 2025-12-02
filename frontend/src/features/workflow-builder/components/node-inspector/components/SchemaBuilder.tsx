@@ -1,5 +1,6 @@
 import { useState } from "react";
 import styles from "../NodeInspector.module.css";
+import { TrashIcon } from "./TrashIcon";
 
 export type SchemaPropertyType = "string" | "number" | "boolean" | "object" | "array" | "enum";
 
@@ -69,6 +70,15 @@ export function SchemaBuilder({ schema, onChange }: SchemaBuilderProps) {
       </div>
 
       <div className={styles.schemaBuilderProperties}>
+        {schema.length > 0 && (
+          <div className={styles.schemaPropertyHeaderLabels}>
+            <div>Nom</div>
+            <div>Type</div>
+            <div>Description</div>
+            <div>Requis</div>
+            <div></div>
+          </div>
+        )}
         {schema.map((property, index) => (
           <PropertyEditor
             key={index}
@@ -144,33 +154,14 @@ function PropertyEditor({ property, onChange, onRemove, onAddNested }: PropertyE
           onChange={(e) => handleTypeChange(e.target.value as SchemaPropertyType)}
           className={styles.schemaPropertyType}
         >
-          <option value="string">Texte (STR)</option>
-          <option value="number">Nombre</option>
-          <option value="boolean">Booléen (BOOL)</option>
-          <option value="enum">Énumération (ENUM)</option>
-          <option value="object">Objet (OBJ)</option>
-          <option value="array">Tableau (ARR)</option>
+          <option value="string">STR</option>
+          <option value="number">NUM</option>
+          <option value="boolean">BOOL</option>
+          <option value="enum">ENUM</option>
+          <option value="object">OBJ</option>
+          <option value="array">ARR</option>
         </select>
 
-        <label className={styles.schemaPropertyRequired}>
-          <input
-            type="checkbox"
-            checked={property.required || false}
-            onChange={(e) => onChange({ required: e.target.checked })}
-          />
-          Requis
-        </label>
-
-        <button
-          type="button"
-          onClick={onRemove}
-          className={styles.schemaPropertyRemove}
-        >
-          ×
-        </button>
-      </div>
-
-      <div className={styles.schemaPropertyDetails}>
         <input
           type="text"
           placeholder="Description (optionnel)"
@@ -178,6 +169,26 @@ function PropertyEditor({ property, onChange, onRemove, onAddNested }: PropertyE
           onChange={(e) => onChange({ description: e.target.value })}
           className={styles.schemaPropertyDescription}
         />
+
+        <label className={styles.schemaPropertyRequired}>
+          <input
+            type="checkbox"
+            checked={property.required || false}
+            onChange={(e) => onChange({ required: e.target.checked })}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={onRemove}
+          className={styles.schemaPropertyRemove}
+          title="Supprimer cette propriété"
+        >
+          <TrashIcon />
+        </button>
+      </div>
+
+      <div className={styles.schemaPropertyDetails}>
 
         {property.type === "enum" && (
           <div className={styles.schemaEnumValues}>

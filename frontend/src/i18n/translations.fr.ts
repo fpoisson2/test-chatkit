@@ -747,6 +747,14 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.jsonSchemaModal.validationHint":
     "Accepte un schéma JSON brut ou un objet json_schema (name / schema / strict).",
   "workflowBuilder.agentInspector.jsonSchemaModal.openButton": "Ouvrir dans le grand éditeur",
+  "workflowBuilder.agentInspector.visualSchemaModal.title": "Constructeur visuel de schéma",
+  "workflowBuilder.agentInspector.visualSchemaModal.description": "Créez et modifiez votre schéma JSON de façon visuelle.",
+  "workflowBuilder.agentInspector.visualSchemaModal.cancel": "Annuler",
+  "workflowBuilder.agentInspector.visualSchemaModal.apply": "Appliquer le schéma",
+  "workflowBuilder.agentInspector.visualSchemaModal.openButton": "Ouvrir le constructeur visuel",
+  "workflowBuilder.agentInspector.visualSchemaEmpty": "Aucune propriété définie",
+  "workflowBuilder.agentInspector.visualSchemaCount": "{{count}} propriété(s) définie(s)",
+  "workflowBuilder.agentInspector.jsonSchemaUnnamed": "Sans nom",
   "workflowBuilder.agentInspector.jsonSchemaVisualBuilderLabel": "Constructeur visuel",
   "workflowBuilder.agentInspector.jsonSchemaVisualBuilderHint":
     "Créez le schéma JSON de façon visuelle en ajoutant des propriétés, types et descriptions.",

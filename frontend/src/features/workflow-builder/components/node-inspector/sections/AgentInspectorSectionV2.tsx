@@ -2877,6 +2877,7 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
                 <JsonSchemaModal
                   isOpen={isSchemaModalOpen}
                   value={schemaModalDraft}
+                  initialMode={schemaEditorMode}
                   schemaError={schemaError}
                   onClose={() => setIsSchemaModalOpen(false)}
                   onSave={(nextValue) =>
@@ -2890,7 +2891,36 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
                 hint={t('workflowBuilder.agentInspector.jsonSchemaVisualBuilderHint')}
                 error={schemaError ?? undefined}
               >
-                <SchemaBuilder schema={visualSchema} onChange={handleVisualSchemaChange} />
+                <div className={styles.textareaWithAction}>
+                  <div className={styles.schemaPreview}>
+                    <div className={styles.schemaPreviewContent}>
+                      <div className={styles.schemaPreviewName}>
+                        {responseFormat.name || t('workflowBuilder.agentInspector.jsonSchemaUnnamed')}
+                      </div>
+                      {visualSchema.length === 0 ? (
+                        <span className={styles.schemaPreviewEmpty}>
+                          {t('workflowBuilder.agentInspector.visualSchemaEmpty')}
+                        </span>
+                      ) : (
+                        <span className={styles.schemaPreviewCount}>
+                          {t('workflowBuilder.agentInspector.visualSchemaCount', {
+                            count: visualSchema.length,
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.textareaActionButton}
+                      onClick={() => setIsVisualSchemaModalOpen(true)}
+                      title={t('workflowBuilder.agentInspector.visualSchemaModal.openButton')}
+                      aria-label={t('workflowBuilder.agentInspector.visualSchemaModal.openButton')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </div>
+
               </Field>
             )}
           </>
