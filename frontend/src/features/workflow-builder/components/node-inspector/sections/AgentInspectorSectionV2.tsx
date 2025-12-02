@@ -2681,33 +2681,18 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
         </Field>
 
         {responseFormat.kind === 'json_schema' ? (
-          <>
-            <Field
-              label={t('workflowBuilder.agentInspector.jsonSchemaNameLabel')}
-              hint={t('workflowBuilder.agentInspector.jsonSchemaNameHint')}
-            >
-              <input
-                type="text"
-                value={responseFormat.name ?? ''}
-                onChange={(event) =>
-                  onAgentResponseFormatNameChange(nodeId, event.target.value)
-                }
-              />
-            </Field>
-
-            <Field
-              label={t('workflowBuilder.agentInspector.jsonSchemaDefinitionLabel')}
-              hint={t('workflowBuilder.agentInspector.jsonSchemaDefinitionHint')}
-              error={schemaError ?? undefined}
-            >
-              <textarea
-                data-schema-editor="true"
-                value={schemaText}
-                onChange={(event) => handleSchemaChange(event.target.value)}
-                placeholder={DEFAULT_JSON_SCHEMA_TEXT}
-              />
-            </Field>
-          </>
+          <Field
+            label={t('workflowBuilder.agentInspector.jsonSchemaDefinitionLabel')}
+            hint={t('workflowBuilder.agentInspector.jsonSchemaDefinitionHint')}
+            error={schemaError ?? undefined}
+          >
+            <textarea
+              data-schema-editor="true"
+              value={schemaText}
+              onChange={(event) => handleSchemaChange(event.target.value)}
+              placeholder={DEFAULT_JSON_SCHEMA_TEXT}
+            />
+          </Field>
         ) : null}
 
         {responseFormat.kind === 'widget' ? (

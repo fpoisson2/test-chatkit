@@ -1187,41 +1187,29 @@ export const AgentInspectorSection = ({
           </label>
 
           {responseFormat.kind === "json_schema" ? (
-            <>
-              <label className={styles.nodeInspectorField}>
-                <span>Nom du schéma JSON</span>
-                <input
-                  type="text"
-                  value={responseFormat.name}
-                  onChange={(event) =>
-                    onAgentResponseFormatNameChange(nodeId, event.target.value)
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
+                Définition du schéma JSON
+                <HelpTooltip label="Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie." />
+              </span>
+              <textarea
+                value={schemaText}
+                rows={8}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSchemaText(value);
+                  try {
+                    const parsed = JSON.parse(value);
+                    setSchemaError(null);
+                    onAgentResponseFormatSchemaChange(nodeId, parsed);
+                  } catch (error) {
+                    setSchemaError(
+                      error instanceof Error
+                        ? error.message
+                        : "Schéma JSON invalide",
+                    );
                   }
-                />
-              </label>
-
-              <label className={styles.nodeInspectorField}>
-                <span className={styles.nodeInspectorLabel}>
-                  Définition du schéma JSON
-                  <HelpTooltip label="Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie." />
-                </span>
-                <textarea
-                  value={schemaText}
-                  rows={8}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSchemaText(value);
-                    try {
-                      const parsed = JSON.parse(value);
-                      setSchemaError(null);
-                      onAgentResponseFormatSchemaChange(nodeId, parsed);
-                    } catch (error) {
-                      setSchemaError(
-                        error instanceof Error
-                          ? error.message
-                          : "Schéma JSON invalide",
-                      );
-                    }
-                  }}
+                }}
                   className={[
                     styles.nodeInspectorTextareaLarge,
                     schemaError ? styles.nodeInspectorInputError : "",
@@ -1235,7 +1223,6 @@ export const AgentInspectorSection = ({
                   </span>
                 ) : null}
               </label>
-            </>
           ) : null}
 
           {responseFormat.kind === "widget" ? (
