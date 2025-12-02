@@ -84,12 +84,72 @@ import {
 import type { ModelSelectionMode, UserModelOption } from '../../../../../utils/workflows';
 import { ToolSettingsPanel } from './ToolSettingsPanel';
 import { AgentPromptModal } from '../components/AgentPromptModal';
- import styles from './AgentInspectorSectionV2.module.css';
+import { JsonSchemaModal } from '../components/JsonSchemaModal';
+import styles from './AgentInspectorSectionV2.module.css';
 
  // Filtered environments for agent blocks (only browser, ssh, vnc)
  const AGENT_COMPUTER_USE_ENVIRONMENTS = ["browser", "ssh", "vnc"] as const;
 
- const DEFAULT_TAB = 'basic';
+const DEFAULT_TAB = 'basic';
+
+type SchemaContainer = {
+  path: 'schema' | 'json_schema';
+  wrapper: Record<string, unknown>;
+  schema: Record<string, unknown>;
+  name?: string;
+  strict?: boolean;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const extractSchemaContainer = (value: unknown): SchemaContainer | null => {
+  if (!isPlainObject(value)) return null;
+
+  if (isPlainObject(value.json_schema) && isPlainObject(value.json_schema.schema)) {
+    const jsonSchema = value.json_schema as Record<string, unknown>;
+    return {
+      path: 'json_schema',
+      wrapper: value,
+      schema: jsonSchema.schema as Record<string, unknown>,
+      name: typeof jsonSchema.name === 'string' ? jsonSchema.name : undefined,
+      strict: typeof jsonSchema.strict === 'boolean' ? jsonSchema.strict : undefined,
+    };
+  }
+
+  if (isPlainObject(value.schema)) {
+    return {
+      path: 'schema',
+      wrapper: value,
+      schema: value.schema as Record<string, unknown>,
+      name: typeof value.name === 'string' ? value.name : undefined,
+      strict: typeof value.strict === 'boolean' ? value.strict : undefined,
+    };
+  }
+
+  return null;
+};
+
+const applySchemaToContainer = (
+  container: SchemaContainer,
+  schema: Record<string, unknown>,
+): Record<string, unknown> => {
+  if (container.path === 'json_schema') {
+    const original = container.wrapper.json_schema as Record<string, unknown>;
+    return {
+      ...container.wrapper,
+      json_schema: {
+        ...original,
+        schema,
+      },
+    };
+  }
+
+  return {
+    ...container.wrapper,
+    schema,
+  };
+};
 
 type AgentInspectorStateSnapshot = ReturnType<typeof useAgentInspectorState>;
 type AgentResponseFormat = AgentInspectorStateSnapshot['responseFormat'];
@@ -2589,6 +2649,8 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
   t,
 }) => {
   const [schemaEditorMode, setSchemaEditorMode] = useState<'text' | 'visual'>('text');
+  const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false);
+  const [schemaModalDraft, setSchemaModalDraft] = useState(schemaText);
   const widgetValidationMessage = useMemo(() => {
     switch (widgetValidationReason) {
       case 'library_empty':
@@ -2613,26 +2675,41 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
     }
   }, [schemaText]);
 
+  useEffect(() => {
+    if (!isSchemaModalOpen) {
+      setSchemaModalDraft(schemaText);
+    }
+  }, [isSchemaModalOpen, schemaText]);
+
   const handleSchemaChange = useCallback(
-    (value: string) => {
+    (value: string, options?: { applyNameFromSchema?: boolean }) => {
       setSchemaText(value);
       if (responseFormat.kind !== 'json_schema') {
-        return;
+        setSchemaError(null);
+        return true;
       }
       try {
         const parsed = JSON.parse(value);
+        const container = extractSchemaContainer(parsed);
+        const schemaPayload = container?.schema ?? parsed;
+        if (options?.applyNameFromSchema && container?.name) {
+          onAgentResponseFormatNameChange(nodeId, container.name);
+        }
         setSchemaError(null);
-        onAgentResponseFormatSchemaChange(nodeId, parsed);
+        onAgentResponseFormatSchemaChange(nodeId, schemaPayload);
+        return true;
       } catch (error) {
         setSchemaError(
           error instanceof Error
             ? error.message
             : t('workflowBuilder.agentInspector.jsonSchemaInvalid'),
         );
+        return false;
       }
     },
     [
       nodeId,
+      onAgentResponseFormatNameChange,
       onAgentResponseFormatSchemaChange,
       responseFormat.kind,
       setSchemaError,
@@ -2666,9 +2743,25 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
     (newSchema: SchemaProperty[]) => {
       try {
         const jsonSchema = visualToJsonSchema(newSchema);
-        const jsonString = JSON.stringify(jsonSchema, null, 2);
+        let jsonString = JSON.stringify(jsonSchema, null, 2);
+        let containerName: string | undefined;
+
+        try {
+          const parsed = JSON.parse(schemaText);
+          const container = extractSchemaContainer(parsed);
+          if (container) {
+            jsonString = JSON.stringify(applySchemaToContainer(container, jsonSchema), null, 2);
+            containerName = container.name;
+          }
+        } catch {
+          // Ignore parsing errors when rebuilding visual schema
+        }
+
         setSchemaText(jsonString);
         setSchemaError(null);
+        if (containerName) {
+          onAgentResponseFormatNameChange(nodeId, containerName);
+        }
         onAgentResponseFormatSchemaChange(nodeId, jsonSchema);
       } catch (error) {
         setSchemaError(
@@ -2678,7 +2771,15 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
         );
       }
     },
-    [nodeId, onAgentResponseFormatSchemaChange, setSchemaError, setSchemaText, t],
+    [
+      nodeId,
+      onAgentResponseFormatNameChange,
+      onAgentResponseFormatSchemaChange,
+      schemaText,
+      setSchemaError,
+      setSchemaText,
+      t,
+    ],
   );
 
   const formatKindOptions = useMemo(
@@ -2751,11 +2852,36 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
                 hint={t('workflowBuilder.agentInspector.jsonSchemaDefinitionHint')}
                 error={schemaError ?? undefined}
               >
-                <textarea
-                  data-schema-editor="true"
-                  value={schemaText}
-                  onChange={(event) => handleSchemaChange(event.target.value)}
-                  placeholder={DEFAULT_JSON_SCHEMA_TEXT}
+                <div className={styles.textareaWithAction}>
+                  <textarea
+                    data-schema-editor="true"
+                    value={schemaText}
+                    onChange={(event) =>
+                      handleSchemaChange(event.target.value, { applyNameFromSchema: true })
+                    }
+                    placeholder={DEFAULT_JSON_SCHEMA_TEXT}
+                  />
+                  <button
+                    type="button"
+                    className={styles.expandButton}
+                    onClick={() => {
+                      setSchemaModalDraft(schemaText);
+                      setIsSchemaModalOpen(true);
+                    }}
+                    title={t('workflowBuilder.agentInspector.jsonSchemaModal.openButton')}
+                    aria-label={t('workflowBuilder.agentInspector.jsonSchemaModal.openButton')}
+                  >
+                    <Maximize2 size={16} />
+                  </button>
+                </div>
+                <JsonSchemaModal
+                  isOpen={isSchemaModalOpen}
+                  value={schemaModalDraft}
+                  schemaError={schemaError}
+                  onClose={() => setIsSchemaModalOpen(false)}
+                  onSave={(nextValue) =>
+                    handleSchemaChange(nextValue, { applyNameFromSchema: true })
+                  }
                 />
               </Field>
             ) : (

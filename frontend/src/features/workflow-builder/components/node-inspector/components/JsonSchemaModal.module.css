@@ -1,0 +1,69 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 360px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.textareaError {
+  border-color: var(--danger-text);
+  box-shadow: 0 0 0 1px var(--danger-surface-subtle);
+}
+
+.hintRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hintText {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  margin: 0;
+}
+
+.errorText {
+  color: var(--danger-text);
+  font-size: 13px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cancelButton {
+  padding: 8px 12px;
+  border: 1px solid var(--border-subtle);
+  background: white;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.saveButton {
+  padding: 8px 12px;
+  background: var(--brand-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

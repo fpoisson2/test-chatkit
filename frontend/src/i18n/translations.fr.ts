@@ -739,6 +739,14 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.jsonSchemaDefinitionLabel": "Définition du schéma JSON",
   "workflowBuilder.agentInspector.jsonSchemaDefinitionHint":
     "Fournissez un schéma JSON valide (Draft 2020-12).",
+  "workflowBuilder.agentInspector.jsonSchemaModal.title": "Modifier le schéma JSON",
+  "workflowBuilder.agentInspector.jsonSchemaModal.description":
+    "Éditez votre schéma dans une fenêtre plus large. Si vous collez un objet json_schema, son nom et son strict sont conservés.",
+  "workflowBuilder.agentInspector.jsonSchemaModal.cancel": "Annuler",
+  "workflowBuilder.agentInspector.jsonSchemaModal.apply": "Appliquer le schéma",
+  "workflowBuilder.agentInspector.jsonSchemaModal.validationHint":
+    "Accepte un schéma JSON brut ou un objet json_schema (name / schema / strict).",
+  "workflowBuilder.agentInspector.jsonSchemaModal.openButton": "Ouvrir dans le grand éditeur",
   "workflowBuilder.agentInspector.jsonSchemaVisualBuilderLabel": "Constructeur visuel",
   "workflowBuilder.agentInspector.jsonSchemaVisualBuilderHint":
     "Créez le schéma JSON de façon visuelle en ajoutant des propriétés, types et descriptions.",
