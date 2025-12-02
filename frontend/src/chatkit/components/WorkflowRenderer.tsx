@@ -102,6 +102,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   };
 
   const currentTaskTitle = getCurrentTaskTitle();
+  const workflowTitle = workflow.title;
   const currentStepNumber = displayedTaskIndex !== null ? displayedTaskIndex + 1 : Math.max(workflow.tasks.length, 1);
 
   // Détecter si une image est en cours de génération
@@ -220,6 +221,10 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   const renderHeaderContent = (): JSX.Element => {
     if (currentTaskTitle) {
       return <div className="chatkit-workflow-default-title">{currentTaskTitle}</div>;
+    }
+
+    if (workflowTitle) {
+      return <div className="chatkit-workflow-default-title">{workflowTitle}</div>;
     }
 
     if (workflow.summary) {
