@@ -1,8 +1,10 @@
-# CLAUDE.md - EDxo Project Guide
+# CLAUDE.md - edxo Project Guide
 
 ## Project Overview
 
-EDxo is a full-stack monorepo for an AI-powered educational assistant platform with LMS integration. It enables educators to create, customize, and deploy AI conversational assistants into learning management systems.
+edxo is an open-source workflow builder for conversational AI assistants. It's a personal project that started as an enhancement to OpenAI's AgentKit, which I found incomplete for my needs—particularly around visual workflow building, LMS integrations, and extensibility.
+
+The platform enables anyone to create, customize, and deploy intelligent conversational assistants using a visual no-code interface. While originally built for education (hence the LTI 1.3 LMS integration), it works for any use case requiring conversational AI workflows: customer support, employee onboarding, domain-specific agents, etc.
 
 ## Tech Stack
 

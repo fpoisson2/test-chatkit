@@ -1,295 +1,264 @@
-# EDxo
-
-**Plateforme de création d'assistants IA pédagogiques avec workflow builder et intégration LMS**
-
-EDxo est une plateforme complète permettant aux éducateurs et institutions de créer, personnaliser et déployer des assistants IA conversationnels directement dans leurs environnements d'apprentissage en ligne (LMS). Grâce à son workflow builder visuel et son intégration LTI 1.3, créez des expériences pédagogiques interactives sans écrire une ligne de code.
-
----
-
-## 🎓 Pourquoi EDxo ?
-
-### Conçu pour l'éducation
-- **Intégration LTI 1.3** : Déployez vos assistants IA directement dans Moodle, Canvas, Blackboard, et autres LMS compatibles
-- **Deep Linking** : Intégrez facilement des workflows dans vos cours
-- **Assignment and Grade Services (AGS)** : Synchronisation automatique des notes et résultats
-- **Confidentialité** : Gestion sécurisée des données étudiants et conformité RGPD
-
-### Workflow Builder visuel
-- **Interface no-code** : Créez des parcours d'apprentissage complexes par simple glisser-déposer
-- **Graphe de workflows** : Visualisez et modifiez la logique de vos assistants pédagogiques
-- **Versionning** : Gérez plusieurs versions de workflows et testez avant déploiement en production
-- **Import/Export** : Partagez vos workflows avec d'autres éducateurs
-- **Monitoring temps réel** : Suivez l'exécution de vos workflows et identifiez les points d'amélioration
-
-### IA flexible et puissante
-- **Multi-modèles** : OpenAI GPT-4, Claude (via LiteLLM), Gemini, Mistral, et plus
-- **Personnalisation** : Instructions système adaptées à vos objectifs pédagogiques
-- **Recherche sémantique** : Vector stores pour interroger vos contenus de cours
-- **MCP (Model Context Protocol)** : Connectez vos assistants à des sources de données externes
-- **Mode vocal** : Conversations vocales pour l'apprentissage des langues ou l'accessibilité
+<div align="center">
+  <img src="frontend/src/assets/favicon.svg" alt="edxo logo" width="120" height="120"/>
+  <h1>edxo</h1>
+  <p><strong>Open-source workflow builder for conversational AI assistants</strong></p>
+</div>
 
 ---
 
-## ✨ Fonctionnalités principales
+edxo is a personal project I built to explore complex conversational AI workflows. I initially tried using OpenAI's AgentKit, but found it incomplete for my needs—particularly around visual workflow building, LMS integrations, and extensibility. So I built edxo: a no-code platform to create intelligent assistants with a drag-and-drop interface.
 
-### 🎨 Workflow Builder
-- Éditeur graphique intuitif pour concevoir des parcours conversationnels
-- Bibliothèque de widgets réutilisables (questions, feedbacks, branchements conditionnels)
-- Validation en temps réel des workflows
-- Apparence personnalisable (logos, couleurs, messages d'accueil)
-- Prévisualisation avant déploiement
-
-### 🔗 Intégration LMS (LTI 1.3)
-- Configuration simplifiée des registrations LTI
-- Support complet du protocole LTI 1.3 et LTI Advantage
-- Deep Linking pour l'intégration dans les modules de cours
-- Assignment and Grade Services (AGS) pour le retour automatique de notes
-- Gestion des déploiements par plateforme et institution
-
-### 🤖 Gestion des modèles IA
-- Configuration centralisée des fournisseurs (OpenAI, LiteLLM, Azure, etc.)
-- Paramétrage par utilisateur ou par workflow
-- Gestion des quotas et limitations
-- Support des modèles vision et vocaux
-- Logs et monitoring des appels API
-
-### 📚 Bases de connaissances (Vector Stores)
-- Indexation de vos documents de cours (PDF, TXT, Markdown)
-- Recherche sémantique avec pgVector
-- Interrogation par les assistants IA pour des réponses contextualisées
-- Mise à jour et versionning des contenus
-
-### 🎙️ Interactions vocales
-- Mode conversation vocale temps réel (OpenAI Realtime API)
-- Idéal pour l'apprentissage des langues
-- Support téléphonie SIP/VoIP pour accès par téléphone
-- WebRTC pour communications dans le navigateur
-- Voix personnalisables
-
-### 🛠️ Administration complète
-- Gestion des utilisateurs et permissions
-- Tableau de bord des métriques d'utilisation
-- Configuration des langues et internationalisation
-- Personnalisation de l'apparence (thème, logos)
-- Gestion centralisée des serveurs MCP
-- Configuration des comptes SIP pour la téléphonie
+If you need to build educational chatbots, customer support agents, or any custom conversational assistant, this project might help.
 
 ---
 
-## 🚀 Démarrage rapide
+## Why I built this
 
-### Prérequis
+I wanted to create complex conversational flows without rewriting code every time. OpenAI's AgentKit was a good starting point, but lacked:
+- Visual workflow editor for non-technical users
+- LMS integration (LTI 1.3) for education use cases
+- Advanced vector store management
+- Voice/telephony capabilities
+- Extensible plugin system (MCP)
 
-- **Docker** et **Docker Compose** (recommandé)
-- Ou installation locale : Python 3.11+, Node.js 20+, PostgreSQL 16+, Redis 7+
+edxo builds on AgentKit's concepts but adds a complete platform layer on top.
 
-### Installation avec Docker (5 minutes)
+## What it does
 
-1. **Cloner le dépôt**
+- **Visual Workflow Builder**: Create conversational flows with drag-and-drop
+- **Multi-model AI**: OpenAI, Claude, Gemini, Mistral via LiteLLM
+- **Vector Stores**: Index your documents for context-aware responses
+- **Voice Mode**: Real-time voice conversations + SIP telephony
+- **LMS Integration**: LTI 1.3 for Moodle/Canvas (if you're in education)
+- **MCP Support**: Connect assistants to external data sources
+- **Real-time Monitoring**: Track workflow executions and analyze conversations
+
+## Use cases
+
+Originally built for education (hence the LMS integration), but works for:
+- Educational assistants in learning management systems
+- Customer support / help desk automation
+- Employee onboarding
+- Domain-specific conversational agents
+- Rapid prototyping of AI agents
+- Anything requiring a conversational workflow
+
+---
+
+## Quick start
+
+### Prerequisites
+
+- **Docker** and **Docker Compose** (recommended)
+- Or local install: Python 3.11+, Node.js 20+, PostgreSQL 16+, Redis 7+
+
+### Installation with Docker (5 minutes)
+
+1. **Clone the repo**
    ```bash
-   git clone <url-du-repo>
+   git clone <repo-url>
    cd edxo
    ```
 
-2. **Configurer l'environnement**
+2. **Configure environment**
    ```bash
    cp .env.example .env
    ```
 
-   Éditez `.env` avec vos paramètres :
+   Edit `.env` with your settings:
    ```bash
-   # Clé API pour votre fournisseur IA (obligatoire)
-   OPENAI_API_KEY=sk-votre-clé-openai
+   # Required: Your AI provider API key
+   OPENAI_API_KEY=sk-your-openai-key
 
-   # Sécurité (CHANGEZ CES VALEURS !)
-   AUTH_SECRET_KEY=une-clé-secrète-aléatoire-très-longue-et-sécurisée
+   # Security (CHANGE THESE!)
+   AUTH_SECRET_KEY=a-very-long-random-secret-key
 
-   # Compte administrateur
-   ADMIN_EMAIL=admin@votre-ecole.fr
-   ADMIN_PASSWORD=MotDePasseSecurise123!
+   # Admin account
+   ADMIN_EMAIL=admin@example.com
+   ADMIN_PASSWORD=SecurePassword123!
 
-   # Configuration de base
+   # Basic configuration
    ALLOWED_ORIGINS=http://localhost:5183,http://127.0.0.1:5183
    DATABASE_URL=postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit
    ```
 
-3. **Lancer la plateforme**
+3. **Launch the platform**
    ```bash
    docker-compose up -d
    ```
 
-4. **Accéder à l'interface**
-   - **Frontend** : http://localhost:5183
-   - **API** : http://localhost:8000
-   - **Documentation API** : http://localhost:8000/docs
+4. **Access the interface**
+   - Frontend: http://localhost:5183
+   - API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
 
-5. **Première connexion**
-   - Email : celui défini dans `ADMIN_EMAIL`
-   - Mot de passe : celui défini dans `ADMIN_PASSWORD`
+5. **First login**
+   - Email: the one you set in `ADMIN_EMAIL`
+   - Password: the one you set in `ADMIN_PASSWORD`
 
 ---
 
-## 📖 Guide d'utilisation
+## User guide
 
-### 1. Créer votre premier workflow
+### 1. Create your first workflow
 
-1. Connectez-vous en tant qu'administrateur
-2. Accédez à **Workflow Builder** dans le menu
-3. Créez un nouveau workflow ou dupliquez un exemple
-4. Utilisez l'éditeur graphique pour :
-   - Ajouter des nœuds de conversation
-   - Définir des branchements conditionnels
-   - Configurer les réponses de l'IA
-   - Ajouter des widgets interactifs
-5. **Prévisualisez** votre workflow
-6. **Publiez en production** quand vous êtes satisfait
+1. Login as admin
+2. Go to **Workflow Builder** in the menu
+3. Create a new workflow or duplicate an example
+4. Use the visual editor to:
+   - Add conversation nodes
+   - Define conditional branching
+   - Configure AI responses
+   - Add interactive widgets
+5. Preview your workflow
+6. Publish to production when satisfied
 
-### 2. Intégrer dans votre LMS
+### 2. Integrate with your LMS (optional)
 
-#### Configuration LTI dans EDxo
+#### LTI configuration in edxo
 
-1. Allez dans **Admin** → **LTI**
-2. Récupérez les informations de votre outil :
-   - **Redirect URL** : Pour l'OIDC
-   - **Deep Link URL** : Pour l'intégration dans les cours
-   - **Public Key URL** : Pour la validation JWT
-3. Cliquez sur **Créer une registration**
-4. Saisissez les informations de votre plateforme LMS :
-   - **Issuer** : L'identifiant unique de votre LMS
-   - **Client ID** : Fourni par votre LMS
-   - **Authorization Endpoint**, **Token Endpoint**, **KeySet URL** : URLs de votre LMS
+1. Go to **Admin** → **LTI**
+2. Get your tool information:
+   - **Redirect URL**: For OIDC
+   - **Deep Link URL**: For course integration
+   - **Public Key URL**: For JWT validation
+3. Click **Create a registration**
+4. Enter your LMS platform information:
+   - **Issuer**: Your LMS unique identifier
+   - **Client ID**: Provided by your LMS
+   - **Authorization Endpoint**, **Token Endpoint**, **KeySet URL**: Your LMS URLs
 
-#### Configuration dans Moodle
+#### Configuration in Moodle
 
 1. **Site administration** → **Plugins** → **External tool** → **Manage tools**
-2. Cliquez sur **Configure a tool manually**
-3. Remplissez :
-   - **Tool name** : EDxo
-   - **Tool URL** : `http://votre-serveur:8000/lti/launch`
-   - **LTI version** : LTI 1.3
-   - **Public key type** : Keyset URL
-   - **Public keyset** : `http://votre-serveur:8000/lti/jwks`
-   - **Initiate login URL** : `http://votre-serveur:8000/lti/login`
-   - **Redirection URI(s)** : `http://votre-serveur:8000/lti/launch`
-4. Activez **Deep Linking**
-5. Sauvegardez et récupérez le **Client ID** pour l'ajouter dans EDxo
+2. Click **Configure a tool manually**
+3. Fill in:
+   - **Tool name**: edxo
+   - **Tool URL**: `http://your-server:8000/lti/launch`
+   - **LTI version**: LTI 1.3
+   - **Public key type**: Keyset URL
+   - **Public keyset**: `http://your-server:8000/lti/jwks`
+   - **Initiate login URL**: `http://your-server:8000/lti/login`
+   - **Redirection URI(s)**: `http://your-server:8000/lti/launch`
+4. Enable **Deep Linking**
+5. Save and retrieve the **Client ID** to add in edxo
 
-#### Configuration dans Canvas
+#### Configuration in Canvas
 
 1. **Settings** → **Apps** → **View App Configurations**
-2. Cliquez sur **+ App**
-3. Sélectionnez **By URL** ou **Paste JSON**
-4. Utilisez la configuration JSON générée par EDxo
-5. Ajoutez la registration dans EDxo avec les informations Canvas
+2. Click **+ App**
+3. Select **By URL** or **Paste JSON**
+4. Use the JSON configuration generated by edxo
+5. Add the registration in edxo with Canvas information
 
-### 3. Ajouter des bases de connaissances
+### 3. Add knowledge bases
 
 1. **Admin** → **Vector Stores**
-2. Créez un nouveau store
-3. Uploadez vos documents (PDF, TXT, Markdown, etc.)
-4. Liez le store à vos workflows
-5. L'assistant pourra interroger ces documents pour répondre aux étudiants
+2. Create a new store
+3. Upload your documents (PDF, TXT, Markdown, etc.)
+4. Link the store to your workflows
+5. The assistant can now query these documents to respond to users
 
-### 4. Configurer un modèle IA personnalisé
+### 4. Configure a custom AI model
 
 1. **Admin** → **Model Providers**
-2. Ajoutez un nouveau fournisseur (ex: Azure OpenAI, LiteLLM)
+2. Add a new provider (e.g., Azure OpenAI, LiteLLM)
 3. **Admin** → **Models**
-4. Configurez les modèles disponibles et leurs capacités
-5. Sélectionnez le modèle par défaut pour vos workflows
+4. Configure available models and their capabilities
+5. Select the default model for your workflows
 
-### 5. Personnaliser l'apparence
+### 5. Customize appearance
 
 1. **Admin** → **Appearance**
-2. Uploadez votre logo
-3. Personnalisez les couleurs
-4. Définissez les messages d'accueil
-5. Configurez les traductions si besoin
+2. Upload your logo
+3. Customize colors
+4. Define welcome messages
+5. Configure translations if needed
 
 ---
 
-## 🏗️ Architecture technique
+## Technical architecture
 
 ```
-EDxo/
-├── backend/                      # API FastAPI (Python)
+edxo/
+├── backend/                      # FastAPI application (Python)
 │   ├── app/
-│   │   ├── routes/               # Endpoints REST
-│   │   │   ├── workflows.py      # API Workflow Builder
-│   │   │   ├── lti.py            # Endpoints LTI 1.3
+│   │   ├── routes/               # REST endpoints
+│   │   │   ├── workflows.py      # Workflow Builder API
+│   │   │   ├── lti.py            # LTI 1.3 endpoints
 │   │   │   ├── workflow_monitor_ws.py  # WebSocket monitoring
 │   │   │   └── ...
-│   │   ├── workflows/            # Service de gestion des workflows
-│   │   ├── lti/                  # Service LTI 1.3 complet
-│   │   │   ├── service.py        # Logique LTI
+│   │   ├── workflows/            # Workflow management service
+│   │   ├── lti/                  # Complete LTI 1.3 service
+│   │   │   ├── service.py        # LTI logic
 │   │   │   └── ags.py            # Assignment & Grade Services
-│   │   ├── vector_store/         # Recherche sémantique
+│   │   ├── vector_store/         # Semantic search
 │   │   ├── telephony/            # SIP/VoIP
-│   │   ├── chatkit/              # Intégration ChatKit
+│   │   ├── chatkit/              # ChatKit integration
 │   │   ├── mcp/                  # Model Context Protocol
-│   │   ├── models.py             # Modèles SQLAlchemy
-│   │   └── schemas.py            # Validation Pydantic
-│   ├── migrations/               # Migrations Alembic
-│   └── tests/                    # Tests unitaires
-├── frontend/                     # Interface React + TypeScript
+│   │   ├── models.py             # SQLAlchemy models
+│   │   └── schemas.py            # Pydantic validation
+│   ├── migrations/               # Alembic migrations
+│   └── tests/                    # Unit tests
+├── frontend/                     # React + TypeScript interface
 │   └── src/
 │       ├── features/
-│       │   └── workflow-builder/ # Éditeur graphique de workflows
+│       │   └── workflow-builder/ # Visual workflow editor
 │       ├── pages/
 │       │   ├── WorkflowBuilderPage.tsx
 │       │   ├── AdminLtiPage.tsx
 │       │   ├── AdminWorkflowMonitorPage.tsx
 │       │   ├── VectorStoresPage.tsx
 │       │   └── ...
-│       └── components/           # Composants réutilisables
-├── chatkit-python/               # Bibliothèque Python ChatKit
-├── docker-compose.yml            # Orchestration complète
-└── README.md                     # Ce fichier
+│       └── components/           # Reusable components
+├── chatkit-python/               # ChatKit Python library
+├── docker-compose.yml            # Complete orchestration
+└── README.md                     # This file
 ```
 
-### Stack technologique
+### Tech stack
 
 **Backend**
-- FastAPI (API REST asynchrone)
-- SQLAlchemy + PostgreSQL (avec pgVector)
-- Celery + Redis (tâches asynchrones)
-- LiteLLM (intégration multi-modèles)
-- PyJWT (authentification LTI)
-- PJSIP (téléphonie SIP)
+- FastAPI (async REST API)
+- SQLAlchemy + PostgreSQL (with pgVector)
+- Celery + Redis (async tasks)
+- LiteLLM (multi-model integration)
+- PyJWT (LTI authentication)
+- PJSIP (SIP telephony)
 
 **Frontend**
-- React 18 avec TypeScript
-- Vite (build ultra-rapide)
-- React Flow (workflow builder graphique)
+- React 18 with TypeScript
+- Vite (ultra-fast builds)
+- React Flow (visual workflow builder)
 - React Hook Form + Zod (validation)
-- TanStack Query (gestion état serveur)
+- TanStack Query (server state management)
 
 **Infrastructure**
 - Docker & Docker Compose
-- Nginx (reverse proxy production)
-- PostgreSQL 16 (pgvector pour recherche sémantique)
-- Redis 7 (cache & broker Celery)
+- Nginx (production reverse proxy)
+- PostgreSQL 16 (pgvector for semantic search)
+- Redis 7 (cache & Celery broker)
 
 ---
 
-## 🔧 Configuration avancée
+## Advanced configuration
 
-### Fournisseurs IA
+### AI Providers
 
-#### OpenAI (par défaut)
+#### OpenAI (default)
 ```bash
 MODEL_PROVIDER=openai
-OPENAI_API_KEY=sk-votre-clé
+OPENAI_API_KEY=sk-your-key
 CHATKIT_API_BASE=https://api.openai.com
 ```
 
-#### LiteLLM (multi-fournisseurs)
+#### LiteLLM (multi-provider)
 ```bash
 MODEL_PROVIDER=litellm
 LITELLM_API_BASE=http://localhost:4000
 LITELLM_API_KEY=sk-litellm
 
-# Ajoutez les clés nécessaires
+# Add necessary keys
 ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
 MISTRAL_API_KEY=...
@@ -298,72 +267,72 @@ MISTRAL_API_KEY=...
 #### Azure OpenAI
 ```bash
 MODEL_PROVIDER=openai
-MODEL_API_BASE=https://votre-instance.openai.azure.com
-AZURE_OPENAI_API_KEY=votre-clé-azure
+MODEL_API_BASE=https://your-instance.openai.azure.com
+AZURE_OPENAI_API_KEY=your-azure-key
 ```
 
-### Mode vocal
+### Voice mode
 
-Configuration côté serveur :
+Server-side configuration:
 ```bash
 CHATKIT_REALTIME_MODEL=gpt-4o-realtime-preview-2024-12-17
-CHATKIT_REALTIME_INSTRUCTIONS="Assistant pédagogique bienveillant"
+CHATKIT_REALTIME_INSTRUCTIONS="Helpful educational assistant"
 CHATKIT_REALTIME_VOICE=verse
 ```
 
-Configuration côté client (frontend) :
+Client-side configuration (frontend):
 ```bash
 VITE_VOICE_SESSION_URL=/api/chatkit/voice/session
 VITE_VOICE_DEFAULT_MODEL=gpt-4o-realtime-preview-2024-12-17
 VITE_VOICE_DEFAULT_VOICE=alloy
 ```
 
-### Téléphonie SIP
+### SIP Telephony
 
-Pour permettre aux étudiants d'appeler vos assistants par téléphone :
+To allow users to call your assistants by phone:
 
 ```bash
 SIP_BIND_HOST=0.0.0.0
 SIP_BIND_PORT=40118
-SIP_CONTACT_HOST=votre-ip-publique
+SIP_CONTACT_HOST=your-public-ip
 SIP_TRANSPORT=udp
 ```
 
-Configurez ensuite un compte SIP dans **Admin** → **SIP Accounts**.
+Then configure a SIP account in **Admin** → **SIP Accounts**.
 
 ### Rate Limiting
 
-Protégez votre API avec rate limiting :
+Protect your API with rate limiting:
 ```bash
 RATE_LIMIT_ENABLED=true
 CELERY_BROKER_URL=redis://localhost:6379/0
 ```
 
-Désactiver en développement :
+Disable in development:
 ```bash
 RATE_LIMIT_ENABLED=false
 ```
 
-### Internationalisation
+### Internationalization
 
-Ajoutez des langues dans **Admin** → **Languages** :
-- Interface multilingue automatique
-- Traductions personnalisables
-- Support RTL pour arabe/hébreu
+Add languages in **Admin** → **Languages**:
+- Automatic multilingual interface
+- Customizable translations
+- RTL support for Arabic/Hebrew
 
 ---
 
-## 📊 Monitoring et maintenance
+## Monitoring and maintenance
 
 ### Logs
 
-**Développement** (logs console colorés) :
+**Development** (colored console logs):
 ```bash
 ENVIRONMENT=development
 LOG_LEVEL=DEBUG
 ```
 
-**Production** (logs JSON structurés) :
+**Production** (structured JSON logs):
 ```bash
 ENVIRONMENT=production
 LOG_LEVEL=INFO
@@ -372,80 +341,80 @@ LOG_FORMAT=json
 
 ### Workflow Monitor
 
-Interface de monitoring temps réel :
+Real-time monitoring interface:
 - **Admin** → **Workflow Monitor**
-- Visualisez les exécutions en direct
-- Identifiez les erreurs et bottlenecks
-- Analysez les parcours étudiants
+- Visualize executions in real-time
+- Identify errors and bottlenecks
+- Analyze user journeys
 
-### Métriques
+### Metrics
 
-Consultez les métriques d'utilisation :
-- Nombre de sessions par workflow
-- Temps de réponse moyen
-- Taux de satisfaction (si configuré)
-- Usage par modèle IA
+Check usage metrics:
+- Number of sessions per workflow
+- Average response time
+- Satisfaction rate (if configured)
+- Usage by AI model
 
-### Sauvegarde
+### Backup
 
-**Base de données PostgreSQL** :
+**PostgreSQL database**:
 ```bash
 docker-compose exec db pg_dump -U chatkit chatkit > backup_$(date +%Y%m%d).sql
 ```
 
-**Restauration** :
+**Restore**:
 ```bash
 docker-compose exec -T db psql -U chatkit chatkit < backup_20240615.sql
 ```
 
-**Workflows et configurations** :
-- Exportez vos workflows depuis l'interface (JSON)
-- Sauvegardez le fichier `.env`
-- Conservez les registrations LTI
+**Workflows and configurations**:
+- Export your workflows from the interface (JSON)
+- Backup the `.env` file
+- Keep LTI registrations
 
 ---
 
-## 🚀 Déploiement en production
+## Production deployment
 
-### Checklist de sécurité
+### Security checklist
 
-- [ ] Changer `AUTH_SECRET_KEY` (minimum 32 caractères aléatoires)
-- [ ] Utiliser des mots de passe forts pour PostgreSQL et Redis
-- [ ] Configurer `ALLOWED_ORIGINS` avec vos domaines uniquement
-- [ ] Activer HTTPS avec certificats SSL/TLS valides
-- [ ] Activer le rate limiting
-- [ ] Configurer les logs JSON (`LOG_FORMAT=json`)
-- [ ] Définir `ENVIRONMENT=production`
-- [ ] Désactiver les logs de debug
-- [ ] Configurer les sauvegardes automatiques
-- [ ] Restreindre l'accès réseau aux ports nécessaires
+- [ ] Change `AUTH_SECRET_KEY` (minimum 32 random characters)
+- [ ] Use strong passwords for PostgreSQL and Redis
+- [ ] Configure `ALLOWED_ORIGINS` with your domains only
+- [ ] Enable HTTPS with valid SSL/TLS certificates
+- [ ] Enable rate limiting
+- [ ] Configure JSON logs (`LOG_FORMAT=json`)
+- [ ] Set `ENVIRONMENT=production`
+- [ ] Disable debug logs
+- [ ] Configure automatic backups
+- [ ] Restrict network access to necessary ports
 
-### Variables d'environnement production
+### Production environment variables
 
 ```bash
-# Environnement
+# Environment
 ENVIRONMENT=production
 LOG_LEVEL=INFO
 LOG_FORMAT=json
 
-# Sécurité
-AUTH_SECRET_KEY=<généré-avec-openssl-rand-base64-32>
-ALLOWED_ORIGINS=https://edxo.votre-ecole.fr
+# Security
+AUTH_SECRET_KEY=<generated-with-openssl-rand-base64-32>
+ALLOWED_ORIGINS=https://edxo.your-domain.com
 RATE_LIMIT_ENABLED=true
 
-# Base de données (utilisez des mots de passe forts)
-DATABASE_URL=postgresql+psycopg://eduflow:PASSWORD_SECURISE@postgres:5432/eduflow
+# Database (use strong passwords)
+DATABASE_URL=postgresql+psycopg://edxo:SECURE_PASSWORD@postgres:5432/edxo
 CELERY_BROKER_URL=redis://:REDIS_PASSWORD@redis:6379/0
 
 # Admin
-ADMIN_EMAIL=admin@votre-ecole.fr
-ADMIN_PASSWORD=<mot-de-passe-très-sécurisé>
+ADMIN_EMAIL=admin@your-domain.com
+ADMIN_PASSWORD=<very-secure-password>
 
-# IA
-OPENAI_API_KEY=<votre-clé-production>
+# AI
+OPENAI_API_KEY=<your-production-key>
 ```
 
-### Reverse proxy Nginx
+### Nginx reverse proxy
 
 ```nginx
 upstream backend {
@@ -458,12 +427,12 @@ upstream frontend {
 
 server {
     listen 443 ssl http2;
-    server_name edxo.votre-ecole.fr;
+    server_name edxo.your-domain.com;
 
-    ssl_certificate /etc/letsencrypt/live/edxo.votre-ecole.fr/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/edxo.votre-ecole.fr/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/edxo.your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/edxo.your-domain.com/privkey.pem;
 
-    # Sécurité SSL
+    # SSL security
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
@@ -499,243 +468,180 @@ server {
     }
 }
 
-# Redirection HTTP vers HTTPS
+# HTTP to HTTPS redirect
 server {
     listen 80;
-    server_name edxo.votre-ecole.fr;
+    server_name edxo.your-domain.com;
     return 301 https://$server_name$request_uri;
 }
 ```
 
-### Docker Compose Production
-
-Créez un `docker-compose.prod.yml` :
-
-```yaml
-version: '3.8'
-
-services:
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    restart: always
-    environment:
-      - ENVIRONMENT=production
-    # ... reste de la config
-
-  frontend:
-    build:
-      context: frontend
-      dockerfile: Dockerfile.prod
-    restart: always
-    # ... reste de la config
-
-  db:
-    image: pgvector/pgvector:pg16
-    restart: always
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    # Ajoutez des backups automatiques
-
-  redis:
-    image: redis:7-alpine
-    restart: always
-    command: redis-server --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redis-data:/data
-```
-
 ---
 
-## 🧪 Tests
+## Tests
 
-### Tests backend
+### Backend tests
 
 ```bash
 cd backend
 
-# Tests unitaires
+# Unit tests
 pytest tests/ -v
 
-# Avec couverture
+# With coverage
 pytest tests/ --cov=app --cov-report=html
 
-# Tests spécifiques
+# Specific tests
 pytest tests/test_workflows.py -v
 pytest tests/test_lti.py -v
 ```
 
-### Tests d'intégration LTI
+### LTI integration tests
 
 ```bash
-# Vérifier la configuration LTI
+# Check LTI configuration
 ./check_lti.sh
 
-# Tester un workflow complet
+# Test complete workflow
 ./test_example.sh
 ```
 
-### Tests téléphonie
+### Telephony tests
 
 ```bash
-# Test minimal d'appel entrant
+# Minimal incoming call test
 ./test_incoming_calls_minimal.py
 
-# Test complet avec bridge audio
+# Complete test with audio bridge
 ./test_incoming_calls_with_bridge.py
 
-# Test création de ports audio
+# Audio port creation test
 ./test_audio_port_creation.py
 ```
 
 ---
 
-## 🤝 Contribution
+## Contributing
 
-Les contributions sont les bienvenues ! EDxo est un projet open source destiné à la communauté éducative.
+This is a personal project, but contributions are welcome! If you find it useful and want to improve it:
 
-### Comment contribuer
+1. Fork the project
+2. Create a branch: `git checkout -b feature/my-awesome-feature`
+3. Commit: `git commit -m 'Add my awesome feature'`
+4. Push: `git push origin feature/my-awesome-feature`
+5. Open a Pull Request
 
-1. **Forkez** le projet
-2. Créez une branche : `git checkout -b feature/ma-super-fonctionnalite`
-3. Committez : `git commit -m 'Ajout de ma super fonctionnalité'`
-4. Pushez : `git push origin feature/ma-super-fonctionnalite`
-5. Ouvrez une **Pull Request**
-
-### Standards de code
+### Code standards
 
 **Python**
-- Suivre PEP 8
-- Utiliser Black pour le formatage
-- Utiliser isort pour les imports
-- Type hints obligatoires
-- Docstrings pour les fonctions publiques
+- Follow PEP 8
+- Use Black for formatting
+- Use isort for imports
+- Type hints required
+- Docstrings for public functions
 
 **TypeScript**
-- Suivre les règles ESLint configurées
-- Types stricts (pas de `any` sauf justifié)
-- Composants fonctionnels avec hooks
-- Tests pour les composants critiques
+- Follow configured ESLint rules
+- Strict types (no `any` unless justified)
+- Functional components with hooks
+- Tests for critical components
 
 **Commits**
-- Messages en français ou anglais
-- Format : `Type: Description courte`
-- Types : Feature, Fix, Refactor, Docs, Test, Chore
+- Messages in English
+- Format: `Type: Short description`
+- Types: Feature, Fix, Refactor, Docs, Test, Chore
 
-### Zones à améliorer
+### Areas that could use help
 
-- [ ] Support de plus de LMS (Brightspace, Schoology, etc.)
-- [ ] Marketplace de workflows partagés
-- [ ] Analytics avancés pour les éducateurs
-- [ ] Support de l'API Assistants d'OpenAI
-- [ ] Intégration avec H5P pour contenus interactifs
+- [ ] More LMS support (Brightspace, Schoology, etc.)
+- [ ] Workflow marketplace/sharing
+- [ ] Advanced analytics for educators
+- [ ] OpenAI Assistants API support
+- [ ] H5P integration for interactive content
 - [ ] Mobile app (React Native)
-- [ ] SSO avec SAML/OAuth2
+- [ ] SSO with SAML/OAuth2
 - [ ] Gamification (badges, points, leaderboards)
 
 ---
 
-## ❓ FAQ
+## FAQ
 
-### Quelle est la différence avec ChatGPT ?
+### How is this different from ChatGPT?
 
-EDxo est conçu **spécifiquement pour l'éducation** :
-- Intégration LMS native (pas besoin de sortir de Moodle/Canvas)
-- Workflows personnalisables par cours/module
-- Gestion des notes et feedback automatique
-- Contrôle total des données étudiants
-- Auto-hébergement possible (souveraineté des données)
+edxo is designed for **custom conversational workflows**:
+- Visual workflow builder (no-code)
+- Native LMS integration (stay in Moodle/Canvas)
+- Customizable flows per course/module
+- Full control over user data
+- Self-hosting possible (data sovereignty)
 
-### Puis-je utiliser d'autres modèles que GPT ?
+### Can I use models other than GPT?
 
-Oui ! EDxo supporte :
+Yes! edxo supports:
 - Claude (Anthropic) via LiteLLM
 - Gemini (Google) via LiteLLM
 - Mistral AI
-- Llama (via Ollama ou LiteLLM)
+- Llama (via Ollama or LiteLLM)
 - Azure OpenAI
-- Tout modèle compatible OpenAI API
+- Any OpenAI-compatible API
 
-### Est-ce gratuit ?
+### Is it free?
 
-Le logiciel est open source (licence à définir), mais vous devez :
-- Fournir votre propre infrastructure (serveur)
-- Payer les API des fournisseurs IA (OpenAI, Anthropic, etc.)
+The software is open source, but you need to:
+- Provide your own infrastructure (server)
+- Pay for AI provider APIs (OpenAI, Anthropic, etc.)
 
-### Combien ça coûte en API IA ?
+### How much does it cost in AI API calls?
 
-Cela dépend de votre usage. Exemple avec GPT-4:
-- 1000 messages étudiants ≈ 5-10€
-- Pour réduire les coûts : utilisez GPT-3.5, Claude Haiku, ou hébergez Llama
+Depends on your usage. Example with GPT-4:
+- 1000 user messages ≈ $5-10
+- To reduce costs: use GPT-3.5, Claude Haiku, or self-host Llama
 
-### Mes données étudiants sont-elles sécurisées ?
+### Is user data secure?
 
-Oui :
-- Vous hébergez la plateforme (auto-hébergement possible)
-- Chiffrement HTTPS obligatoire
-- Conformité RGPD si configuré correctement
-- Les conversations avec les IA passent par les API des fournisseurs (voir leurs CGU)
+Yes:
+- You host the platform (self-hosting possible)
+- HTTPS encryption required
+- GDPR compliant if configured correctly
+- Conversations with AI go through provider APIs (check their ToS)
 
-### Puis-je l'utiliser sans LMS ?
+### Can I use it without an LMS?
 
-Oui ! EDxo fonctionne aussi en standalone :
-- Interface web accessible directement
-- Gestion manuelle des comptes utilisateurs
-- Pas besoin de LTI si vous n'utilisez pas de LMS
-
-### Support commercial disponible ?
-
-Pour l'instant, le projet est communautaire.
-- Support : via GitHub Issues
-- Documentation : ce README et `/docs`
-- Communauté : [Discord/Forum à venir]
+Yes! edxo works standalone:
+- Web interface accessible directly
+- Manual user account management
+- No need for LTI if you don't use an LMS
 
 ---
 
-## 📚 Ressources
+## Resources
 
 ### Documentation
-- **LTI 1.3** : https://www.imsglobal.org/spec/lti/v1p3/
-- **OpenAI Realtime API** : https://platform.openai.com/docs/guides/realtime
-- **LiteLLM** : https://docs.litellm.ai/
-- **FastAPI** : https://fastapi.tiangolo.com/
-- **React Flow** : https://reactflow.dev/
+- **LTI 1.3**: https://www.imsglobal.org/spec/lti/v1p3/
+- **OpenAI Realtime API**: https://platform.openai.com/docs/guides/realtime
+- **LiteLLM**: https://docs.litellm.ai/
+- **FastAPI**: https://fastapi.tiangolo.com/
+- **React Flow**: https://reactflow.dev/
 
-### Tutoriels
-- Configuration LTI dans Moodle : [Lien à venir]
-- Créer son premier workflow : [Lien à venir]
-- Intégrer des documents de cours : [Lien à venir]
-
-### Communauté
-- GitHub Issues : Rapporter des bugs
-- GitHub Discussions : Poser des questions
-- [Discord/Slack à venir]
+### Community
+- GitHub Issues: Report bugs
+- GitHub Discussions: Ask questions
 
 ---
 
-## 📄 Licence
+## License
 
-[À définir - MIT, Apache 2.0, ou autre]
-
----
-
-## 🙏 Remerciements
-
-- **IMS Global** pour les standards LTI
-- **OpenAI** pour les API ChatGPT et Realtime
-- **Anthropic** pour Claude
-- La communauté **LiteLLM** pour le proxy multi-fournisseurs
-- Tous les contributeurs open source
+MIT
 
 ---
 
-## 📞 Contact
+## Acknowledgments
 
-- **Email** : [À définir]
-- **Website** : [À définir]
-- **GitHub** : [Ce dépôt]
+- **OpenAI** for AgentKit (the inspiration) and the Realtime API
+- **Anthropic** for Claude
+- **LiteLLM** community for the multi-provider proxy
+- All open-source contributors
 
 ---
 
-**Créons ensemble l'avenir de l'éducation avec l'IA ! 🚀🎓**
+**Built for fun. Shared in case it helps others.**

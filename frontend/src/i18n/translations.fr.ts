@@ -1433,5 +1433,28 @@ export const fr: TranslationDictionary = {
   "admin.cleanup.success.factoryReset": "Reinitialisation d'usine terminee. {{conversations}} conversations, {{workflows}} workflows et {{viewports}} viewports supprimes.",
   "admin.cleanup.errors.sessionExpired": "Votre session a expire. Veuillez vous reconnecter.",
   "admin.cleanup.errors.operationFailed": "L'operation a echoue. Veuillez reessayer.",
+
+  // Landing page
+  "landing.nav.login": "Connexion",
+  "landing.hero.title": "Workflow builder open-source pour assistants IA conversationnels",
+  "landing.hero.subtitle": "Créez des assistants conversationnels intelligents avec une interface visuelle no-code. Initialement conçu comme une amélioration d'AgentKit d'OpenAI, c'est maintenant une plateforme complète pour créer des workflows IA personnalisés, des intégrations LMS et des assistants vocaux.",
+  "landing.hero.getStarted": "Commencer",
+  "landing.hero.github": "GitHub",
+  "landing.features.title": "Pourquoi edxo ?",
+  "landing.features.workflow.title": "Workflow Builder Visuel",
+  "landing.features.workflow.desc": "Interface no-code intuitive pour créer des flux conversationnels complexes par simple glisser-déposer.",
+  "landing.features.multimodel.title": "IA Multi-modèles",
+  "landing.features.multimodel.desc": "Utilisez le meilleur de l'IA : GPT-4, Claude, Gemini, Mistral. Changez de modèle selon vos besoins.",
+  "landing.features.vectorstore.title": "Bases de Connaissances",
+  "landing.features.vectorstore.desc": "Indexez vos documents (PDF, Markdown) pour que l'IA réponde précisément en se basant sur votre contenu.",
+  "landing.features.voice.title": "Mode Vocal",
+  "landing.features.voice.desc": "Conversations vocales en temps réel avec l'API Realtime d'OpenAI et support de la téléphonie SIP.",
+  "landing.features.lms.title": "Intégration LMS",
+  "landing.features.lms.desc": "Intégration native LTI 1.3 avec Moodle, Canvas et Blackboard. Synchronisation automatique des notes et deep linking.",
+  "landing.features.selfhost.title": "Auto-hébergement",
+  "landing.features.selfhost.desc": "Contrôle total de vos données. Déployez sur votre propre infrastructure pour une souveraineté complète.",
+  "landing.tech.title": "Stack Technique Moderne",
+  "landing.tech.subtitle": "Construit sur une stack robuste et open-source, conçue pour la performance et l'évolutivité. Parti d'AgentKit, évolué en plateforme complète.",
+  "landing.footer.tagline": "Créé pour le plaisir. Partagé au cas où ça puisse aider.",
 };
   
