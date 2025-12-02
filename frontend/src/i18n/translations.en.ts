@@ -697,9 +697,16 @@ export const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.responseFormat.widget": "Widget output",
   "workflowBuilder.agentInspector.jsonSchemaNameLabel": "Schema name",
   "workflowBuilder.agentInspector.jsonSchemaNameHint": "Optional name used for documentation purposes.",
+  "workflowBuilder.agentInspector.jsonSchemaEditorModeLabel": "Schema editor",
+  "workflowBuilder.agentInspector.jsonSchemaEditorModeHint": "Switch between raw JSON and the visual schema builder.",
+  "workflowBuilder.agentInspector.jsonSchemaEditorMode.text": "Text editor (JSON)",
+  "workflowBuilder.agentInspector.jsonSchemaEditorMode.visual": "Visual editor",
   "workflowBuilder.agentInspector.jsonSchemaDefinitionLabel": "JSON schema definition",
   "workflowBuilder.agentInspector.jsonSchemaDefinitionHint":
     "Provide a valid JSON schema Draft 2020-12 document.",
+  "workflowBuilder.agentInspector.jsonSchemaVisualBuilderLabel": "Visual schema builder",
+  "workflowBuilder.agentInspector.jsonSchemaVisualBuilderHint":
+    "Construct the JSON schema visually by adding properties, types, and descriptions.",
   "workflowBuilder.agentInspector.jsonSchemaInvalid": "Invalid JSON schema",
   "workflowBuilder.agentInspector.behaviorTitle": "Agent behavior",
   "workflowBuilder.agentInspector.behaviorDescription":

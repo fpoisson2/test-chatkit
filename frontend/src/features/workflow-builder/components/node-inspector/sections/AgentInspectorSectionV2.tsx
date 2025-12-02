@@ -42,6 +42,8 @@ import {
 } from '../ui-components';
 import { HelpTooltip } from '../components/HelpTooltip';
 import { ToggleRow } from '../components/ToggleRow';
+import { SchemaBuilder, type SchemaProperty } from '../components/SchemaBuilder';
+import { jsonToVisualSchema, visualToJsonSchema } from '../utils/schemaUtils';
 import { useAgentInspectorState } from '../hooks/useAgentInspectorState';
 import type {
   AgentNestedWorkflowSelection,
@@ -2586,6 +2588,7 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
   onAgentResponseWidgetDefinitionChange,
   t,
 }) => {
+  const [schemaEditorMode, setSchemaEditorMode] = useState<'text' | 'visual'>('text');
   const widgetValidationMessage = useMemo(() => {
     switch (widgetValidationReason) {
       case 'library_empty':
@@ -2600,6 +2603,15 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
         return widgetValidationMessageFromHook;
     }
   }, [t, widgetValidationMessageFromHook, widgetValidationReason]);
+
+  const visualSchema = useMemo(() => {
+    try {
+      const parsed = JSON.parse(schemaText);
+      return jsonToVisualSchema(parsed);
+    } catch {
+      return [] as SchemaProperty[];
+    }
+  }, [schemaText]);
 
   const handleSchemaChange = useCallback(
     (value: string) => {
@@ -2650,6 +2662,25 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
     [nodeId, onAgentResponseWidgetDefinitionChange],
   );
 
+  const handleVisualSchemaChange = useCallback(
+    (newSchema: SchemaProperty[]) => {
+      try {
+        const jsonSchema = visualToJsonSchema(newSchema);
+        const jsonString = JSON.stringify(jsonSchema, null, 2);
+        setSchemaText(jsonString);
+        setSchemaError(null);
+        onAgentResponseFormatSchemaChange(nodeId, jsonSchema);
+      } catch (error) {
+        setSchemaError(
+          error instanceof Error
+            ? error.message
+            : t('workflowBuilder.agentInspector.jsonSchemaInvalid'),
+        );
+      }
+    },
+    [nodeId, onAgentResponseFormatSchemaChange, setSchemaError, setSchemaText, t],
+  );
+
   const formatKindOptions = useMemo(
     () => [
       { value: 'text', label: t('workflowBuilder.agentInspector.responseFormat.text') },
@@ -2681,18 +2712,62 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
         </Field>
 
         {responseFormat.kind === 'json_schema' ? (
-          <Field
-            label={t('workflowBuilder.agentInspector.jsonSchemaDefinitionLabel')}
-            hint={t('workflowBuilder.agentInspector.jsonSchemaDefinitionHint')}
-            error={schemaError ?? undefined}
-          >
-            <textarea
-              data-schema-editor="true"
-              value={schemaText}
-              onChange={(event) => handleSchemaChange(event.target.value)}
-              placeholder={DEFAULT_JSON_SCHEMA_TEXT}
-            />
-          </Field>
+          <>
+            <Field
+              label={t('workflowBuilder.agentInspector.jsonSchemaNameLabel')}
+              hint={t('workflowBuilder.agentInspector.jsonSchemaNameHint')}
+            >
+              <input
+                type="text"
+                value={responseFormat.name}
+                onChange={(event) =>
+                  onAgentResponseFormatNameChange(nodeId, event.target.value)
+                }
+              />
+            </Field>
+
+            <Field
+              label={t('workflowBuilder.agentInspector.jsonSchemaEditorModeLabel')}
+              hint={t('workflowBuilder.agentInspector.jsonSchemaEditorModeHint')}
+            >
+              <select
+                value={schemaEditorMode}
+                onChange={(event) =>
+                  setSchemaEditorMode(event.target.value as 'text' | 'visual')
+                }
+              >
+                <option value="text">
+                  {t('workflowBuilder.agentInspector.jsonSchemaEditorMode.text')}
+                </option>
+                <option value="visual">
+                  {t('workflowBuilder.agentInspector.jsonSchemaEditorMode.visual')}
+                </option>
+              </select>
+            </Field>
+
+            {schemaEditorMode === 'text' ? (
+              <Field
+                label={t('workflowBuilder.agentInspector.jsonSchemaDefinitionLabel')}
+                hint={t('workflowBuilder.agentInspector.jsonSchemaDefinitionHint')}
+                error={schemaError ?? undefined}
+              >
+                <textarea
+                  data-schema-editor="true"
+                  value={schemaText}
+                  onChange={(event) => handleSchemaChange(event.target.value)}
+                  placeholder={DEFAULT_JSON_SCHEMA_TEXT}
+                />
+              </Field>
+            ) : (
+              <Field
+                label={t('workflowBuilder.agentInspector.jsonSchemaVisualBuilderLabel')}
+                hint={t('workflowBuilder.agentInspector.jsonSchemaVisualBuilderHint')}
+                error={schemaError ?? undefined}
+              >
+                <SchemaBuilder schema={visualSchema} onChange={handleVisualSchemaChange} />
+              </Field>
+            )}
+          </>
         ) : null}
 
         {responseFormat.kind === 'widget' ? (
