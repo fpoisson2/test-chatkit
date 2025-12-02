@@ -299,6 +299,9 @@ async def run_workflow_v2(
     definition = initialization.definition
     current_input_item_id = initialization.current_input_item_id
     initial_user_text = initialization.initial_user_text
+    pending_wait_state = initialization.pending_wait_state
+    if pending_wait_state is None and runtime_snapshot:
+        pending_wait_state = runtime_snapshot.wait_state
 
     # Build node maps
     nodes_by_slug: dict[str, WorkflowStep] = {
@@ -349,6 +352,8 @@ async def run_workflow_v2(
     start_slug: str | None = None
     if runtime_snapshot and runtime_snapshot.current_slug:
         start_slug = runtime_snapshot.current_slug
+    elif pending_wait_state and pending_wait_state.get("slug"):
+        start_slug = str(pending_wait_state["slug"])
     else:
         for node in nodes_by_slug.values():
             if node.kind == "start":
@@ -421,9 +426,6 @@ async def run_workflow_v2(
 
     # Get agent provider bindings
     agent_provider_bindings = agent_setup.agent_provider_bindings
-
-    # Get pending wait state
-    pending_wait_state = runtime_snapshot.wait_state if runtime_snapshot else None
 
     # Local helper functions (originally closures in run_workflow_v1)
     def _extract_delta(event: Any) -> str:
@@ -573,6 +575,9 @@ async def run_workflow_v2(
             url = f"data:image/png;base64,{b64_payload}"
             generated_image_urls.setdefault(step_key, []).append(url)
 
+    # Track whether the current user's message has already been forwarded to an agent
+    user_message_forwarded = False
+
     # Create run_agent_step function
     async def run_agent_step(
         step_key: str,
@@ -712,9 +717,20 @@ async def run_workflow_v2(
                 except Exception:
                     pass
 
+        nonlocal user_message_forwarded
+
         # Prepare conversation history
+        base_history = conversation_history
+        if user_message_forwarded:
+            base_history = [
+                item
+                for item in conversation_history
+                if (getattr(item, "role", None) or (item.get("role") if hasattr(item, "get") else None))
+                != "user"
+            ]
+
         conversation_history_input = _normalize_conversation_history_for_provider(
-            conversation_history,
+            base_history,
             getattr(provider_binding, "provider_slug", None) if provider_binding else None,
         )
         conversation_history_input = _deduplicate_conversation_history_items(conversation_history_input)
@@ -946,6 +962,8 @@ async def run_workflow_v2(
 
             return result
         finally:
+            if not user_message_forwarded:
+                user_message_forwarded = True
             # Cleanup MCP servers
             for server in connected_mcp_servers:
                 try:
