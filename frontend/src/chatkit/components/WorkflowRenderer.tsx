@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Workflow, WorkflowSummary, CustomSummary, DurationSummary, Task, ComputerUseTask } from '../types';
+import type { Workflow, Task, ComputerUseTask } from '../types';
 import { TaskRenderer } from './TaskRenderer';
 import { useI18n } from '../../i18n/I18nProvider';
 
@@ -227,10 +227,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
       return <div className="chatkit-workflow-default-title">{workflowTitle}</div>;
     }
 
-    if (workflow.summary) {
-      return <SummaryRenderer summary={workflow.summary} />;
-    }
-
     return (
       <div className="chatkit-workflow-default-title">
         {t('chatkit.workflow.step', { step: currentStepNumber })}
@@ -295,37 +291,3 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   );
 }
 
-function SummaryRenderer({ summary }: { summary: WorkflowSummary }): JSX.Element {
-  if ('duration' in summary) {
-    return <DurationSummaryRenderer summary={summary} />;
-  }
-  return <CustomSummaryRenderer summary={summary} />;
-}
-
-function CustomSummaryRenderer({ summary }: { summary: CustomSummary }): JSX.Element {
-  return (
-    <div className="chatkit-workflow-summary-custom">
-      {summary.icon && <span className="chatkit-workflow-icon">{summary.icon}</span>}
-      <span className="chatkit-workflow-title">{summary.title}</span>
-    </div>
-  );
-}
-
-function DurationSummaryRenderer({ summary }: { summary: DurationSummary }): JSX.Element {
-  const { t } = useI18n();
-
-  const formatDuration = (seconds: number): string => {
-    if (seconds < 60) {
-      return `${seconds} s`;
-    }
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes} m ${remainingSeconds} s`;
-  };
-
-  return (
-    <div className="chatkit-workflow-summary-duration">
-      <span>{t('chatkit.workflow.executionDuration', { duration: formatDuration(summary.duration) })}</span>
-    </div>
-  );
-}
