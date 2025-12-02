@@ -13,6 +13,56 @@ def _load_workflow_modules():
 
     import types
 
+    if "pydantic" not in sys.modules:
+        pydantic_module = types.ModuleType("pydantic")
+
+        class _BaseModel:  # pragma: no cover - stub
+            def __init__(self, **kwargs) -> None:
+                self.__dict__.update(kwargs)
+
+            def dict(self, *args, **kwargs):
+                return dict(self.__dict__)
+
+            def model_dump(self, *args, **kwargs):
+                return self.dict(*args, **kwargs)
+
+        pydantic_module.BaseModel = _BaseModel  # type: ignore[attr-defined]
+        pydantic_module.Field = lambda default=None, **kwargs: default
+        pydantic_module.ValidationError = type("ValidationError", (Exception,), {})
+        pydantic_module.create_model = lambda name, **kwargs: type(name, (_BaseModel,), kwargs)
+        sys.modules["pydantic"] = pydantic_module
+
+    if "sqlalchemy" not in sys.modules:
+        sqlalchemy_module = types.ModuleType("sqlalchemy")
+        orm_module = types.ModuleType("sqlalchemy.orm")
+
+        orm_module.Session = type("Session", (), {})  # pragma: no cover - stub
+        orm_module.sessionmaker = lambda **kwargs: lambda: None
+        orm_module.declarative_base = lambda **kwargs: type("Base", (object,), {})
+
+        sqlalchemy_module.create_engine = lambda *args, **kwargs: None
+        sqlalchemy_module.text = lambda x: x
+        sqlalchemy_module.orm = orm_module
+        sqlalchemy_module.func = SimpleNamespace()
+        sqlalchemy_module.select = lambda *args, **kwargs: None
+        engine_module = types.ModuleType("sqlalchemy.engine")
+        engine_module.Engine = type("Engine", (), {})
+        engine_module.Connection = type("Connection", (), {})
+        sqlalchemy_module.engine = engine_module
+        exc_module = types.ModuleType("sqlalchemy.exc")
+        exc_module.SQLAlchemyError = type("SQLAlchemyError", (Exception,), {})
+        exc_module.OperationalError = type("OperationalError", (exc_module.SQLAlchemyError,), {})
+
+        sys.modules["sqlalchemy"] = sqlalchemy_module
+        sys.modules["sqlalchemy.orm"] = orm_module
+        sys.modules["sqlalchemy.engine"] = engine_module
+        sys.modules["sqlalchemy.exc"] = exc_module
+
+    if "dotenv" not in sys.modules:
+        dotenv_module = types.ModuleType("dotenv")
+        dotenv_module.load_dotenv = lambda *args, **kwargs: None
+        sys.modules["dotenv"] = dotenv_module
+
     if "agents" not in sys.modules:
         agents_module = types.ModuleType("agents")
 
@@ -1326,4 +1376,104 @@ def test_run_workflow_multi_step_with_widget(monkeypatch):
         assert widget_calls  # Le widget a été diffusé
 
     asyncio.run(_run())
+
+
+def test_user_message_not_forwarded_to_second_agent(monkeypatch):
+    run_workflow = executor.run_workflow
+    WorkflowInput = executor.WorkflowInput
+
+    if not hasattr(WorkflowInput, "model_dump"):
+        WorkflowInput.model_dump = WorkflowInput.dict  # type: ignore[assignment]
+
+    agent_context = _FakeAgentContext()
+
+    # Collect conversation histories sent to each agent
+    calls: list[dict[str, list]] = []
+
+    def _fake_run_streamed(agent, *, input, run_config, context, previous_response_id):
+        calls.append({"agent": getattr(agent, "name", None), "history": input})
+        result = _FakeStreamResult({"agent": getattr(agent, "name", "")})
+
+        class _Item:
+            def to_input_item(self):
+                return {
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "ok"}],
+                }
+
+        result.new_items = [_Item()]
+        return result
+
+    async def _fake_stream_agent_response(agent_context, result):
+        if False:  # pragma: no cover - generator placeholder
+            yield result
+
+    monkeypatch.setattr(executor.Runner, "run_streamed", _fake_run_streamed)
+    monkeypatch.setattr(executor, "stream_agent_response", _fake_stream_agent_response)
+
+    # Register simple agents
+    monkeypatch.setitem(
+        runtime_agents.AGENT_BUILDERS,
+        "first_agent",
+        lambda overrides: _DummyAgent("first-agent"),
+    )
+    monkeypatch.setitem(
+        runtime_agents.AGENT_BUILDERS,
+        "second_agent",
+        lambda overrides: _DummyAgent("second-agent"),
+    )
+
+    def _step(slug: str, kind: str, position: int, **kwargs):
+        defaults = {
+            "slug": slug,
+            "kind": kind,
+            "position": position,
+            "is_enabled": True,
+            "parameters": kwargs.get("parameters", {}),
+            "agent_key": kwargs.get("agent_key"),
+            "display_name": kwargs.get("display_name", slug),
+        }
+        return SimpleNamespace(**defaults)
+
+    start_step = _step("start", "start", 0)
+    agent_step_one = _step("first", "agent", 1, agent_key="first_agent")
+    agent_step_two = _step("second", "agent", 2, agent_key="second_agent")
+    end_step = _step("end", "end", 3)
+
+    transitions = [
+        SimpleNamespace(source_step=start_step, target_step=agent_step_one, id=1, condition=None),
+        SimpleNamespace(source_step=agent_step_one, target_step=agent_step_two, id=2, condition=None),
+        SimpleNamespace(source_step=agent_step_two, target_step=end_step, id=3, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        workflow_id=101,
+        workflow=SimpleNamespace(slug="demo-workflow", display_name="Demo"),
+        steps=[start_step, agent_step_one, agent_step_two, end_step],
+        transitions=transitions,
+    )
+
+    async def _run():
+        await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+    asyncio.run(_run())
+
+    assert len(calls) == 2
+
+    first_roles = [
+        msg.get("role") if hasattr(msg, "get") else getattr(msg, "role", None)
+        for msg in calls[0]["history"]
+    ]
+    assert "user" in first_roles
+
+    second_roles = [
+        msg.get("role") if hasattr(msg, "get") else getattr(msg, "role", None)
+        for msg in calls[1]["history"]
+    ]
+    assert "user" not in second_roles
 

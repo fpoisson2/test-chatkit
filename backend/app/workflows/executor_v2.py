@@ -575,6 +575,9 @@ async def run_workflow_v2(
             url = f"data:image/png;base64,{b64_payload}"
             generated_image_urls.setdefault(step_key, []).append(url)
 
+    # Track whether the current user's message has already been forwarded to an agent
+    user_message_forwarded = False
+
     # Create run_agent_step function
     async def run_agent_step(
         step_key: str,
@@ -714,9 +717,20 @@ async def run_workflow_v2(
                 except Exception:
                     pass
 
+        nonlocal user_message_forwarded
+
         # Prepare conversation history
+        base_history = conversation_history
+        if user_message_forwarded:
+            base_history = [
+                item
+                for item in conversation_history
+                if (getattr(item, "role", None) or (item.get("role") if hasattr(item, "get") else None))
+                != "user"
+            ]
+
         conversation_history_input = _normalize_conversation_history_for_provider(
-            conversation_history,
+            base_history,
             getattr(provider_binding, "provider_slug", None) if provider_binding else None,
         )
         conversation_history_input = _deduplicate_conversation_history_items(conversation_history_input)
@@ -948,6 +962,8 @@ async def run_workflow_v2(
 
             return result
         finally:
+            if not user_message_forwarded:
+                user_message_forwarded = True
             # Cleanup MCP servers
             for server in connected_mcp_servers:
                 try:
