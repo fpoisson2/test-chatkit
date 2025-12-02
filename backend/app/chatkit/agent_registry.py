@@ -1241,7 +1241,41 @@ def _build_agent_kwargs(
             elif "schema" in response_format:
                 # Already in flat format or compact format {"name": "...", "schema": {...}}
                 schema = response_format.get("schema")
-                if isinstance(schema, dict):
+
+                # Check if schema is itself a wrapper with nested "schema" key
+                # This happens when frontend sends: {"name": "X", "schema": {"name": "Y", "schema": {...}}}
+                if isinstance(schema, dict) and "schema" in schema:
+                    # Extract the actual schema from the nested structure
+                    actual_name = schema.get("name", response_format.get("name", "custom_output"))
+                    actual_strict = schema.get("strict", response_format.get("strict", True))
+                    schema = schema.get("schema")
+
+                    logger.debug(
+                        "Schéma doublement imbriqué détecté, extraction du schéma réel: name=%s",
+                        actual_name
+                    )
+
+                    # Override name and strict with the inner values
+                    if isinstance(schema, dict):
+                        # Ensure schema has 'type' key
+                        if "type" not in schema:
+                            if "properties" in schema:
+                                schema = {"type": "object", **schema}
+
+                        # Build flat format with extracted values
+                        response_format = {
+                            "type": "json_schema",
+                            "name": actual_name,
+                            "strict": actual_strict,
+                            "schema": schema
+                        }
+
+                        logger.debug(
+                            "response_format normalisé après extraction: %s",
+                            json.dumps(response_format, ensure_ascii=False)
+                        )
+                elif isinstance(schema, dict):
+                    # Normal case: schema is the actual JSON schema
                     # Ensure schema has 'type' key
                     if "type" not in schema:
                         if "properties" in schema:
