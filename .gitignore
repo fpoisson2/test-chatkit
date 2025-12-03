@@ -16,6 +16,10 @@ logs/
 test_config.env
 lti_private_key.pem
 
+# Nginx and SSL certificates
+certbot/conf/
+certbot/www/
+
 # Coverage reports
 htmlcov/
 .coverage
