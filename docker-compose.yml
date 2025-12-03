@@ -63,12 +63,15 @@ services:
     command: >-
       sh -c '
         set -euo pipefail;
-        DOMAIN=${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required};
+        DOMAIN_RAW=${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required};
+        DOMAIN=${DOMAIN_RAW#https://};
+        DOMAIN=${DOMAIN#http://};
+        DOMAIN=${DOMAIN%%/*};
         apk add --no-cache openssl >/dev/null;
-        tmp_conf=$(mktemp);
-        sed "s/chatkit.example.com/$DOMAIN/g" /etc/nginx/conf.d/chatkit.conf > "$tmp_conf";
-        cat "$tmp_conf" > /etc/nginx/conf.d/chatkit.conf;
-        rm "$tmp_conf";
+        tmp_conf=$$(mktemp);
+        sed "s/chatkit.example.com/$DOMAIN/g" /etc/nginx/conf.d/chatkit.conf > "$$tmp_conf";
+        cat "$$tmp_conf" > /etc/nginx/conf.d/chatkit.conf;
+        rm "$$tmp_conf";
         if [ ! -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ] || [ ! -f /etc/letsencrypt/live/$DOMAIN/privkey.pem ]; then
           echo "Generating placeholder certificate for $DOMAIN so nginx can start";
           mkdir -p /etc/letsencrypt/live/$DOMAIN;
@@ -183,7 +186,11 @@ services:
     command: >-
       sh -c '
         set -euo pipefail;
-        cloudflared tunnel --no-autoupdate route dns --overwrite-dns --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required} ${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required};
+        DOMAIN_RAW=${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required};
+        DOMAIN=${DOMAIN_RAW#https://};
+        DOMAIN=${DOMAIN#http://};
+        DOMAIN=${DOMAIN%%/*};
+        cloudflared tunnel --no-autoupdate route dns --overwrite-dns --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required} "$DOMAIN";
         cloudflared tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
       '
     depends_on:
@@ -205,10 +212,14 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: |
       set -euo pipefail
+      DOMAIN_RAW="${CERTBOT_DOMAIN:?CERTBOT_DOMAIN is required}"
+      DOMAIN="${DOMAIN_RAW#https://}"
+      DOMAIN="${DOMAIN#http://}"
+      DOMAIN="${DOMAIN%%/*}"
       mkdir -p /var/www/certbot
       certbot certonly --webroot --webroot-path=/var/www/certbot \
         --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email \
-        --keep-until-expiring --non-interactive -d "$CERTBOT_DOMAIN"
+        --keep-until-expiring --non-interactive -d "$DOMAIN"
       while :; do
         certbot renew --webroot --webroot-path=/var/www/certbot --quiet --no-self-upgrade
         sleep 12h
