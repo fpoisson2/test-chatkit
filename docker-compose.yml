@@ -8,7 +8,6 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     working_dir: /workspace/backend
-    network_mode: host
     command: >-
       uvicorn server:app --host 0.0.0.0 --port 8000 --reload --log-level warning --no-access-log
     volumes:
@@ -23,8 +22,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CHATKIT_WORKFLOW_ID: ${CHATKIT_WORKFLOW_ID:-}
       DATABASE_URL: "${DATABASE_URL:?DATABASE_URL is required}"
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:${REDIS_PORT:-6380}/0}
-      CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://localhost:${REDIS_PORT:-6380}/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6380/0}
+      CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://redis:6380/0}
       AUTH_SECRET_KEY: "${AUTH_SECRET_KEY:?AUTH_SECRET_KEY is required}"
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
@@ -43,24 +42,25 @@ services:
       SIP_CONTACT_HOST: ${SIP_CONTACT_HOST:-192.168.1.116}
       SIP_TRANSPORT: ${SIP_TRANSPORT:-udp}
       LTI_TOOL_PRIVATE_KEY: ${LTI_TOOL_PRIVATE_KEY:-}
+    networks:
+      - app-network
     depends_on:
       - db
       - redis
   frontend:
     image: node:20
     working_dir: /workspace/frontend
-    network_mode: host
     command: >-
-      sh -c "npm install && npm run dev -- --host 0.0.0.0 --port ${VITE_PORT:-5183}"
+      sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5183"
     volumes:
       - .:/workspace
       - frontend-node_modules:/workspace/frontend/node_modules
     environment:
       VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
-      VITE_PORT: ${VITE_PORT:-5183}
+      VITE_PORT: 5183
       VITE_HMR_HOST: ${VITE_HMR_HOST:-localhost}
       VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
-      VITE_HMR_CLIENT_PORT: ${VITE_HMR_CLIENT_PORT:-5183}
+      VITE_HMR_CLIENT_PORT: ${VITE_HMR_CLIENT_PORT:-80}
       VITE_HMR_PROTOCOL: ${VITE_HMR_PROTOCOL:-ws}
       VITE_CHATKIT_API_URL: ${VITE_CHATKIT_API_URL:-/api/chatkit}
       VITE_CHATKIT_DOMAIN_KEY: ${VITE_CHATKIT_DOMAIN_KEY:-}
@@ -69,34 +69,41 @@ services:
       VITE_CHATKIT_UPLOAD_STRATEGY: ${VITE_CHATKIT_UPLOAD_STRATEGY:-}
       VITE_CHATKIT_DIRECT_UPLOAD_URL: ${VITE_CHATKIT_DIRECT_UPLOAD_URL:-}
       VITE_USE_MOCK_API: ${VITE_USE_MOCK_API:-false}
+    networks:
+      - app-network
     depends_on:
       - backend
   nginx:
     image: nginx:alpine
     container_name: nginx
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d/site.conf:/etc/nginx/conf.d/site.conf:ro
+    networks:
+      - app-network
     depends_on:
       - backend
       - frontend
   db:
     image: pgvector/pgvector:pg16
-    network_mode: host
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-chatkit}
       POSTGRES_USER: ${POSTGRES_USER:-chatkit}
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - app-network
   redis:
     image: redis:7-alpine
-    network_mode: host
-    command: redis-server --port ${REDIS_PORT:-6380}
+    command: redis-server --port 6380
     volumes:
       - redis-data:/data
+    networks:
+      - app-network
   celery-worker:
     build:
       context: .
@@ -105,7 +112,6 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     working_dir: /workspace/backend
-    network_mode: host
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=2
     volumes:
@@ -123,8 +129,8 @@ services:
       # Database
       DATABASE_URL: "${DATABASE_URL:?DATABASE_URL is required}"
       # Celery
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:${REDIS_PORT:-6380}/0}
-      CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://localhost:${REDIS_PORT:-6380}/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6380/0}
+      CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://redis:6380/0}
       # Auth (required by app initialization)
       AUTH_SECRET_KEY: "${AUTH_SECRET_KEY:?AUTH_SECRET_KEY is required}"
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
@@ -148,9 +154,16 @@ services:
       SIP_TRANSPORT: ${SIP_TRANSPORT:-udp}
       # LTI Configuration
       LTI_TOOL_PRIVATE_KEY: ${LTI_TOOL_PRIVATE_KEY:-}
+    networks:
+      - app-network
     depends_on:
       - db
       - redis
+
+networks:
+  app-network:
+    driver: bridge
+
 volumes:
   frontend-node_modules:
   postgres-data:
