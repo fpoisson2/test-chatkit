@@ -488,7 +488,7 @@ The repository ships a compose stack that starts nginx, a Cloudflare Tunnel, and
    CERTBOT_EMAIL=admin@example.com               # email for Let's Encrypt registration
    ```
 
-2. Update `nginx/chatkit.conf` so that `server_name`, `ssl_certificate`, and `ssl_certificate_key` all reference the same domain value you set in `CLOUDFLARE_TUNNEL_HOSTNAME`. The backends already point to `localhost` so no manual IP changes are required.
+2. Ensure `nginx/chatkit.conf` still contains the `chatkit.example.com` placeholder; the nginx container automatically replaces that value with `CLOUDFLARE_TUNNEL_HOSTNAME` at startup and generates a short-lived self-signed certificate so nginx can boot before certbot issues the real one. The backends already point to `localhost` so no manual IP changes are required.
 
 3. Start the proxy stack (nginx + certbot + tunnel) alongside the app:
 
