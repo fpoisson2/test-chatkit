@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# HTTP (chatkit.ve2fpd.com) - Gère le trafic Tunnel/Redirection
+# HTTP (${DOMAIN_NAME}) - Gère le trafic Tunnel/Redirection
 # ─────────────────────────────────────────────────────────────────────────────
 server {
     listen 80;
-    server_name chatkit.ve2fpd.com;
+    server_name ${DOMAIN_NAME};
 
     # Location pour Certbot/Let's Encrypt ACME challenge
     location /.well-known/acme-challenge/ {
@@ -51,15 +51,15 @@ server {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HTTPS (chatkit.ve2fpd.com) - Trafic sécurisé local
+# HTTPS (${DOMAIN_NAME}) - Trafic sécurisé local
 # ─────────────────────────────────────────────────────────────────────────────
 server {
     listen 443 ssl;
-    server_name chatkit.ve2fpd.com;
+    server_name ${DOMAIN_NAME};
 
     # Certificats SSL (seront créés par Certbot)
-    ssl_certificate /etc/letsencrypt/live/chatkit.ve2fpd.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/chatkit.ve2fpd.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem;
 
     # Configuration SSL recommandée
     ssl_protocols TLSv1.2 TLSv1.3;

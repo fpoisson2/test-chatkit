@@ -78,9 +78,13 @@ services:
     network_mode: host
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/init-nginx.sh:/init-nginx.sh:ro
       - ./certbot/www:/var/www/certbot:ro
-      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/conf:/etc/letsencrypt
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME:-chatkit.ve2fpd.com}
+    entrypoint: ["/bin/sh", "/init-nginx.sh"]
     depends_on:
       - backend
       - frontend
@@ -90,7 +94,15 @@ services:
     volumes:
       - ./certbot/www:/var/www/certbot:rw
       - ./certbot/conf:/etc/letsencrypt:rw
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+      - ./nginx/certbot-entrypoint.sh:/certbot-entrypoint.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME:-chatkit.ve2fpd.com}
+      SSL_EMAIL: ${SSL_EMAIL:-}
+      SSL_STAGING: ${SSL_STAGING:-false}
+    entrypoint: ["/bin/sh", "/certbot-entrypoint.sh"]
+    depends_on:
+      - nginx
   db:
     image: pgvector/pgvector:pg16
     network_mode: host

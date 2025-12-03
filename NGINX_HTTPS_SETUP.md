@@ -1,154 +1,121 @@
 # Configuration Nginx et HTTPS
 
-Ce guide explique comment utiliser Nginx avec HTTPS dans votre environnement Docker.
+Configuration automatique de Nginx avec certificats SSL Let's Encrypt pour votre environnement Docker.
+
+## Fonctionnalités
+
+✅ **Configuration automatique** - Aucun script manuel à exécuter
+✅ **Certificats SSL automatiques** - Let's Encrypt intégré
+✅ **Renouvellement automatique** - Les certificats sont renouvelés tous les 12 heures
+✅ **Configuration par variables d'environnement** - Changez simplement le domaine dans `.env`
+✅ **Support Cloudflare Tunnel** - Détection automatique du trafic tunnel
 
 ## Structure des fichiers
 
 ```
 ├── nginx/
 │   ├── nginx.conf                    # Configuration principale de Nginx
-│   └── conf.d/
-│       └── chatkit.ve2fpd.com.conf  # Configuration du site
-├── certbot/
+│   ├── conf.d/
+│   │   └── site.conf.template       # Template de configuration (utilise ${DOMAIN_NAME})
+│   ├── init-nginx.sh                # Script de démarrage Nginx
+│   └── certbot-entrypoint.sh        # Script d'initialisation SSL
+├── certbot/                          # Créé automatiquement
 │   ├── www/                          # Répertoire pour le challenge ACME
-│   └── conf/                         # Certificats SSL
-├── docker-compose.yml                # Configuration Docker mise à jour
-└── init-letsencrypt.sh              # Script d'initialisation SSL
+│   └── conf/                         # Certificats SSL (git ignored)
+├── docker-compose.yml                # Configuration Docker
+└── .env                              # Variables d'environnement
 ```
 
-## Prérequis
+## Configuration
 
-1. Docker et Docker Compose installés
-2. Le domaine `chatkit.ve2fpd.com` doit pointer vers votre serveur (192.168.1.116)
-3. Les ports 80 et 443 doivent être ouverts et accessibles depuis Internet
+### 1. Variables d'environnement
 
-## Installation
+Configurez votre domaine dans le fichier `.env`:
 
-### Première utilisation - Obtenir les certificats SSL
+```bash
+# Nom de domaine pour l'application
+DOMAIN_NAME="chatkit.ve2fpd.com"
 
-1. **Modifier l'email dans le script** (optionnel mais recommandé):
+# Email pour Let's Encrypt (recommandé)
+SSL_EMAIL="votre@email.com"
+
+# Mode staging pour les tests (true/false)
+SSL_STAGING="false"
+```
+
+### 2. Prérequis
+
+Avant de démarrer, assurez-vous que:
+
+1. **Le domaine pointe vers votre serveur**
    ```bash
-   nano init-letsencrypt.sh
-   # Changez la ligne: email=""
-   # En: email="votre@email.com"
+   nslookup chatkit.ve2fpd.com
+   # Doit renvoyer l'IP de votre serveur (192.168.1.116)
    ```
 
-2. **Exécuter le script d'initialisation**:
+2. **Les ports 80 et 443 sont accessibles**
    ```bash
-   ./init-letsencrypt.sh
+   sudo netstat -tulpn | grep -E ':(80|443)'
+   # Aucun autre service ne doit utiliser ces ports
    ```
 
-   Ce script va:
-   - Créer les répertoires nécessaires
-   - Télécharger les paramètres TLS recommandés
-   - Créer un certificat temporaire auto-signé
-   - Démarrer Nginx
-   - Demander un certificat SSL valide à Let's Encrypt
-   - Recharger Nginx avec le vrai certificat
-
-### Démarrage normal (certificats déjà configurés)
+### 3. Démarrage
 
 ```bash
 docker-compose up -d
 ```
 
-## Configuration
+**C'est tout!** 🎉
+
+Au premier démarrage:
+1. Nginx démarre avec un certificat auto-signé temporaire
+2. Certbot demande automatiquement un certificat Let's Encrypt valide
+3. Les certificats sont installés
+4. Nginx recharge sa configuration
+5. Le renouvellement automatique est activé
+
+## Fonctionnement
 
 ### Nginx
 
-La configuration Nginx est dans `nginx/conf.d/chatkit.ve2fpd.com.conf`:
+Le conteneur Nginx:
+- Génère automatiquement sa configuration à partir du template
+- Crée un certificat auto-signé temporaire si nécessaire
+- Proxie le trafic vers backend et frontend
 
-- **Port 80 (HTTP)**:
-  - Gère le challenge ACME pour Let's Encrypt
-  - Redirige tout le trafic vers HTTPS (sauf si venant de Cloudflare Tunnel)
+**Routes configurées:**
+- `/api/*` → Backend (localhost:8000)
+- `/*` → Frontend (localhost:5183)
+- Support WebSocket pour Vite HMR
 
-- **Port 443 (HTTPS)**:
-  - Proxie `/api/` vers le backend (localhost:8000)
-  - Proxie `/` vers le frontend (localhost:5183)
-  - Gère les WebSockets pour HMR (Hot Module Replacement)
+### Certbot
 
-### Renouvellement automatique
+Le conteneur Certbot:
+- Vérifie si un certificat existe au démarrage
+- Si non: demande automatiquement un certificat à Let's Encrypt
+- Si oui: lance le renouvellement automatique (toutes les 12h)
 
-Le conteneur `certbot` est configuré pour renouveler automatiquement les certificats tous les 12 heures. Aucune action manuelle n'est requise.
+### Mode Staging
 
-## Commandes utiles
+Pour éviter les limites de rate limiting pendant les tests:
 
-### Vérifier les logs Nginx
 ```bash
-docker-compose logs -f nginx
+# Dans .env
+SSL_STAGING="true"
 ```
 
-### Recharger Nginx après modification de config
+Les certificats en mode staging ne sont **pas valides** mais permettent de tester la configuration sans limites.
+
+Une fois validé, remettez `SSL_STAGING="false"` et redémarrez:
 ```bash
-docker-compose exec nginx nginx -s reload
+docker-compose down
+sudo rm -rf certbot/conf  # Supprimer les certificats de test
+docker-compose up -d
 ```
 
-### Renouveler manuellement les certificats
-```bash
-docker-compose run --rm certbot renew
-docker-compose exec nginx nginx -s reload
-```
+## Cloudflare Tunnel
 
-### Vérifier la validité des certificats
-```bash
-docker-compose run --rm certbot certificates
-```
-
-### Tester la configuration Nginx
-```bash
-docker-compose exec nginx nginx -t
-```
-
-## Résolution des problèmes
-
-### Les certificats ne se génèrent pas
-
-1. Vérifiez que le domaine pointe bien vers votre serveur:
-   ```bash
-   nslookup chatkit.ve2fpd.com
-   ```
-
-2. Vérifiez que les ports 80 et 443 sont accessibles:
-   ```bash
-   sudo netstat -tulpn | grep -E ':(80|443)'
-   ```
-
-3. Consultez les logs de Certbot:
-   ```bash
-   docker-compose logs certbot
-   ```
-
-### Nginx ne démarre pas
-
-1. Vérifiez la syntaxe de la configuration:
-   ```bash
-   docker-compose exec nginx nginx -t
-   ```
-
-2. Consultez les logs:
-   ```bash
-   docker-compose logs nginx
-   ```
-
-### Erreur "Too many requests" de Let's Encrypt
-
-Si vous testez fréquemment, utilisez le mode staging:
-```bash
-# Dans init-letsencrypt.sh, changez:
-staging=1
-```
-
-## Mode staging pour tests
-
-Pour éviter de dépasser les limites de rate limiting de Let's Encrypt pendant les tests:
-
-1. Éditez `init-letsencrypt.sh` et changez `staging=0` en `staging=1`
-2. Exécutez le script
-3. Une fois que tout fonctionne, remettez `staging=0` et réexécutez le script
-
-## Intégration avec Cloudflare Tunnel
-
-La configuration HTTP inclut une logique anti-boucle pour détecter le trafic provenant du Cloudflare Tunnel:
+La configuration Nginx inclut une détection automatique du trafic Cloudflare Tunnel:
 
 ```nginx
 if ($http_x_forwarded_proto != 'https') {
@@ -156,12 +123,181 @@ if ($http_x_forwarded_proto != 'https') {
 }
 ```
 
-Cela permet:
-- Le trafic du tunnel Cloudflare (qui passe par HTTP avec header X-Forwarded-Proto: https) d'être traité normalement
-- Le trafic HTTP direct d'être redirigé vers HTTPS
+- Le trafic du tunnel Cloudflare (HTTP avec header `X-Forwarded-Proto: https`) est traité normalement
+- Le trafic HTTP direct est redirigé vers HTTPS
 
-## Notes de sécurité
+## Commandes utiles
 
-- Les certificats SSL sont stockés dans `certbot/conf/` - ne commitez jamais ce répertoire dans Git
-- Le fichier `.gitignore` devrait inclure `certbot/conf/`
-- Les certificats sont renouvelés automatiquement avant expiration (90 jours pour Let's Encrypt)
+### Vérifier les logs
+
+```bash
+# Logs Nginx
+docker-compose logs -f nginx
+
+# Logs Certbot
+docker-compose logs -f certbot
+
+# Tous les logs
+docker-compose logs -f
+```
+
+### Recharger Nginx
+
+Après modification de la configuration:
+
+```bash
+# Régénérer la configuration et redémarrer
+docker-compose restart nginx
+
+# Ou juste recharger
+docker-compose exec nginx nginx -s reload
+```
+
+### Vérifier les certificats
+
+```bash
+# Liste des certificats
+docker-compose exec certbot certbot certificates
+
+# Forcer le renouvellement
+docker-compose exec certbot certbot renew --force-renewal
+```
+
+### Tester la configuration Nginx
+
+```bash
+docker-compose exec nginx nginx -t
+```
+
+## Résolution des problèmes
+
+### Erreur: "Failed to obtain certificate"
+
+**Causes possibles:**
+
+1. **Le domaine ne pointe pas vers ce serveur**
+   ```bash
+   nslookup votre-domaine.com
+   # Vérifiez que l'IP correspond
+   ```
+
+2. **Les ports ne sont pas accessibles**
+   ```bash
+   # Depuis une machine externe
+   telnet votre-domaine.com 80
+   telnet votre-domaine.com 443
+   ```
+
+3. **Un autre service utilise le port 80/443**
+   ```bash
+   sudo lsof -i :80
+   sudo lsof -i :443
+   ```
+
+**Solution:** Activez le mode staging pour tester:
+```bash
+SSL_STAGING="true"  # Dans .env
+docker-compose restart certbot
+```
+
+### Nginx ne démarre pas
+
+```bash
+# Vérifier la syntaxe
+docker-compose exec nginx nginx -t
+
+# Vérifier les logs
+docker-compose logs nginx
+```
+
+### Le certificat n'est pas valide
+
+Si vous utilisez `SSL_STAGING="true"`, les certificats ne sont **pas valides** en production.
+
+Pour obtenir un vrai certificat:
+```bash
+# 1. Mettre à jour .env
+SSL_STAGING="false"
+
+# 2. Supprimer les certificats de test
+docker-compose down
+sudo rm -rf certbot/conf
+
+# 3. Redémarrer
+docker-compose up -d
+```
+
+### Erreur "Too many requests"
+
+Let's Encrypt limite à 5 certificats par semaine par domaine.
+
+**Solution:** Utilisez le mode staging pour les tests:
+```bash
+SSL_STAGING="true"
+```
+
+## Changer de domaine
+
+Pour utiliser un nouveau domaine:
+
+```bash
+# 1. Modifier .env
+DOMAIN_NAME="nouveau-domaine.com"
+
+# 2. Supprimer les anciens certificats
+docker-compose down
+sudo rm -rf certbot/conf
+
+# 3. Redémarrer
+docker-compose up -d
+```
+
+## Sécurité
+
+### Variables d'environnement sensibles
+
+Les variables suivantes sont dans `.env` (git ignored):
+- `SSL_EMAIL` - Votre email (pour les notifications Let's Encrypt)
+
+### Certificats SSL
+
+Les certificats sont stockés dans `certbot/conf/` (git ignored).
+
+**Ne committez JAMAIS ce répertoire!**
+
+## Architecture
+
+```
+┌─────────────┐
+│   Internet  │
+└──────┬──────┘
+       │ :80, :443
+       ▼
+┌─────────────────────────────────┐
+│  Nginx (nginx:alpine)           │
+│  • Configuration dynamique      │
+│  • Certificat auto-signé temp   │
+│  • Reverse proxy                │
+└──────┬──────────────────────────┘
+       │
+       ├─► /api/* → Backend :8000
+       └─► /* → Frontend :5183
+
+┌─────────────────────────────────┐
+│  Certbot (certbot/certbot)      │
+│  • Demande certificats SSL      │
+│  • Renouvellement auto (12h)    │
+└─────────────────────────────────┘
+```
+
+## Performance
+
+- **Démarrage initial:** ~30 secondes
+- **Génération certificat:** ~10-30 secondes
+- **Renouvellement:** Transparent, sans downtime
+
+## Références
+
+- [Let's Encrypt Documentation](https://letsencrypt.org/docs/)
+- [Nginx Documentation](https://nginx.org/en/docs/)
+- [Certbot Documentation](https://eff-certbot.readthedocs.io/)
