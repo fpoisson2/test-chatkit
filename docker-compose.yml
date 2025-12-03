@@ -181,11 +181,12 @@ services:
       - db
       - redis
   cloudflared:
+    build:
+      context: ./cloudflared
     image: cloudflare/cloudflared:latest
     container_name: cloudflared_tunnel
     restart: unless-stopped
     network_mode: host
-    entrypoint: ["/bin/sh", "/etc/cloudflared/entrypoint.sh"]
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
       CLOUDFLARE_TUNNEL_HOSTNAME: ${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required}
