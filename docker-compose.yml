@@ -183,6 +183,7 @@ services:
     network_mode: host
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+      TUNNEL_ID: ${CLOUDFLARE_TUNNEL_ID:?CLOUDFLARE_TUNNEL_ID is required}
     command: >-
       sh -c '
         set -euo pipefail;
@@ -190,7 +191,7 @@ services:
         DOMAIN=${DOMAIN_RAW#https://};
         DOMAIN=${DOMAIN#http://};
         DOMAIN=${DOMAIN%%/*};
-        cloudflared tunnel --no-autoupdate route dns --overwrite-dns --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required} "$DOMAIN";
+        cloudflared tunnel --no-autoupdate route dns --overwrite-dns ${CLOUDFLARE_TUNNEL_ID:?CLOUDFLARE_TUNNEL_ID is required} "$DOMAIN";
         cloudflared tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
       '
     depends_on:
