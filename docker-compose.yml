@@ -46,6 +46,46 @@ services:
     depends_on:
       - db
       - redis
+  nginx:
+    image: nginx:stable-alpine
+    container_name: chatkit_nginx
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - ./nginx/chatkit.conf:/etc/nginx/conf.d/chatkit.conf
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certbot:/var/www/certbot
+    environment:
+      CLOUDFLARE_TUNNEL_HOSTNAME: ${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required}
+    command: >-
+      sh -c '
+        set -euo pipefail;
+        DOMAIN_RAW=$${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required};
+        DOMAIN=$${DOMAIN_RAW#https://};
+        DOMAIN=$${DOMAIN#http://};
+        DOMAIN=$${DOMAIN%%/*};
+        apk add --no-cache openssl >/dev/null;
+        tmp_conf=$$(mktemp);
+        sed "s/chatkit.example.com/$$DOMAIN/g" /etc/nginx/conf.d/chatkit.conf > "$$tmp_conf";
+        cat "$$tmp_conf" > /etc/nginx/conf.d/chatkit.conf;
+        rm "$$tmp_conf";
+        if [ ! -f /etc/letsencrypt/live/$$DOMAIN/fullchain.pem ] || [ ! -f /etc/letsencrypt/live/$$DOMAIN/privkey.pem ]; then
+          echo "Generating placeholder certificate for $$DOMAIN so nginx can start";
+          mkdir -p /etc/letsencrypt/live/$$DOMAIN;
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout /etc/letsencrypt/live/$$DOMAIN/privkey.pem \
+            -out /etc/letsencrypt/live/$$DOMAIN/fullchain.pem \
+            -subj "/CN=$$DOMAIN";
+        fi;
+        while netstat -tln 2>/dev/null | grep -qE ":(80|443)\s"; do
+          echo "Ports 80/443 are busy; waiting before starting nginx...";
+          sleep 1;
+        done;
+        nginx -g "daemon off;"
+      '
   frontend:
     image: node:20
     working_dir: /workspace/frontend
@@ -140,6 +180,49 @@ services:
     depends_on:
       - db
       - redis
+  cloudflared:
+    build:
+      context: ./cloudflared
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared_tunnel
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+      CLOUDFLARE_TUNNEL_HOSTNAME: ${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required}
+    depends_on:
+      - nginx
+    volumes:
+      - ./cloudflared:/etc/cloudflared
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: chatkit_certbot
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:?CERTBOT_EMAIL is required}
+      CERTBOT_DOMAIN: ${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required}
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certbot:/var/www/certbot
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      set -euo pipefail
+      DOMAIN_RAW="$${CERTBOT_DOMAIN:?CERTBOT_DOMAIN is required}"
+      DOMAIN="$${DOMAIN_RAW#https://}"
+      DOMAIN="$${DOMAIN#http://}"
+      DOMAIN="$${DOMAIN%%/*}"
+      mkdir -p /var/www/certbot
+      certbot certonly --webroot --webroot-path=/var/www/certbot \
+        --email "$${CERTBOT_EMAIL}" --agree-tos --no-eff-email \
+        --keep-until-expiring --non-interactive -d "$${DOMAIN}"
+      while :; do
+        certbot renew --webroot --webroot-path=/var/www/certbot --quiet --no-self-upgrade
+        sleep 12h
+      done
+    depends_on:
+      - nginx
 volumes:
   frontend-node_modules:
   postgres-data:

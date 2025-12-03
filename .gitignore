@@ -15,6 +15,10 @@
 logs/
 test_config.env
 lti_private_key.pem
+letsencrypt/*
+!letsencrypt/.gitkeep
+certbot/*
+!certbot/.gitkeep
 
 # Coverage reports
 htmlcov/

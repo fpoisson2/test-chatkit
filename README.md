@@ -476,6 +476,33 @@ server {
 }
 ```
 
+### Cloudflare Tunnel + nginx + certbot (Docker Compose)
+
+The repository ships a compose stack that starts nginx, a Cloudflare Tunnel, and certbot together. You need to provide your tunnel token and domain before starting the services (the tunnel ID is auto-derived from the token, but you can still set it manually if needed):
+
+1. Populate `.env` with the required settings:
+
+   ```bash
+   CLOUDFLARE_TUNNEL_TOKEN=<token from the Cloudflare dashboard>
+   # Optional override: CLOUDFLARE_TUNNEL_ID=<tunnel id from the Cloudflare dashboard>
+   CLOUDFLARE_TUNNEL_HOSTNAME=chatkit.example.com # your domain served by the tunnel (no http/https)
+   CERTBOT_EMAIL=admin@example.com               # email for Let's Encrypt registration
+   ```
+
+2. The `cloudflared` service now builds a tiny wrapper image that adds a BusyBox shell and runs `/entrypoint.sh` inside the container (avoiding Compose-side variable interpolation). The script extracts the tunnel ID from `CLOUDFLARE_TUNNEL_TOKEN`, runs `cloudflared tunnel route dns --overwrite-dns <derived tunnel id> $CLOUDFLARE_TUNNEL_HOSTNAME` to create the DNS route, then starts the tunnel with `--token`. Ensure your token can manage DNS for that zone; you can still add the record manually or set `CLOUDFLARE_TUNNEL_ID` yourself. The containers strip any accidental `http://` or `https://` prefix from the hostname before using it.
+
+3. Ensure `nginx/chatkit.conf` still contains the `chatkit.example.com` placeholder; the nginx container automatically replaces that value with `CLOUDFLARE_TUNNEL_HOSTNAME` at startup (the file is mounted read/write so the update succeeds) and generates a short-lived self-signed certificate so nginx can boot before certbot issues the real one. The backends already point to `localhost` so no manual IP changes are required.
+
+4. Make sure ports 80 and 443 are free on the host before starting the stack (nginx will wait until those ports are available). Stop any other reverse proxies or web servers bound to those ports first.
+
+5. Start the proxy stack (nginx + certbot + tunnel) alongside the app:
+
+   ```bash
+   docker compose up -d nginx certbot cloudflared
+   ```
+
+The certbot container writes certificates into `./letsencrypt` automatically using the shared `/var/www/certbot` webroot, and nginx consumes them directly without any template-rendering step.
+
 ---
 
 ## Tests
