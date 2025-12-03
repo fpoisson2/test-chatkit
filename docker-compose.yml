@@ -80,6 +80,10 @@ services:
             -out /etc/letsencrypt/live/$$DOMAIN/fullchain.pem \
             -subj "/CN=$$DOMAIN";
         fi;
+        while netstat -tln 2>/dev/null | grep -qE ":(80|443)\s"; do
+          echo "Ports 80/443 are busy; waiting before starting nginx...";
+          sleep 1;
+        done;
         nginx -g "daemon off;"
       '
   frontend:
@@ -183,6 +187,7 @@ services:
     network_mode: host
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+      CLOUDFLARE_TUNNEL_HOSTNAME: ${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required}
     command: >-
       sh -c '
         set -euo pipefail;

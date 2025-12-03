@@ -493,7 +493,9 @@ The repository ships a compose stack that starts nginx, a Cloudflare Tunnel, and
 
 3. Ensure `nginx/chatkit.conf` still contains the `chatkit.example.com` placeholder; the nginx container automatically replaces that value with `CLOUDFLARE_TUNNEL_HOSTNAME` at startup (the file is mounted read/write so the update succeeds) and generates a short-lived self-signed certificate so nginx can boot before certbot issues the real one. The backends already point to `localhost` so no manual IP changes are required.
 
-4. Start the proxy stack (nginx + certbot + tunnel) alongside the app:
+4. Make sure ports 80 and 443 are free on the host before starting the stack (nginx will wait until those ports are available). Stop any other reverse proxies or web servers bound to those ports first.
+
+5. Start the proxy stack (nginx + certbot + tunnel) alongside the app:
 
    ```bash
    docker compose up -d nginx certbot cloudflared
