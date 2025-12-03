@@ -46,6 +46,18 @@ services:
     depends_on:
       - db
       - redis
+  nginx:
+    image: nginx:stable-alpine
+    container_name: chatkit_nginx
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - ./nginx/chatkit.conf:/etc/nginx/conf.d/chatkit.conf:ro
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certbot:/var/www/certbot
   frontend:
     image: node:20
     working_dir: /workspace/frontend
@@ -140,6 +152,33 @@ services:
     depends_on:
       - db
       - redis
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared_tunnel
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+    depends_on:
+      - nginx
+    volumes:
+      - ./cloudflared:/etc/cloudflared
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: chatkit_certbot
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:?CERTBOT_EMAIL is required}
+      CERTBOT_DOMAIN: ${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required}
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certbot:/var/www/certbot
+    command: >-
+      sh -c "certbot certonly --webroot --webroot-path=/var/www/certbot --email $$CERTBOT_EMAIL --agree-tos --no-eff-email --keep-until-expiring --non-interactive -d $$CERTBOT_DOMAIN && \
+      while :; do certbot renew --webroot --webroot-path=/var/www/certbot --quiet; sleep 12h; done"
 volumes:
   frontend-node_modules:
   postgres-data:

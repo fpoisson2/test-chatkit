@@ -476,6 +476,28 @@ server {
 }
 ```
 
+### Cloudflare Tunnel + nginx + certbot (Docker Compose)
+
+The repository ships a compose stack that starts nginx, a Cloudflare Tunnel, and certbot together. You need to provide your tunnel token (not tunnel ID) and domain before starting the services:
+
+1. Populate `.env` with the required settings:
+
+   ```bash
+   CLOUDFLARE_TUNNEL_TOKEN=<token from the Cloudflare dashboard>
+   CLOUDFLARE_TUNNEL_HOSTNAME=chatkit.example.com # your domain served by the tunnel
+   CERTBOT_EMAIL=admin@example.com               # email for Let's Encrypt registration
+   ```
+
+2. Update `nginx/chatkit.conf` so that `server_name`, `ssl_certificate`, and `ssl_certificate_key` all reference the same domain value you set in `CLOUDFLARE_TUNNEL_HOSTNAME`. The backends already point to `localhost` so no manual IP changes are required.
+
+3. Start the proxy stack (nginx + certbot + tunnel) alongside the app:
+
+   ```bash
+   docker compose up -d nginx certbot cloudflared
+   ```
+
+The certbot container writes certificates into `./letsencrypt` automatically using the shared `/var/www/certbot` webroot, and nginx consumes them directly without any template-rendering step.
+
 ---
 
 ## Tests
