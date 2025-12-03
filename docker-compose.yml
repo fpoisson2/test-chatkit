@@ -229,14 +229,14 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: |
       set -euo pipefail
-      DOMAIN_RAW="${CERTBOT_DOMAIN:?CERTBOT_DOMAIN is required}"
-      DOMAIN="${DOMAIN_RAW#https://}"
-      DOMAIN="${DOMAIN#http://}"
-      DOMAIN="${DOMAIN%%/*}"
+      DOMAIN_RAW="$${CERTBOT_DOMAIN:?CERTBOT_DOMAIN is required}"
+      DOMAIN="$${DOMAIN_RAW#https://}"
+      DOMAIN="$${DOMAIN#http://}"
+      DOMAIN="$${DOMAIN%%/*}"
       mkdir -p /var/www/certbot
       certbot certonly --webroot --webroot-path=/var/www/certbot \
-        --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email \
-        --keep-until-expiring --non-interactive -d "$DOMAIN"
+        --email "$${CERTBOT_EMAIL}" --agree-tos --no-eff-email \
+        --keep-until-expiring --non-interactive -d "$${DOMAIN}"
       while :; do
         certbot renew --webroot --webroot-path=/var/www/certbot --quiet --no-self-upgrade
         sleep 12h
