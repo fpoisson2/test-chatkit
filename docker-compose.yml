@@ -65,7 +65,10 @@ services:
         set -euo pipefail;
         DOMAIN=${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required};
         apk add --no-cache openssl >/dev/null;
-        sed -i "s/chatkit.example.com/$DOMAIN/g" /etc/nginx/conf.d/chatkit.conf;
+        tmp_conf=$(mktemp);
+        sed "s/chatkit.example.com/$DOMAIN/g" /etc/nginx/conf.d/chatkit.conf > "$tmp_conf";
+        cat "$tmp_conf" > /etc/nginx/conf.d/chatkit.conf;
+        rm "$tmp_conf";
         if [ ! -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ] || [ ! -f /etc/letsencrypt/live/$DOMAIN/privkey.pem ]; then
           echo "Generating placeholder certificate for $DOMAIN so nginx can start";
           mkdir -p /etc/letsencrypt/live/$DOMAIN;
@@ -194,16 +197,17 @@ services:
     volumes:
       - ./letsencrypt:/etc/letsencrypt
       - ./certbot:/var/www/certbot
-    entrypoint: ["sh", "-c"]
-    command: >-
-      "mkdir -p /var/www/certbot &&
-       certbot certonly --webroot --webroot-path=/var/www/certbot
-         --email $CERTBOT_EMAIL --agree-tos --no-eff-email
-         --keep-until-expiring --non-interactive -d $CERTBOT_DOMAIN &&
-       while :; do
-         certbot renew --webroot --webroot-path=/var/www/certbot --quiet --no-self-upgrade;
-         sleep 12h;
-       done"
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      set -euo pipefail
+      mkdir -p /var/www/certbot
+      certbot certonly --webroot --webroot-path=/var/www/certbot \
+        --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email \
+        --keep-until-expiring --non-interactive -d "$CERTBOT_DOMAIN"
+      while :; do
+        certbot renew --webroot --webroot-path=/var/www/certbot --quiet --no-self-upgrade
+        sleep 12h
+      done
     depends_on:
       - nginx
 volumes:
