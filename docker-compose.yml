@@ -185,10 +185,10 @@ services:
     container_name: cloudflared_tunnel
     restart: unless-stopped
     network_mode: host
+    entrypoint: ["/bin/sh", "/etc/cloudflared/entrypoint.sh"]
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
       CLOUDFLARE_TUNNEL_HOSTNAME: ${CLOUDFLARE_TUNNEL_HOSTNAME:?CLOUDFLARE_TUNNEL_HOSTNAME is required}
-    command: ["/bin/sh", "/etc/cloudflared/entrypoint.sh"]
     depends_on:
       - nginx
     volumes:
