@@ -78,9 +78,13 @@ Originally built for education (hence the LMS integration), but works for:
    ADMIN_PASSWORD=SecurePassword123!
 
    # Basic configuration
+   APP_DOMAIN=chatkit.example.com
    ALLOWED_ORIGINS=http://localhost:5183,http://127.0.0.1:5183
    DATABASE_URL=postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit
    ```
+
+   Le domaine indiqué dans `APP_DOMAIN` sera utilisé pour renseigner automatiquement
+   la directive `server_name` d'Nginx.
 
    Optionnel : pour exposer la stack via un tunnel Cloudflare, ajoutez également :
 

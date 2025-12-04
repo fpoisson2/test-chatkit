@@ -77,11 +77,15 @@ services:
     image: nginx:alpine
     container_name: nginx
     restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+    command: >-
+      /bin/sh -c "APP_DOMAIN=${APP_DOMAIN:-localhost}; envsubst '$$APP_DOMAIN' < /etc/nginx/conf.d/site.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"
     ports:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d/site.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/conf.d/site.conf.template:/etc/nginx/conf.d/site.conf.template:ro
     networks:
       - app-network
     depends_on:
