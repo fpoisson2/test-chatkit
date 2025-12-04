@@ -82,6 +82,14 @@ Originally built for education (hence the LMS integration), but works for:
    DATABASE_URL=postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit
    ```
 
+   Optionnel : pour exposer la stack via un tunnel Cloudflare, ajoutez également :
+
+   ```bash
+   CLOUDFLARED_TOKEN=eyJhIjoi...
+   ```
+
+   Le service `cloudflared` du `docker-compose` démarrera automatiquement avec ce jeton.
+
 3. **Launch the platform**
    ```bash
    docker-compose up -d
