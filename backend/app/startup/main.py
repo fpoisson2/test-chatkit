@@ -425,9 +425,9 @@ def register_database_startup(app: FastAPI) -> None:
     def _on_startup() -> None:
         wait_for_database()
         ensure_database_extensions()
+        Base.metadata.create_all(bind=engine)
         check_and_apply_migrations()
         run_ad_hoc_migrations()
-        Base.metadata.create_all(bind=engine)
         ensure_vector_indexes()
         with SessionLocal() as session:
             override = get_thread_title_prompt_override(session)
