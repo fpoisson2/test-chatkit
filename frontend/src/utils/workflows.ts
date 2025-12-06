@@ -605,15 +605,15 @@ export const setStartAutoRunMessage = (
   message: string,
 ): AgentParameters => {
   const next = { ...parameters } as AgentParameters;
-  const trimmed = message.trim();
+  const hasContent = message.trim().length > 0;
 
-  if (!trimmed) {
+  if (!hasContent) {
     delete (next as Record<string, unknown>).auto_start_user_message;
     return stripEmpty(next as Record<string, unknown>);
   }
 
   delete (next as Record<string, unknown>).auto_start_assistant_message;
-  (next as Record<string, unknown>).auto_start_user_message = trimmed;
+  (next as Record<string, unknown>).auto_start_user_message = message;
   return stripEmpty(next as Record<string, unknown>);
 };
 
@@ -622,15 +622,15 @@ export const setStartAutoRunAssistantMessage = (
   message: string,
 ): AgentParameters => {
   const next = { ...parameters } as AgentParameters;
-  const trimmed = message.trim();
+  const hasContent = message.trim().length > 0;
 
-  if (!trimmed) {
+  if (!hasContent) {
     delete (next as Record<string, unknown>).auto_start_assistant_message;
     return stripEmpty(next as Record<string, unknown>);
   }
 
   delete (next as Record<string, unknown>).auto_start_user_message;
-  (next as Record<string, unknown>).auto_start_assistant_message = trimmed;
+  (next as Record<string, unknown>).auto_start_assistant_message = message;
   return stripEmpty(next as Record<string, unknown>);
 };
 
