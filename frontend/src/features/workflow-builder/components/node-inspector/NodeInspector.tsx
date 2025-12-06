@@ -412,24 +412,24 @@ const NodeInspector = ({
 
   const widgetVariables = [
     {
+      name: "input.action.type",
+      description: "Type de l'action déclenchée (ex: \"bouton.click\").",
+    },
+    {
+      name: "input.action.payload",
+      description: "Objet payload complet de l'action.",
+    },
+    {
+      name: "input.action.payload.value",
+      description: "Valeur transmise par le widget (ex: true, false, un nombre...).",
+    },
+    {
+      name: "input.action.payload.label",
+      description: "Label du bouton cliqué.",
+    },
+    {
       name: "input.widget",
-      description: "Identifiant du widget exécuté (slug ou expression).",
-    },
-    {
-      name: "input.widget_slug",
-      description: "Slug du widget de bibliothèque, si disponible.",
-    },
-    {
-      name: "input.widget_expression",
-      description: "Expression JSON utilisée pour définir le widget dynamique.",
-    },
-    {
-      name: "input.widget_definition",
-      description: "Définition complète du widget diffusé à l'utilisateur.",
-    },
-    {
-      name: "input.action",
-      description: "Payload renvoyé par l'action utilisateur sur le widget.",
+      description: "Identifiant du widget exécuté.",
     },
   ];
 
