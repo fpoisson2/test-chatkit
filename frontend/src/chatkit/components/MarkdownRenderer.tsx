@@ -9,6 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useI18n } from '../../i18n/I18nProvider';
+import { MermaidDiagram } from './MermaidDiagram';
 import 'katex/dist/katex.min.css';
 import './MarkdownRenderer.css';
 
@@ -82,7 +83,7 @@ export function MarkdownRenderer({ content, theme = 'light' }: MarkdownRendererP
           p: ({ children }) => <p className="chatkit-markdown-paragraph">{children}</p>,
           code: ({ inline, children, className, ...props }: any) => {
             const isInline = inline || !className?.includes('language-');
-            const codeContent = String(children);
+            const codeContent = String(children).replace(/\n$/, '');
 
             // Si c'est inline ou qu'il n'y a pas de langage spécifié et pas de retour à la ligne
             if (isInline && !codeContent.includes('\n')) {
@@ -91,6 +92,11 @@ export function MarkdownRenderer({ content, theme = 'light' }: MarkdownRendererP
 
             // Extraire le langage de la className (format: "language-javascript")
             const language = className?.replace('language-', '') || 'text';
+
+            // Rendu spécial pour les diagrammes Mermaid
+            if (language === 'mermaid') {
+              return <MermaidDiagram chart={codeContent} theme={theme} />;
+            }
 
             return <CodeBlock language={language} theme={theme}>{codeContent}</CodeBlock>;
           },
