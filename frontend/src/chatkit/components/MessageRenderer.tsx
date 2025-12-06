@@ -236,20 +236,21 @@ function AssistantMessageContent({
     <>
       <div className="chatkit-message-content" ref={contentRef}>
         {item.content
-          .filter((content) => {
+          .map((content, originalIndex) => ({ content, originalIndex }))
+          .filter(({ content }) => {
             if (content.type !== 'output_text') {
               return true;
             }
             const rawText = content.text ?? '';
             return !isLikelyJson(rawText);
           })
-          .map((content, idx) => {
+          .map(({ content, originalIndex }) => {
             const isAssistantStreaming =
               item.type === 'assistant_message' && item.status === 'in_progress';
-            const isStreamingBlock = isAssistantStreaming && idx === lastOutputIndex;
+            const isStreamingBlock = isAssistantStreaming && originalIndex === lastOutputIndex;
 
             return (
-              <div key={idx}>
+              <div key={originalIndex}>
                 {content.type === 'output_text' && (
                   <>
                     <MemoizedMarkdownRenderer
