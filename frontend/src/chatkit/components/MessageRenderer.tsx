@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import type { ThreadItem } from '../types';
 import type { WidgetContext } from '../widgets';
 import { WidgetRenderer } from '../widgets';
@@ -193,6 +193,15 @@ function AssistantMessageContent({
       .join('\n\n');
   };
 
+  const lastOutputIndex = useMemo(() => {
+    for (let i = item.content.length - 1; i >= 0; i -= 1) {
+      if ((item.content[i] as any).type === 'output_text') {
+        return i;
+      }
+    }
+    return -1;
+  }, [item.content]);
+
   const handleExportPdf = async () => {
     setExportingFormat('pdf');
     try {
@@ -237,6 +246,7 @@ function AssistantMessageContent({
           .map((content, idx) => {
             const isAssistantStreaming =
               item.type === 'assistant_message' && item.status === 'in_progress';
+            const isStreamingBlock = isAssistantStreaming && idx === lastOutputIndex;
 
             return (
               <div key={idx}>
@@ -245,7 +255,7 @@ function AssistantMessageContent({
                     <MarkdownRenderer
                       content={content.text}
                       theme={theme}
-                      isStreaming={isAssistantStreaming}
+                      isStreaming={isStreamingBlock}
                     />
                     {content.annotations && content.annotations.length > 0 && (
                       <AnnotationRenderer annotations={content.annotations} />
