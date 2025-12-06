@@ -1,7 +1,7 @@
 /**
  * Composant pour afficher du contenu markdown avec support LaTeX
  */
-import React, { useEffect, useState } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -170,3 +170,9 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
     </div>
   );
 }
+
+export const MemoizedMarkdownRenderer = memo(
+  MarkdownRenderer,
+  (prev, next) =>
+    prev.content === next.content && prev.theme === next.theme && prev.isStreaming === next.isStreaming
+);

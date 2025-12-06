@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import type { ThreadItem } from '../types';
 import type { WidgetContext } from '../widgets';
 import { WidgetRenderer } from '../widgets';
-import { MarkdownRenderer } from './MarkdownRenderer';
+import { MemoizedMarkdownRenderer } from './MarkdownRenderer';
 import { WorkflowRenderer } from './WorkflowRenderer';
 import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
@@ -252,7 +252,7 @@ function AssistantMessageContent({
               <div key={idx}>
                 {content.type === 'output_text' && (
                   <>
-                    <MarkdownRenderer
+                    <MemoizedMarkdownRenderer
                       content={content.text}
                       theme={theme}
                       isStreaming={isStreamingBlock}
