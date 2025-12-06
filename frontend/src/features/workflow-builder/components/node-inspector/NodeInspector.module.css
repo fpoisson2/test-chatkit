@@ -800,6 +800,18 @@
   gap: 1rem;
 }
 
+.schemaFieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.schemaMobileLabel {
+  display: none;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #6b7280);
+}
+
 .schemaProperty {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 0.5rem;
@@ -814,7 +826,7 @@
   gap: 0.75rem;
   margin-bottom: 0.75rem;
   align-items: start;
-  height: 40px;
+  min-height: 40px;
 }
 
 .schemaPropertyHeaderLabels {
@@ -1034,6 +1046,76 @@
   font-size: 0.875rem;
   background-color: var(--input-background, #ffffff);
   color: var(--text-primary, #111827);
+}
+
+@media (max-width: 900px) {
+  .schemaBuilder {
+    padding: 0.75rem;
+  }
+
+  .schemaBuilderHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .schemaProperty {
+    padding: 0.75rem;
+  }
+
+  .schemaPropertyHeader {
+    grid-template-columns: 1fr;
+    height: auto;
+    margin-bottom: 0.5rem;
+  }
+
+  .schemaPropertyHeaderLabels {
+    display: none;
+  }
+
+  .schemaPropertyName,
+  .schemaPropertyType,
+  .schemaPropertyDescription,
+  .schemaPropertyRemove {
+    width: 100%;
+  }
+
+  .schemaPropertyRemove {
+    justify-self: flex-end;
+  }
+
+  .schemaPropertyRequired {
+    max-width: none;
+    padding-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .schemaPropertyDetails {
+    padding: 0.5rem 0;
+    border: none;
+    background-color: transparent;
+  }
+
+  .schemaEnumItem {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .schemaEnumRemove {
+    align-self: flex-end;
+  }
+
+  .schemaObjectHeader,
+  .schemaArrayType {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .schemaMobileLabel {
+    display: inline;
+  }
 }
 
 /* Dark theme styles for schema builder inputs */

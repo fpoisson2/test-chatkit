@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import styles from "../NodeInspector.module.css";
 import { TrashIcon } from "./TrashIcon";
 
@@ -102,6 +102,7 @@ interface PropertyEditorProps {
 
 function PropertyEditor({ property, onChange, onRemove, onAddNested }: PropertyEditorProps) {
   const [showEnumValues, setShowEnumValues] = useState(false);
+  const fieldId = useId();
 
   const handleTypeChange = (type: SchemaPropertyType) => {
     const updates: Partial<SchemaProperty> = { type };
@@ -141,42 +142,64 @@ function PropertyEditor({ property, onChange, onRemove, onAddNested }: PropertyE
   return (
     <div className={styles.schemaProperty}>
       <div className={styles.schemaPropertyHeader}>
-        <input
-          type="text"
-          placeholder="Nom de la propriété"
-          value={property.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          className={styles.schemaPropertyName}
-        />
-
-        <select
-          value={property.type}
-          onChange={(e) => handleTypeChange(e.target.value as SchemaPropertyType)}
-          className={styles.schemaPropertyType}
-        >
-          <option value="string">STR</option>
-          <option value="number">NUM</option>
-          <option value="boolean">BOOL</option>
-          <option value="enum">ENUM</option>
-          <option value="object">OBJ</option>
-          <option value="array">ARR</option>
-        </select>
-
-        <input
-          type="text"
-          placeholder="Description (optionnel)"
-          value={property.description || ""}
-          onChange={(e) => onChange({ description: e.target.value })}
-          className={styles.schemaPropertyDescription}
-        />
-
-        <label className={styles.schemaPropertyRequired}>
+        <div className={styles.schemaFieldGroup}>
+          <label className={styles.schemaMobileLabel} htmlFor={`${fieldId}-name`}>
+            Nom
+          </label>
           <input
-            type="checkbox"
-            checked={property.required || false}
-            onChange={(e) => onChange({ required: e.target.checked })}
+            id={`${fieldId}-name`}
+            type="text"
+            placeholder="Nom de la propriété"
+            value={property.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            className={styles.schemaPropertyName}
           />
-        </label>
+        </div>
+
+        <div className={styles.schemaFieldGroup}>
+          <label className={styles.schemaMobileLabel} htmlFor={`${fieldId}-type`}>
+            Type
+          </label>
+          <select
+            id={`${fieldId}-type`}
+            value={property.type}
+            onChange={(e) => handleTypeChange(e.target.value as SchemaPropertyType)}
+            className={styles.schemaPropertyType}
+          >
+            <option value="string">STR</option>
+            <option value="number">NUM</option>
+            <option value="boolean">BOOL</option>
+            <option value="enum">ENUM</option>
+            <option value="object">OBJ</option>
+            <option value="array">ARR</option>
+          </select>
+        </div>
+
+        <div className={styles.schemaFieldGroup}>
+          <label className={styles.schemaMobileLabel} htmlFor={`${fieldId}-description`}>
+            Description
+          </label>
+          <input
+            id={`${fieldId}-description`}
+            type="text"
+            placeholder="Description (optionnel)"
+            value={property.description || ""}
+            onChange={(e) => onChange({ description: e.target.value })}
+            className={styles.schemaPropertyDescription}
+          />
+        </div>
+
+        <div className={styles.schemaFieldGroup}>
+          <label className={styles.schemaPropertyRequired} htmlFor={`${fieldId}-required`}>
+            <input
+              id={`${fieldId}-required`}
+              type="checkbox"
+              checked={property.required || false}
+              onChange={(e) => onChange({ required: e.target.checked })}
+            />
+            <span className={styles.schemaMobileLabel}>Requis</span>
+          </label>
+        </div>
 
         <button
           type="button"
