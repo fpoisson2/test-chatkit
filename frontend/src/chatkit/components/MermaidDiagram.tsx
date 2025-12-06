@@ -12,11 +12,14 @@ export interface MermaidDiagramProps {
 
 // Counter for unique IDs
 let mermaidIdCounter = 0;
+const mermaidSvgCache = new Map<string, { svg: string; error: string | null }>();
 
 export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [svg, setSvg] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const cacheKey = `${theme}:${chart}`;
+  const cached = mermaidSvgCache.get(cacheKey) ?? { svg: '', error: null };
+  const [svg, setSvg] = useState<string>(cached.svg);
+  const [error, setError] = useState<string | null>(cached.error);
   const [idRef] = useState(() => `mermaid-${++mermaidIdCounter}-${Date.now()}`);
 
   useEffect(() => {
@@ -70,6 +73,7 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
         const isValid = await mermaid.parse(chart);
         if (!isValid) {
           setError('Invalid Mermaid syntax');
+          mermaidSvgCache.set(cacheKey, { svg: '', error: 'Invalid Mermaid syntax' });
           return;
         }
 
@@ -77,15 +81,17 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
         const { svg: renderedSvg } = await mermaid.render(idRef, chart);
         setSvg(renderedSvg);
         setError(null);
+        mermaidSvgCache.set(cacheKey, { svg: renderedSvg, error: null });
       } catch (err) {
         console.error('Mermaid rendering error:', err);
         setError(err instanceof Error ? err.message : 'Failed to render diagram');
         setSvg('');
+        mermaidSvgCache.set(cacheKey, { svg: '', error: err instanceof Error ? err.message : 'Failed to render diagram' });
       }
     };
 
     renderDiagram();
-  }, [chart, theme, idRef]);
+  }, [cacheKey, chart, theme, idRef]);
 
   if (error) {
     return (
