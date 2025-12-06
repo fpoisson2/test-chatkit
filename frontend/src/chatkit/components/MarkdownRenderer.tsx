@@ -16,6 +16,7 @@ import './MarkdownRenderer.css';
 export interface MarkdownRendererProps {
   content: string;
   theme?: 'light' | 'dark';
+  isStreaming?: boolean;
 }
 
 interface CodeBlockProps {
@@ -74,7 +75,7 @@ function CodeBlock({ children, language, theme = 'light' }: CodeBlockProps): JSX
   );
 }
 
-export function MarkdownRenderer({ content, theme = 'light' }: MarkdownRendererProps): JSX.Element {
+export function MarkdownRenderer({ content, theme = 'light', isStreaming = false }: MarkdownRendererProps): JSX.Element {
   return (
     <div className="chatkit-markdown">
       <ReactMarkdown
@@ -95,6 +96,10 @@ export function MarkdownRenderer({ content, theme = 'light' }: MarkdownRendererP
 
             // Rendu spécial pour les diagrammes Mermaid
             if (language === 'mermaid') {
+              // Show as code block while streaming, then render diagram when complete
+              if (isStreaming) {
+                return <CodeBlock language="mermaid" theme={theme}>{codeContent}</CodeBlock>;
+              }
               return <MermaidDiagram chart={codeContent} theme={theme} />;
             }
 

@@ -238,7 +238,11 @@ function AssistantMessageContent({
             <div key={idx}>
               {content.type === 'output_text' && (
                 <>
-                  <MarkdownRenderer content={content.text} theme={theme} />
+                  <MarkdownRenderer
+                    content={content.text}
+                    theme={theme}
+                    isStreaming={item.status === 'in_progress'}
+                  />
                   {content.annotations && content.annotations.length > 0 && (
                     <AnnotationRenderer annotations={content.annotations} />
                   )}
