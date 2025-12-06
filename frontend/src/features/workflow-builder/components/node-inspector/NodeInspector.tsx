@@ -54,6 +54,7 @@ import { labelForKind } from "../../utils";
 import type { WorkflowNodeHandlers } from "../../hooks/useWorkflowNodeHandlers";
 import { TrashIcon } from "./components/TrashIcon";
 import styles from "./NodeInspector.module.css";
+import { useGraphContext } from "../../contexts";
 import { useTransformInspectorState } from "./hooks/useTransformInspectorState";
 import { AgentInspectorSectionV2 as AgentInspectorSection } from "./sections/AgentInspectorSectionV2";
 import { AssistantMessageInspectorSection } from "./sections/AssistantMessageInspectorSection";
@@ -298,6 +299,7 @@ const NodeInspector = ({
   const { t } = useI18n();
   const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
+  const { nodes, edges } = useGraphContext();
 
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
   const endAgsConfig = useMemo(() => getEndAgsConfig(parameters), [parameters]);
@@ -389,6 +391,50 @@ const NodeInspector = ({
     parameters,
     onTransformExpressionsChange,
   });
+
+  const previousNode = useMemo(() => {
+    const incomingEdge = edges.find((edge) => edge.target === node.id);
+    if (!incomingEdge) return null;
+    return nodes.find((candidate) => candidate.id === incomingEdge.source) ?? null;
+  }, [edges, node.id, nodes]);
+
+  const watchAvailableVariables = useMemo(() => {
+    if (!previousNode) return [];
+    if (previousNode.data.kind === "widget") {
+      return [
+        {
+          name: "input.widget",
+          description: "Identifiant du widget exécuté (slug ou expression).",
+        },
+        {
+          name: "input.widget_slug",
+          description: "Slug du widget de bibliothèque, si disponible.",
+        },
+        {
+          name: "input.widget_expression",
+          description: "Expression JSON utilisée pour définir le widget dynamique.",
+        },
+        {
+          name: "input.widget_definition",
+          description: "Définition complète du widget diffusé à l'utilisateur.",
+        },
+        {
+          name: "input.action",
+          description: "Payload renvoyé par l'action utilisateur sur le widget.",
+        },
+      ];
+    }
+    return [];
+  }, [previousNode]);
+
+  const previousNodeLabel = useMemo(() => {
+    if (!previousNode) return null;
+    return (
+      previousNode.data.displayName.trim() ||
+      previousNode.data.slug ||
+      labelForKind(previousNode.data.kind, t)
+    );
+  }, [previousNode, t]);
 
   return (
     <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
@@ -672,7 +718,12 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "watch" ? <WatchInspectorSection /> : null}
+      {kind === "watch" ? (
+        <WatchInspectorSection
+          availableVariables={watchAvailableVariables}
+          previousNodeLabel={previousNodeLabel ?? undefined}
+        />
+      ) : null}
     </section>
   );
 };
