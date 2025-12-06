@@ -84,24 +84,19 @@ interface MermaidBlockProps {
 
 function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: MermaidBlockProps): JSX.Element {
   const [canRenderDiagram, setCanRenderDiagram] = useState(!isStreaming);
+  const [renderableChart, setRenderableChart] = useState<string | null>(!isStreaming ? codeContent : null);
 
   useEffect(() => {
-    if (!isStreaming) {
-      setCanRenderDiagram(true);
-      return undefined;
-    }
-
     let cancelled = false;
     const rafId = requestAnimationFrame(() => {
       try {
         mermaid.parse(codeContent);
         if (!cancelled) {
+          setRenderableChart(codeContent);
           setCanRenderDiagram(true);
         }
       } catch {
-        if (!cancelled) {
-          setCanRenderDiagram((prev) => prev);
-        }
+        // Keep showing the last valid render while streaming continues.
       }
     });
 
@@ -111,11 +106,11 @@ function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: Mer
     };
   }, [codeContent, isStreaming]);
 
-  if (!canRenderDiagram) {
+  if (!renderableChart || !canRenderDiagram) {
     return <CodeBlock language="mermaid" theme={theme}>{codeContent}</CodeBlock>;
   }
 
-  return <MermaidDiagram chart={codeContent} theme={theme} />;
+  return <MermaidDiagram chart={renderableChart} theme={theme} />;
 }
 
 export function MarkdownRenderer({ content, theme = 'light', isStreaming = false }: MarkdownRendererProps): JSX.Element {
