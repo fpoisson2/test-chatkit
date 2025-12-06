@@ -136,7 +136,10 @@ html {
 
 body {
   margin: 0;
-  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  min-height: 100svh;
+  height: auto;
   /* overflow: hidden; Removed to allow mobile pull-to-refresh */
   background: var(--main-background);
   color: var(--text-color);
