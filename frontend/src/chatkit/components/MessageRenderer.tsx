@@ -234,25 +234,30 @@ function AssistantMessageContent({
             const rawText = content.text ?? '';
             return !isLikelyJson(rawText);
           })
-          .map((content, idx) => (
-            <div key={idx}>
-              {content.type === 'output_text' && (
-                <>
-                  <MarkdownRenderer
-                    content={content.text}
-                    theme={theme}
-                    isStreaming={item.status === 'in_progress'}
-                  />
-                  {content.annotations && content.annotations.length > 0 && (
-                    <AnnotationRenderer annotations={content.annotations} />
-                  )}
-                </>
-              )}
-              {content.type === 'widget' && (
-                <WidgetRenderer widget={content.widget} context={createWidgetContext(item.id)} />
-              )}
-            </div>
-          ))}
+          .map((content, idx) => {
+            const isAssistantStreaming =
+              item.type === 'assistant_message' && item.status !== 'completed' && item.status !== 'failed';
+
+            return (
+              <div key={idx}>
+                {content.type === 'output_text' && (
+                  <>
+                    <MarkdownRenderer
+                      content={content.text}
+                      theme={theme}
+                      isStreaming={isAssistantStreaming}
+                    />
+                    {content.annotations && content.annotations.length > 0 && (
+                      <AnnotationRenderer annotations={content.annotations} />
+                    )}
+                  </>
+                )}
+                {content.type === 'widget' && (
+                  <WidgetRenderer widget={content.widget} context={createWidgetContext(item.id)} />
+                )}
+              </div>
+            );
+          })}
         {item.status === 'in_progress' && <LoadingIndicator label={loadingLabel} />}
       </div>
       {item.status !== 'in_progress' && (
