@@ -2,6 +2,11 @@ import { conditionModeOptions } from "../constants";
 import { HelpTooltip } from "../components/HelpTooltip";
 import styles from "../NodeInspector.module.css";
 
+type AvailableVariable = {
+  name: string;
+  description?: string;
+};
+
 type ConditionInspectorSectionProps = {
   nodeId: string;
   conditionPath: string;
@@ -10,6 +15,8 @@ type ConditionInspectorSectionProps = {
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
+  availableVariables?: AvailableVariable[];
+  previousNodeLabel?: string;
 };
 
 export const ConditionInspectorSection = ({
@@ -20,8 +27,31 @@ export const ConditionInspectorSection = ({
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
+  availableVariables = [],
+  previousNodeLabel,
 }: ConditionInspectorSectionProps) => (
   <>
+    {availableVariables.length > 0 && (
+      <div className={styles.nodeInspectorPanelInner}>
+        <p className={styles.nodeInspectorLabel}>
+          Variables disponibles
+          {previousNodeLabel && (
+            <span className={styles.nodeInspectorCodeNote}> depuis « {previousNodeLabel} »</span>
+          )}
+        </p>
+        <ul className={styles.nodeInspectorList}>
+          {availableVariables.map(({ name, description }) => (
+            <li key={name} className={styles.nodeInspectorListItem}>
+              <code className={styles.nodeInspectorCode}>{name}</code>
+              {description && (
+                <span className={styles.nodeInspectorCodeNote}> — {description}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
     <label className={styles.nodeInspectorField}>
       <span className={styles.nodeInspectorLabel}>
         Variable observée
