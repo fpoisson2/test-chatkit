@@ -1,7 +1,7 @@
 /**
  * Composant pour afficher du contenu markdown avec support LaTeX
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -9,6 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useI18n } from '../../i18n/I18nProvider';
+import mermaid from 'mermaid';
 import { MermaidDiagram } from './MermaidDiagram';
 import 'katex/dist/katex.min.css';
 import './MarkdownRenderer.css';
@@ -75,6 +76,43 @@ function CodeBlock({ children, language, theme = 'light' }: CodeBlockProps): JSX
   );
 }
 
+interface MermaidBlockProps {
+  codeContent: string;
+  theme?: 'light' | 'dark';
+  isStreaming?: boolean;
+}
+
+function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: MermaidBlockProps): JSX.Element {
+  const [canRenderDiagram, setCanRenderDiagram] = useState(!isStreaming);
+  const [renderableChart, setRenderableChart] = useState<string | null>(!isStreaming ? codeContent : null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const rafId = requestAnimationFrame(() => {
+      try {
+        mermaid.parse(codeContent);
+        if (!cancelled) {
+          setRenderableChart(codeContent);
+          setCanRenderDiagram(true);
+        }
+      } catch {
+        // Keep showing the last valid render while streaming continues.
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
+  }, [codeContent, isStreaming]);
+
+  if (!renderableChart || !canRenderDiagram) {
+    return <CodeBlock language="mermaid" theme={theme}>{codeContent}</CodeBlock>;
+  }
+
+  return <MermaidDiagram chart={renderableChart} theme={theme} />;
+}
+
 export function MarkdownRenderer({ content, theme = 'light', isStreaming = false }: MarkdownRendererProps): JSX.Element {
   return (
     <div className="chatkit-markdown">
@@ -96,11 +134,13 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
 
             // Rendu spécial pour les diagrammes Mermaid
             if (language === 'mermaid') {
-              // Show as code block while streaming, then render diagram when complete
-              if (isStreaming) {
-                return <CodeBlock language="mermaid" theme={theme}>{codeContent}</CodeBlock>;
-              }
-              return <MermaidDiagram chart={codeContent} theme={theme} />;
+              return (
+                <MermaidBlock
+                  codeContent={codeContent}
+                  theme={theme}
+                  isStreaming={isStreaming}
+                />
+              );
             }
 
             return <CodeBlock language={language} theme={theme}>{codeContent}</CodeBlock>;
