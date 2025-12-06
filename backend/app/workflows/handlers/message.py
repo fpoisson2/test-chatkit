@@ -12,10 +12,12 @@ from typing import TYPE_CHECKING, Any
 
 from chatkit.types import (
     AssistantMessageContent,
+    AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
     InferenceOptions,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
+    ThreadItemUpdated,
     UserMessageItem,
     UserMessageTextContent,
 )
@@ -177,33 +179,38 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
         message_id = agent_context.generate_id("message")
         thread_id = agent_context.thread.id
 
-        # Start message
+        # Start message with empty content and in_progress status
         assistant_item = AssistantMessageItem(
             id=message_id,
             thread_id=thread_id,
             created_at=datetime.now(),
             content=[AssistantMessageContent(text="")],
+            status="in_progress",
         )
         await emit_stream_event(ThreadItemAddedEvent(item=assistant_item))
 
-        # Stream chunks
+        # Stream chunks as text deltas
         for chunk in self._iter_stream_chunks(message):
-            assistant_item = AssistantMessageItem(
-                id=message_id,
-                thread_id=thread_id,
-                created_at=datetime.now(),
-                content=[AssistantMessageContent(text=chunk)],
+            delta_update = AssistantMessageContentPartTextDelta(
+                content_index=0,
+                delta=chunk,
             )
-            await emit_stream_event(ThreadItemAddedEvent(item=assistant_item))
+            await emit_stream_event(
+                ThreadItemUpdated(
+                    item_id=message_id,
+                    update=delta_update,
+                )
+            )
             if delay_seconds > 0:
                 await asyncio.sleep(delay_seconds)
 
-        # Finish message
+        # Finish message with complete content and no status (completed)
         assistant_item = AssistantMessageItem(
             id=message_id,
             thread_id=thread_id,
             created_at=datetime.now(),
             content=[AssistantMessageContent(text=message)],
+            status=None,
         )
         await emit_stream_event(ThreadItemDoneEvent(item=assistant_item))
 

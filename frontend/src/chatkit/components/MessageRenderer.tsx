@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import type { ThreadItem } from '../types';
 import type { WidgetContext } from '../widgets';
 import { WidgetRenderer } from '../widgets';
-import { MarkdownRenderer } from './MarkdownRenderer';
+import { MemoizedMarkdownRenderer } from './MarkdownRenderer';
 import { WorkflowRenderer } from './WorkflowRenderer';
 import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
@@ -193,6 +193,15 @@ function AssistantMessageContent({
       .join('\n\n');
   };
 
+  const lastOutputIndex = useMemo(() => {
+    for (let i = item.content.length - 1; i >= 0; i -= 1) {
+      if ((item.content[i] as any).type === 'output_text') {
+        return i;
+      }
+    }
+    return -1;
+  }, [item.content]);
+
   const handleExportPdf = async () => {
     setExportingFormat('pdf');
     try {
@@ -227,28 +236,39 @@ function AssistantMessageContent({
     <>
       <div className="chatkit-message-content" ref={contentRef}>
         {item.content
-          .filter((content) => {
+          .map((content, originalIndex) => ({ content, originalIndex }))
+          .filter(({ content }) => {
             if (content.type !== 'output_text') {
               return true;
             }
             const rawText = content.text ?? '';
             return !isLikelyJson(rawText);
           })
-          .map((content, idx) => (
-            <div key={idx}>
-              {content.type === 'output_text' && (
-                <>
-                  <MarkdownRenderer content={content.text} theme={theme} />
-                  {content.annotations && content.annotations.length > 0 && (
-                    <AnnotationRenderer annotations={content.annotations} />
-                  )}
-                </>
-              )}
-              {content.type === 'widget' && (
-                <WidgetRenderer widget={content.widget} context={createWidgetContext(item.id)} />
-              )}
-            </div>
-          ))}
+          .map(({ content, originalIndex }) => {
+            const isAssistantStreaming =
+              item.type === 'assistant_message' && item.status === 'in_progress';
+            const isStreamingBlock = isAssistantStreaming && originalIndex === lastOutputIndex;
+
+            return (
+              <div key={originalIndex}>
+                {content.type === 'output_text' && (
+                  <>
+                    <MemoizedMarkdownRenderer
+                      content={content.text}
+                      theme={theme}
+                      isStreaming={isStreamingBlock}
+                    />
+                    {content.annotations && content.annotations.length > 0 && (
+                      <AnnotationRenderer annotations={content.annotations} />
+                    )}
+                  </>
+                )}
+                {content.type === 'widget' && (
+                  <WidgetRenderer widget={content.widget} context={createWidgetContext(item.id)} />
+                )}
+              </div>
+            );
+          })}
         {item.status === 'in_progress' && <LoadingIndicator label={loadingLabel} />}
       </div>
       {item.status !== 'in_progress' && (
