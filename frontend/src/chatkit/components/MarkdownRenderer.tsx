@@ -87,28 +87,32 @@ function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: Mer
 
   useEffect(() => {
     let cancelled = false;
-    if (isStreaming && !renderableChart) {
-      return () => {
-        cancelled = true;
-      };
-    }
 
-    const rafId = requestAnimationFrame(() => {
+    const attemptParse = () => {
       try {
         mermaid.parse(codeContent);
         if (!cancelled) {
-          setRenderableChart(codeContent);
+          setRenderableChart(prev => (prev === codeContent ? prev : codeContent));
         }
       } catch {
         // Keep showing the last valid render while streaming continues.
       }
-    });
+    };
 
+    if (isStreaming) {
+      const timeoutId = window.setTimeout(attemptParse, 150);
+      return () => {
+        cancelled = true;
+        clearTimeout(timeoutId);
+      };
+    }
+
+    const rafId = requestAnimationFrame(attemptParse);
     return () => {
       cancelled = true;
       cancelAnimationFrame(rafId);
     };
-  }, [codeContent, isStreaming, renderableChart]);
+  }, [codeContent, isStreaming]);
 
   if (!renderableChart) {
     return <CodeBlock language="mermaid" theme={theme}>{codeContent}</CodeBlock>;
