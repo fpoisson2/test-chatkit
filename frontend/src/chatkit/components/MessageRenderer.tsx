@@ -236,7 +236,7 @@ function AssistantMessageContent({
           })
           .map((content, idx) => {
             const isAssistantStreaming =
-              item.type === 'assistant_message' && item.status !== 'completed' && item.status !== 'failed';
+              item.type === 'assistant_message' && item.status === 'in_progress';
 
             return (
               <div key={idx}>
