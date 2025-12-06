@@ -87,6 +87,12 @@ function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: Mer
 
   useEffect(() => {
     let cancelled = false;
+    if (isStreaming && !renderableChart) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const rafId = requestAnimationFrame(() => {
       try {
         mermaid.parse(codeContent);
@@ -102,7 +108,7 @@ function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: Mer
       cancelled = true;
       cancelAnimationFrame(rafId);
     };
-  }, [codeContent, isStreaming]);
+  }, [codeContent, isStreaming, renderableChart]);
 
   if (!renderableChart) {
     return <CodeBlock language="mermaid" theme={theme}>{codeContent}</CodeBlock>;
