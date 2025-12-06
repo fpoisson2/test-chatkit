@@ -22,6 +22,10 @@ import {
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
   setWidgetNodeSource,
+  getStartAutoRunAssistantMessage,
+  getStartAutoRunMessage,
+  setStartAutoRunAssistantMessage,
+  setStartAutoRunMessage,
   setEndAgsVariableId,
   setEndAgsScoreExpression,
   setEndAgsMaximumExpression,
@@ -237,7 +241,7 @@ describe("start telephony helpers", () => {
 
     expect(resolved).toEqual({
       auto_start: true,
-      auto_start_user_message: "Bonjour",
+      auto_start_user_message: "  Bonjour  ",
       telephony: {
         routes: ["+33123456789"],
         workflow: { slug: "voice-start" },
@@ -246,6 +250,14 @@ describe("start telephony helpers", () => {
         },
       },
     });
+  });
+
+  it("préserve les espaces finaux dans les messages start", () => {
+    const withUserMessage = setStartAutoRunMessage({}, "Bonjour ");
+    expect(getStartAutoRunMessage(withUserMessage)).toBe("Bonjour ");
+
+    const withAssistantMessage = setStartAutoRunAssistantMessage({}, "Salut  ");
+    expect(getStartAutoRunAssistantMessage(withAssistantMessage)).toBe("Salut  ");
   });
 });
 
