@@ -86,30 +86,28 @@ function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: Mer
   const [canRenderDiagram, setCanRenderDiagram] = useState(!isStreaming);
 
   useEffect(() => {
-    let isMounted = true;
-
     if (!isStreaming) {
       setCanRenderDiagram(true);
       return undefined;
     }
 
-    const validateDiagram = async () => {
+    let cancelled = false;
+    const rafId = requestAnimationFrame(() => {
       try {
-        await mermaid.parse(codeContent);
-        if (isMounted) {
+        mermaid.parse(codeContent);
+        if (!cancelled) {
           setCanRenderDiagram(true);
         }
       } catch {
-        if (isMounted) {
-          setCanRenderDiagram(false);
+        if (!cancelled) {
+          setCanRenderDiagram((prev) => prev);
         }
       }
-    };
-
-    validateDiagram();
+    });
 
     return () => {
-      isMounted = false;
+      cancelled = true;
+      cancelAnimationFrame(rafId);
     };
   }, [codeContent, isStreaming]);
 
