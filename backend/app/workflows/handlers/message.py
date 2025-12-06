@@ -179,12 +179,13 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
         message_id = agent_context.generate_id("message")
         thread_id = agent_context.thread.id
 
-        # Start message with empty content
+        # Start message with empty content and in_progress status
         assistant_item = AssistantMessageItem(
             id=message_id,
             thread_id=thread_id,
             created_at=datetime.now(),
             content=[AssistantMessageContent(text="")],
+            status="in_progress",
         )
         await emit_stream_event(ThreadItemAddedEvent(item=assistant_item))
 
@@ -203,12 +204,13 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
             if delay_seconds > 0:
                 await asyncio.sleep(delay_seconds)
 
-        # Finish message with complete content
+        # Finish message with complete content and no status (completed)
         assistant_item = AssistantMessageItem(
             id=message_id,
             thread_id=thread_id,
             created_at=datetime.now(),
             content=[AssistantMessageContent(text=message)],
+            status=None,
         )
         await emit_stream_event(ThreadItemDoneEvent(item=assistant_item))
 

@@ -547,6 +547,7 @@ class AssistantMessageItem(ThreadItemBase):
     type: Literal["assistant_message"] = "assistant_message"
     content: list[AssistantMessageContent]
     reasoning_id: str | None = None
+    status: Literal["in_progress", "completed", "failed"] | None = None
 
 
 class ClientToolCallItem(ThreadItemBase):
