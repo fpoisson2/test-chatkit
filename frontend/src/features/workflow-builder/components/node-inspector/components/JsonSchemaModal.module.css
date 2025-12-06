@@ -104,3 +104,36 @@
 .toggleButton:not(:last-child) {
   border-right: 1px solid var(--border-subtle);
 }
+
+@media (max-width: 720px) {
+  .container {
+    gap: 8px;
+  }
+
+  .modeToggle {
+    justify-content: flex-start;
+  }
+
+  .toggleGroup {
+    width: 100%;
+  }
+
+  .toggleButton {
+    flex: 1;
+    padding: 10px 12px;
+  }
+
+  .textarea {
+    min-height: 240px;
+    font-size: 12px;
+  }
+
+  .hintRow {
+    align-items: flex-start;
+  }
+
+  .footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
