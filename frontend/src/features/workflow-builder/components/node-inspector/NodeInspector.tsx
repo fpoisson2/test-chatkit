@@ -398,34 +398,57 @@ const NodeInspector = ({
     return nodes.find((candidate) => candidate.id === incomingEdge.source) ?? null;
   }, [edges, node.id, nodes]);
 
-  const watchAvailableVariables = useMemo(() => {
-    if (!previousNode) return [];
-    if (previousNode.data.kind === "widget") {
-      return [
-        {
-          name: "input.widget",
-          description: "Identifiant du widget exécuté (slug ou expression).",
-        },
-        {
-          name: "input.widget_slug",
-          description: "Slug du widget de bibliothèque, si disponible.",
-        },
-        {
-          name: "input.widget_expression",
-          description: "Expression JSON utilisée pour définir le widget dynamique.",
-        },
-        {
-          name: "input.widget_definition",
-          description: "Définition complète du widget diffusé à l'utilisateur.",
-        },
-        {
-          name: "input.action",
-          description: "Payload renvoyé par l'action utilisateur sur le widget.",
-        },
-      ];
+  // Find the effective upstream node that provides variables (handles Watch passthrough)
+  const upstreamSourceNode = useMemo(() => {
+    if (!previousNode) return null;
+    // If previous node is a Watch, look at its predecessor to find the real source
+    if (previousNode.data.kind === "watch") {
+      const watchIncomingEdge = edges.find((edge) => edge.target === previousNode.id);
+      if (!watchIncomingEdge) return null;
+      return nodes.find((candidate) => candidate.id === watchIncomingEdge.source) ?? null;
+    }
+    return previousNode;
+  }, [previousNode, edges, nodes]);
+
+  const widgetVariables = [
+    {
+      name: "input.action.type",
+      description: "Type de l'action déclenchée (ex: \"oui.click\").",
+    },
+    {
+      name: "input.action.raw_payload.value",
+      description: "Valeur transmise par le widget (ex: true, false, un nombre...).",
+    },
+    {
+      name: "input.action.raw_payload.label",
+      description: "Label du bouton cliqué.",
+    },
+    {
+      name: "input.action.raw_payload",
+      description: "Objet payload complet de l'action.",
+    },
+    {
+      name: "input.widget",
+      description: "Identifiant du widget exécuté.",
+    },
+  ];
+
+  const upstreamAvailableVariables = useMemo(() => {
+    if (!upstreamSourceNode) return [];
+    if (upstreamSourceNode.data.kind === "widget") {
+      return widgetVariables;
     }
     return [];
-  }, [previousNode]);
+  }, [upstreamSourceNode]);
+
+  const upstreamSourceLabel = useMemo(() => {
+    if (!upstreamSourceNode) return null;
+    return (
+      upstreamSourceNode.data.displayName.trim() ||
+      upstreamSourceNode.data.slug ||
+      labelForKind(upstreamSourceNode.data.kind, t)
+    );
+  }, [upstreamSourceNode, t]);
 
   const previousNodeLabel = useMemo(() => {
     if (!previousNode) return null;
@@ -493,6 +516,8 @@ const NodeInspector = ({
           onConditionPathChange={onConditionPathChange}
           onConditionModeChange={onConditionModeChange}
           onConditionValueChange={onConditionValueChange}
+          availableVariables={upstreamAvailableVariables}
+          previousNodeLabel={upstreamSourceLabel ?? undefined}
         />
       ) : null}
 
@@ -720,8 +745,8 @@ const NodeInspector = ({
 
       {kind === "watch" ? (
         <WatchInspectorSection
-          availableVariables={watchAvailableVariables}
-          previousNodeLabel={previousNodeLabel ?? undefined}
+          availableVariables={upstreamAvailableVariables}
+          previousNodeLabel={upstreamSourceLabel ?? undefined}
         />
       ) : null}
     </section>
