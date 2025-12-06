@@ -58,7 +58,7 @@ export function validateGraphStructure(
 }
 
 /**
- * Validates a condition node to ensure it has at least 2 active outputs
+ * Validates a condition node to ensure it has at least 1 active output
  * and no duplicate branches.
  */
 function validateConditionNode(
@@ -71,8 +71,8 @@ function validateConditionNode(
     (edge) => edge.source === node.id && enabledNodes.has(edge.target),
   );
 
-  if (outgoing.length < 2) {
-    return `Le bloc conditionnel « ${label} » doit comporter au moins deux sorties actives.`;
+  if (outgoing.length < 1) {
+    return `Le bloc conditionnel « ${label} » doit comporter au moins une sortie active.`;
   }
 
   const seenBranches = new Set<string>();
