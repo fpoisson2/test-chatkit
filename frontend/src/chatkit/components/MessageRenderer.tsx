@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import type { ThreadItem } from '../types';
 import type { WidgetContext } from '../widgets';
 import { WidgetRenderer } from '../widgets';
-import { MemoizedMarkdownRenderer } from './MarkdownRenderer';
+import { MarkdownRenderer, MemoizedMarkdownRenderer } from './MarkdownRenderer';
 import { WorkflowRenderer } from './WorkflowRenderer';
 import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
