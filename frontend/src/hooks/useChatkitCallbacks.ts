@@ -28,6 +28,14 @@ export function useChatkitCallbacks({
   reportError,
   resetError,
 }: UseChatkitCallbacksOptions): ChatkitCallbacks {
+  const scheduleStateUpdate = useCallback((update: () => void) => {
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(update);
+    } else {
+      setTimeout(update, 0);
+    }
+  }, []);
+
   // Get refs and setters from context
   const { setters, refs } = useChatContext();
   const {
@@ -46,53 +54,68 @@ export function useChatkitCallbacks({
   const onThreadChange = useCallback(
     ({ threadId }: { threadId: string | null }) => {
       console.debug("[ChatKit] thread change", { threadId });
-      if (threadId === null) {
-        clearStoredThreadId(sessionOwner, persistenceSlug);
-        setInitialThreadId(null);
-      } else {
-        isNewConversationDraftRef.current = false;
-        persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
-        setInitialThreadId((current) => (current === threadId ? current : threadId));
+      scheduleStateUpdate(() => {
+        if (threadId === null) {
+          clearStoredThreadId(sessionOwner, persistenceSlug);
+          setInitialThreadId(null);
+        } else {
+          isNewConversationDraftRef.current = false;
+          persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
+          setInitialThreadId((current) => (current === threadId ? current : threadId));
 
-        if (wasNewConversationStreamingRef.current) {
-          setStreamingThreadIds((prev) => new Set(prev).add(threadId));
-          setIsNewConversationStreaming(false);
+          if (wasNewConversationStreamingRef.current) {
+            setStreamingThreadIds((prev) => new Set(prev).add(threadId));
+            setIsNewConversationStreaming(false);
+          }
         }
-      }
+      });
     },
-    [sessionOwner, persistenceSlug, setInitialThreadId, setStreamingThreadIds, setIsNewConversationStreaming, isNewConversationDraftRef, wasNewConversationStreamingRef],
+    [
+      sessionOwner,
+      persistenceSlug,
+      setInitialThreadId,
+      setStreamingThreadIds,
+      setIsNewConversationStreaming,
+      isNewConversationDraftRef,
+      wasNewConversationStreamingRef,
+      scheduleStateUpdate,
+    ],
   );
 
   const onResponseStart = useCallback(
     ({ threadId }: { threadId: string | null }) => {
       resetError();
       const isTempId = threadId?.startsWith("__temp_thread_");
-      if (threadId === null || isTempId) {
-        setIsNewConversationStreaming(true);
-        wasNewConversationStreamingRef.current = true;
-      } else {
-        wasNewConversationStreamingRef.current = false;
-        setStreamingThreadIds((prev) => new Set(prev).add(threadId));
-      }
+      scheduleStateUpdate(() => {
+        if (threadId === null || isTempId) {
+          setIsNewConversationStreaming(true);
+          wasNewConversationStreamingRef.current = true;
+        } else {
+          wasNewConversationStreamingRef.current = false;
+          setStreamingThreadIds((prev) => new Set(prev).add(threadId));
+        }
+      });
     },
-    [resetError, setIsNewConversationStreaming, setStreamingThreadIds, wasNewConversationStreamingRef],
+    [resetError, setIsNewConversationStreaming, setStreamingThreadIds, wasNewConversationStreamingRef, scheduleStateUpdate],
   );
 
   const onResponseEnd = useCallback(
     ({ finalThreadId }: { threadId: string | null; finalThreadId: string | null }) => {
       console.debug("[ChatKit] response end", { finalThreadId });
       requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
-      setIsNewConversationStreaming(false);
-      wasNewConversationStreamingRef.current = false;
-      if (finalThreadId) {
-        setStreamingThreadIds((prev) => {
-          const next = new Set(prev);
-          next.delete(finalThreadId);
-          return next;
-        });
-      }
+      scheduleStateUpdate(() => {
+        setIsNewConversationStreaming(false);
+        wasNewConversationStreamingRef.current = false;
+        if (finalThreadId) {
+          setStreamingThreadIds((prev) => {
+            const next = new Set(prev);
+            next.delete(finalThreadId);
+            return next;
+          });
+        }
+      });
     },
-    [requestRefreshRef, setIsNewConversationStreaming, setStreamingThreadIds, wasNewConversationStreamingRef],
+    [requestRefreshRef, setIsNewConversationStreaming, setStreamingThreadIds, wasNewConversationStreamingRef, scheduleStateUpdate],
   );
 
   const onLog = useCallback(
@@ -111,11 +134,11 @@ export function useChatkitCallbacks({
             metadataTitle: metadata?.title,
             hasTitle,
           });
-          setCurrentThread(thread);
+          scheduleStateUpdate(() => setCurrentThread(thread));
         }
       }
     },
-    [lastThreadSnapshotRef, setCurrentThread],
+    [lastThreadSnapshotRef, setCurrentThread, scheduleStateUpdate],
   );
 
   const onError = useCallback(
