@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChatContext } from "../context/ChatContext";
 import {
   clearStoredThreadId,
@@ -28,13 +28,19 @@ export function useChatkitCallbacks({
   reportError,
   resetError,
 }: UseChatkitCallbacksOptions): ChatkitCallbacks {
+  const pendingUpdatesRef = useRef<Array<() => void>>([]);
+  const [flushToken, setFlushToken] = useState(0);
+
   const scheduleStateUpdate = useCallback((update: () => void) => {
-    if (typeof queueMicrotask === "function") {
-      queueMicrotask(update);
-    } else {
-      setTimeout(update, 0);
-    }
+    pendingUpdatesRef.current.push(update);
+    setFlushToken((token) => token + 1);
   }, []);
+
+  useEffect(() => {
+    if (pendingUpdatesRef.current.length === 0) return;
+    const updates = pendingUpdatesRef.current.splice(0);
+    updates.forEach((update) => update());
+  }, [flushToken]);
 
   // Get refs and setters from context
   const { setters, refs } = useChatContext();
