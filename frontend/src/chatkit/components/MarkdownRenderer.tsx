@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -173,7 +174,7 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
           td: ({ children }) => <td className="chatkit-markdown-td">{children}</td>,
         }}
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeRaw, rehypeKatex]}
       >
         {content}
       </ReactMarkdown>
