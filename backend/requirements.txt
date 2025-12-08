@@ -45,3 +45,4 @@ pytest-cov>=4.1.0
 
 # Document conversion
 python-docx>=1.1.0  # For DOCX file handling and validation
+docxtpl>=0.19.0  # For DOCX templating with JSON data

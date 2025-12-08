@@ -1063,6 +1063,7 @@ export const en: TranslationDictionary = {
   "workflowBuilder.node.kind.wait_for_user_input": "Wait for user input",
   "workflowBuilder.node.kind.assistant_message": "Assistant message",
   "workflowBuilder.node.kind.user_message": "User message",
+  "workflowBuilder.node.kind.docx_template": "DOCX template",
   "workflowBuilder.node.kind.json_vector_store": "JSON vector store",
   "workflowBuilder.node.kind.parallel_split": "Parallel split",
   "workflowBuilder.node.kind.parallel_join": "Parallel join",

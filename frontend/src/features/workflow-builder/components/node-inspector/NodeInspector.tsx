@@ -21,6 +21,7 @@ import {
   getConditionMode,
   getConditionPath,
   getConditionValue,
+  getDocxTemplateConfig,
   getWhileCondition,
   getWhileMaxIterations,
   getWhileIterationVar,
@@ -56,6 +57,7 @@ import { TrashIcon } from "./components/TrashIcon";
 import styles from "./NodeInspector.module.css";
 import { useGraphContext } from "../../contexts";
 import { useTransformInspectorState } from "./hooks/useTransformInspectorState";
+import { useDocxTemplateInspectorState } from "./hooks/useDocxTemplateInspectorState";
 import { AgentInspectorSectionV2 as AgentInspectorSection } from "./sections/AgentInspectorSectionV2";
 import { AssistantMessageInspectorSection } from "./sections/AssistantMessageInspectorSection";
 import { ConditionInspectorSection } from "./sections/ConditionInspectorSection";
@@ -73,6 +75,7 @@ import { WaitForUserInputInspectorSection } from "./sections/WaitForUserInputIns
 import { WatchInspectorSection } from "./sections/WatchInspectorSection";
 import { ParallelSplitInspectorSection } from "./sections/ParallelSplitInspectorSection";
 import { WidgetInspectorSection } from "./sections/WidgetInspectorSection";
+import { DocxTemplateInspectorSection } from "./sections/DocxTemplateInspectorSection";
 
 export type NodeInspectorProps = {
   node: FlowNode;
@@ -193,6 +196,9 @@ const NodeInspector = ({
     handleAssistantMessageStreamDelayChange: onAssistantMessageStreamDelayChange,
     handleWaitForUserInputMessageChange: onWaitForUserInputMessageChange,
     handleUserMessageChange: onUserMessageChange,
+    handleDocxTemplateTemplatePathChange: onDocxTemplateTemplatePathChange,
+    handleDocxTemplateOutputPathChange: onDocxTemplateOutputPathChange,
+    handleDocxTemplateDataChange: onDocxTemplateDataChange,
   } = nodeHandlers;
 
   // LTI workflow-level handlers
@@ -355,6 +361,23 @@ const NodeInspector = ({
   const vectorStoreNodeMetadataExpression = vectorStoreNodeConfig.metadata_expression.trim();
   const vectorStoreNodeBlueprintExpression =
     vectorStoreNodeConfig.workflow_blueprint_expression.trim();
+
+  const docxTemplateConfig = useMemo(() => getDocxTemplateConfig(parameters), [parameters]);
+  const docxTemplatePath = kind === "docx_template" ? docxTemplateConfig.templatePath : "";
+  const docxTemplateOutputPath = kind === "docx_template" ? docxTemplateConfig.outputPath : "";
+
+  const {
+    dataText: docxTemplateDataText,
+    dataError: docxTemplateDataError,
+    updateDataDraft: updateDocxTemplateDataDraft,
+    commitData: commitDocxTemplateData,
+    setDataError: setDocxTemplateDataError,
+  } = useDocxTemplateInspectorState({
+    kind,
+    nodeId: node.id,
+    parameters,
+    onDataChange: onDocxTemplateDataChange,
+  });
 
   const vectorStoreNodeExists =
     vectorStoreNodeSlug.length > 0 && vectorStores.some((store) => store.slug === vectorStoreNodeSlug);
@@ -740,6 +763,22 @@ const NodeInspector = ({
           onDraftChange={(value) => updateTransformDraft(value)}
           onCommit={commitTransformExpressions}
           onResetError={() => setTransformExpressionsError(null)}
+        />
+      ) : null}
+
+      {kind === "docx_template" ? (
+        <DocxTemplateInspectorSection
+          templatePath={docxTemplatePath}
+          outputPath={docxTemplateOutputPath}
+          dataText={docxTemplateDataText}
+          dataError={docxTemplateDataError}
+          onTemplatePathChange={(value) => onDocxTemplateTemplatePathChange(node.id, value)}
+          onOutputPathChange={(value) => onDocxTemplateOutputPathChange(node.id, value)}
+          onDataDraftChange={(value) => {
+            updateDocxTemplateDataDraft(value, true);
+            setDocxTemplateDataError(null);
+          }}
+          onDataCommit={(value) => commitDocxTemplateData(value)}
         />
       ) : null}
 

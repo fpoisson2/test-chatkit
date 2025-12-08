@@ -22,6 +22,7 @@ export type NodeKind =
   | "wait_for_user_input"
   | "assistant_message"
   | "user_message"
+  | "docx_template"
   | "json_vector_store"
   | "parallel_split"
   | "parallel_join"
@@ -116,6 +117,7 @@ export type {
   StateAssignmentScope,
   WebSearchConfig,
   WidgetVariableAssignment,
+  DocxTemplateConfig,
   VoiceAgentTool,
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
