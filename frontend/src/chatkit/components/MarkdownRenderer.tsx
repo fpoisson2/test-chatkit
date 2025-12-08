@@ -1,7 +1,7 @@
 /**
  * Composant pour afficher du contenu markdown avec support LaTeX
  */
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -19,6 +19,12 @@ export interface MarkdownRendererProps {
   content: string;
   theme?: 'light' | 'dark';
   isStreaming?: boolean;
+}
+
+function decodeHtmlEntities(value: string): string {
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = value;
+  return textarea.value;
 }
 
 interface CodeBlockProps {
@@ -123,6 +129,8 @@ function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: Mer
 }
 
 export function MarkdownRenderer({ content, theme = 'light', isStreaming = false }: MarkdownRendererProps): JSX.Element {
+  const normalizedContent = useMemo(() => decodeHtmlEntities(content), [content]);
+
   return (
     <div className="chatkit-markdown">
       <ReactMarkdown
@@ -177,7 +185,7 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
         rehypePlugins={[rehypeRaw, rehypeKatex]}
         skipHtml={false}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );
