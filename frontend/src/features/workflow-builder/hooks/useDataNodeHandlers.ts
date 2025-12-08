@@ -14,6 +14,9 @@ import {
   setEndAgsMaximumExpression,
   setEndAgsScoreExpression,
   setEndAgsVariableId,
+  setDocxTemplateData,
+  setDocxTemplateOutputPath,
+  setDocxTemplateTemplatePath,
   setEndMessage,
   setTranscriptionLanguage,
   setTranscriptionModel,
@@ -252,6 +255,47 @@ const useDataNodeHandlers = ({
     [updateNodeData],
   );
 
+  // ========== DOCX Template Node Handlers ==========
+
+  const handleDocxTemplateTemplatePathChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "docx_template") {
+          return data;
+        }
+        const nextParameters = setDocxTemplateTemplatePath(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleDocxTemplateOutputPathChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "docx_template") {
+          return data;
+        }
+        const nextParameters = setDocxTemplateOutputPath(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleDocxTemplateDataChange = useCallback(
+    (nodeId: string, payload: Record<string, unknown>) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "docx_template") {
+          return data;
+        }
+        const nextParameters = setDocxTemplateData(data.parameters, payload);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
   // ========== Voice Agent Node Handlers ==========
 
   const handleVoiceAgentVoiceChange = useCallback(
@@ -388,6 +432,9 @@ const useDataNodeHandlers = ({
     handleAssistantMessageStreamDelayChange,
     handleWaitForUserInputMessageChange,
     handleUserMessageChange,
+    handleDocxTemplateTemplatePathChange,
+    handleDocxTemplateOutputPathChange,
+    handleDocxTemplateDataChange,
     // Voice agent handlers
     handleVoiceAgentVoiceChange,
     handleVoiceAgentStartBehaviorChange,

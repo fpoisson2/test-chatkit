@@ -18,6 +18,7 @@ export interface NodeHandlers {
   handleAddWaitForUserInputNode: () => void;
   handleAddAssistantMessageNode: () => void;
   handleAddUserMessageNode: () => void;
+  handleAddDocxTemplateNode: () => void;
   handleAddVectorStoreNode: () => void;
   handleAddWidgetNode: () => void;
   handleAddEndNode: () => void;
@@ -112,6 +113,12 @@ export const useBlockLibraryItems = ({
         onClick: nodeHandlers.handleAddUserMessageNode,
       },
       {
+        key: "docx-template",
+        kind: "docx_template",
+        shortLabel: "DX",
+        onClick: nodeHandlers.handleAddDocxTemplateNode,
+      },
+      {
         key: "json-vector-store",
         kind: "json_vector_store",
         shortLabel: "VS",
@@ -142,6 +149,7 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddWaitForUserInputNode,
     nodeHandlers.handleAddAssistantMessageNode,
     nodeHandlers.handleAddUserMessageNode,
+    nodeHandlers.handleAddDocxTemplateNode,
     nodeHandlers.handleAddVectorStoreNode,
     nodeHandlers.handleAddWidgetNode,
     nodeHandlers.handleAddEndNode,

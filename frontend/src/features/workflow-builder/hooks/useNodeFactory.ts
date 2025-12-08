@@ -5,6 +5,7 @@ import {
   DEFAULT_END_MESSAGE,
   createParallelJoinParameters,
   createParallelSplitParameters,
+  setDocxTemplateConfig,
   createVectorStoreNodeParameters,
   createVoiceAgentParameters,
   createWidgetNodeParameters,
@@ -384,6 +385,30 @@ const useNodeFactory = ({
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
 
+  const handleAddDocxTemplateNode = useCallback(() => {
+    const slug = `docx-template-${Date.now()}`;
+    const parameters = setDocxTemplateConfig({}, {});
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 420, y: 300 },
+      data: {
+        slug,
+        kind: "docx_template",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, humanizeSlug]);
+
   const handleAddVectorStoreNode = useCallback(() => {
     const slug = `json-vector-store-${Date.now()}`;
     const fallbackSlug = vectorStores[0]?.slug?.trim() ?? "";
@@ -469,6 +494,7 @@ const useNodeFactory = ({
     handleAddWaitForUserInputNode,
     handleAddAssistantMessageNode,
     handleAddUserMessageNode,
+    handleAddDocxTemplateNode,
     handleAddVectorStoreNode,
     handleAddWidgetNode,
     handleAddEndNode,

@@ -2930,6 +2930,70 @@ export const createVectorStoreNodeParameters = (
     },
   );
 
+export type DocxTemplateConfig = {
+  templatePath: string;
+  outputPath: string;
+  data: Record<string, unknown>;
+};
+
+const EMPTY_DOCX_TEMPLATE_CONFIG: DocxTemplateConfig = {
+  templatePath: "",
+  outputPath: "",
+  data: {},
+};
+
+const normalizePathLikeValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeDocxTemplateData = (value: unknown): Record<string, unknown> => {
+  if (isPlainRecord(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+};
+
+export const getDocxTemplateConfig = (
+  parameters: AgentParameters | null | undefined,
+): DocxTemplateConfig => {
+  if (!parameters) {
+    return EMPTY_DOCX_TEMPLATE_CONFIG;
+  }
+
+  const raw = parameters as Record<string, unknown>;
+  return {
+    templatePath: normalizePathLikeValue(raw.template_path),
+    outputPath: normalizePathLikeValue(raw.output_path),
+    data: normalizeDocxTemplateData(raw.data),
+  } satisfies DocxTemplateConfig;
+};
+
+export const setDocxTemplateConfig = (
+  parameters: AgentParameters | null | undefined,
+  updates: Partial<DocxTemplateConfig>,
+): AgentParameters => {
+  const current = getDocxTemplateConfig(parameters);
+  return {
+    template_path: normalizePathLikeValue(updates.templatePath ?? current.templatePath),
+    output_path: normalizePathLikeValue(updates.outputPath ?? current.outputPath),
+    data: normalizeDocxTemplateData(updates.data ?? current.data),
+  } satisfies AgentParameters;
+};
+
+export const setDocxTemplateTemplatePath = (
+  parameters: AgentParameters | null | undefined,
+  templatePath: string,
+): AgentParameters => setDocxTemplateConfig(parameters, { templatePath });
+
+export const setDocxTemplateOutputPath = (
+  parameters: AgentParameters | null | undefined,
+  outputPath: string,
+): AgentParameters => setDocxTemplateConfig(parameters, { outputPath });
+
+export const setDocxTemplateData = (
+  parameters: AgentParameters | null | undefined,
+  data: Record<string, unknown>,
+): AgentParameters => setDocxTemplateConfig(parameters, { data });
+
 const isWebSearchTool = (value: unknown): value is Record<string, unknown> =>
   isPlainRecord(value) && value.type === "web_search";
 
