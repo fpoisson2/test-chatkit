@@ -70,7 +70,14 @@ class WhileNodeHandler(BaseNodeHandler):
         )
 
         # If we've already iterated and there's no new input, exit to waiting state
-        if iteration_count > 0 and not has_new_input:
+        # unless the loop contains a wait_for_user_input node that will handle waiting.
+        inside_nodes = self._get_nodes_inside_while(node, context)
+        contains_wait_node = any(
+            getattr(context.nodes_by_slug.get(slug), "kind", None) == "wait_for_user_input"
+            for slug in inside_nodes
+        )
+
+        if iteration_count > 0 and not has_new_input and not contains_wait_node:
             from ..executor import WorkflowEndState
 
             # Clean up loop state
