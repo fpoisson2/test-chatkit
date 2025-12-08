@@ -82,10 +82,8 @@ export function MyChatContent() {
     if (isInitialMountRef.current) {
       const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
       if (storedId && storedId !== initialThreadId) {
-        // Use startTransition to mark update as non-urgent
-        startTransition(() => {
-          setInitialThreadId(storedId);
-        });
+        // Initial mount - update immediately, don't defer
+        setInitialThreadId(storedId);
       }
     }
   }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef]);
