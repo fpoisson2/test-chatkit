@@ -2,6 +2,7 @@
  * Composant pour afficher des diagrammes Mermaid
  */
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import mermaid from 'mermaid';
 import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pan-pinch';
 import './MermaidDiagram.css';
@@ -108,7 +109,7 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
   return (
     <>
       <TransformWrapper
-        initialScale={1}
+        initialScale={1.2}
         minScale={0.5}
         maxScale={4}
         centerOnInit={true}
@@ -141,10 +142,13 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
       </TransformWrapper>
 
       {isModalOpen && (
-        <MermaidModal
-          svg={svg}
-          onClose={() => setIsModalOpen(false)}
-        />
+        createPortal(
+          <MermaidModal
+            svg={svg}
+            onClose={() => setIsModalOpen(false)}
+          />,
+          document.body,
+        )
       )}
     </>
   );
@@ -243,7 +247,7 @@ function MermaidModal({ svg, onClose }: MermaidModalProps) {
           </svg>
         </button>
         <TransformWrapper
-          initialScale={1}
+          initialScale={1.2}
           minScale={0.3}
           maxScale={8}
           centerOnInit={true}
