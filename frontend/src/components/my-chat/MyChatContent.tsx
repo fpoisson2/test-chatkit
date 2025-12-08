@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
 import { useParams } from "react-router-dom";
 import type { ChatKitOptions } from "../../chatkit";
 import type { Thread } from "../../chatkit/types";
@@ -82,6 +82,7 @@ export function MyChatContent() {
     if (isInitialMountRef.current) {
       const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
       if (storedId && storedId !== initialThreadId) {
+        // Initial mount - update immediately, don't defer
         setInitialThreadId(storedId);
       }
     }
@@ -127,7 +128,12 @@ export function MyChatContent() {
   });
 
   // Sync workflow selection
-  useEffect(() => { setWorkflowSelection(managedWorkflowSelection); }, [managedWorkflowSelection, setWorkflowSelection]);
+  useEffect(() => {
+    // Use startTransition to mark update as non-urgent
+    startTransition(() => {
+      setWorkflowSelection(managedWorkflowSelection);
+    });
+  }, [managedWorkflowSelection, setWorkflowSelection]);
 
   // LTI context
   const isLtiUser = user?.is_lti ?? false;

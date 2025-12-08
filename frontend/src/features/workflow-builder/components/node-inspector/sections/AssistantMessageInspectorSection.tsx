@@ -1,7 +1,7 @@
 import { Maximize2 } from "lucide-react";
 import { useState } from "react";
 
-import { useI18n } from "../../../../i18n";
+import { useI18n } from "../../../../../i18n";
 import { AssistantMessageModal } from "../components/AssistantMessageModal";
 import styles from "../NodeInspector.module.css";
 

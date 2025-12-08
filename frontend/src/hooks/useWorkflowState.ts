@@ -102,30 +102,36 @@ export function useWorkflowState({
       }
 
       const selection: WorkflowActivation = { kind: "local", workflow };
-      resetChatState({
-        selection,
-        preserveStoredThread: !isNewConversationDraftRef.current,
-        targetMode: mode,
-      });
-      resetError();
-      setWorkflowSelection(selection);
+      // Defer state updates to avoid updating parent during render
+      const timeoutId = setTimeout(() => {
+        resetChatState({
+          selection,
+          preserveStoredThread: !isNewConversationDraftRef.current,
+          targetMode: mode,
+        });
+        resetError();
+        setWorkflowSelection(selection);
+      }, 0);
+      return () => clearTimeout(timeoutId);
     }
   }, [mode, providerSelectedWorkflowId, workflows, workflowSelection, resetChatState, resetError, token, isAdmin, isNewConversationDraftRef]);
 
   const handleWorkflowActivated = useCallback(
     (selection: WorkflowActivation, { reason }: { reason: "initial" | "user" }) => {
       const shouldPreserveStoredThread = !isNewConversationDraftRef.current;
+      let shouldReset = false;
+      let resetConfig: ResetChatStateOptions | null = null;
 
       setWorkflowSelection((current) => {
         if (selection.kind === "hosted") {
           if (mode !== "hosted") setMode("hosted");
           if (reason === "user" && current.kind !== "hosted") {
-            resetChatState({
+            shouldReset = true;
+            resetConfig = {
               selection,
               preserveStoredThread: shouldPreserveStoredThread,
               targetMode: "hosted",
-            });
-            resetError();
+            };
           }
           return selection;
         }
@@ -142,16 +148,25 @@ export function useWorkflowState({
         if (nextMode !== mode) setMode(nextMode);
 
         if ((reason === "user" || reason === "initial") && currentId !== nextId && nextId !== null) {
-          resetChatState({
+          shouldReset = true;
+          resetConfig = {
             selection,
             preserveStoredThread: shouldPreserveStoredThread,
             targetMode: nextMode,
-          });
-          resetError();
+          };
         }
 
         return selection;
       });
+
+      // Call resetChatState AFTER setWorkflowSelection to avoid updating parent during render
+      if (shouldReset && resetConfig) {
+        // Defer to ensure it happens after all state updates complete
+        setTimeout(() => {
+          resetChatState(resetConfig);
+          resetError();
+        }, 0);
+      }
     },
     [mode, resetChatState, resetError, setMode, workflowModes, isNewConversationDraftRef],
   );
