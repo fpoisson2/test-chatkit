@@ -79,13 +79,16 @@ export function MyChatContent() {
 
   // Initialize initialThreadId from URL or storage on mount
   useEffect(() => {
-    if (isInitialMountRef.current) {
-      const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
-      if (storedId && storedId !== initialThreadId) {
-        setInitialThreadId(storedId);
-      }
+    if (!isInitialMountRef.current) return;
+
+    const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
+    if (storedId && storedId !== initialThreadId) {
+      setInitialThreadId(storedId);
     }
-  }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef]);
+
+    // Ensure subsequent renders don't try to update the provider during render
+    isInitialMountRef.current = false;
+  }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId]);
 
   // Reset chat state hook (uses context internally)
   const { resetChatState } = useResetChatState({
