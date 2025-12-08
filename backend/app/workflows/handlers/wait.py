@@ -83,6 +83,11 @@ class WaitNodeHandler(BaseNodeHandler):
             resumed,
         )
 
+        if pending_wait_state:
+            logger.info(
+                "[WAIT_TRACE] Wait %s: pending_wait_state_keys=%s", node.slug, list(pending_wait_state.keys())
+            )
+
         if resumed:
             # Resume from wait - user provided new message
             next_slug = pending_wait_state.get("next_step_slug")

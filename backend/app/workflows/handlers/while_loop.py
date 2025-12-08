@@ -63,11 +63,16 @@ class WhileNodeHandler(BaseNodeHandler):
         stored_input_id = context.state["state"].get(loop_input_id_key)
 
         # Check if we have a new user message
-        has_new_input = (
-            iteration_count == 0  # First iteration
-            or stored_input_id is None  # No stored ID
-            or current_input_item_id != stored_input_id  # Different input ID
-        )
+        if iteration_count == 0:
+            new_input_reason = "first_iteration"
+        elif stored_input_id is None:
+            new_input_reason = "no_stored_input"
+        elif current_input_item_id != stored_input_id:
+            new_input_reason = "different_input_id"
+        else:
+            new_input_reason = "no_new_input"
+
+        has_new_input = new_input_reason != "no_new_input"
 
         # If we've already iterated and there's no new input, exit to waiting state
         # unless the loop contains a wait_for_user_input node that will handle waiting.
@@ -85,6 +90,14 @@ class WhileNodeHandler(BaseNodeHandler):
             current_input_item_id,
             has_new_input,
             contains_wait_node,
+        )
+
+        logger.info(
+            "[WAIT_TRACE] While %s: new_input_reason=%s (stored=%s, current=%s)",
+            node.slug,
+            new_input_reason,
+            stored_input_id,
+            current_input_item_id,
         )
 
         if iteration_count > 0 and not has_new_input:

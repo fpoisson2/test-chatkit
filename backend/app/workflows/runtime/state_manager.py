@@ -97,6 +97,16 @@ class StateInitializer:
                         )
                     current_input_item_id = candidate_id
 
+            logger.info(
+                "[WAIT_TRACE] StateInitializer: payload_source_item_id=%s, current_user_message_id=%s, "
+                "pending_wait_state_slug=%s, pending_wait_input_id=%s, chosen_current_input_id=%s",
+                workflow_payload.get("source_item_id"),
+                getattr(current_user_message, "id", None),
+                pending_wait_state.get("slug") if pending_wait_state else None,
+                pending_wait_state.get("input_item_id") if pending_wait_state else None,
+                current_input_item_id,
+            )
+
             restored_from_wait_state = False
             if pending_wait_state:
                 restored_history = _clone_conversation_history_snapshot(
