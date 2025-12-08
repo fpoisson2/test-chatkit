@@ -60,12 +60,17 @@ class WaitNodeHandler(BaseNodeHandler):
         waiting_input_id = (
             pending_wait_state.get("input_item_id") if pending_wait_state else None
         )
+        current_message_id = (
+            getattr(current_user_message, "id", None)
+            if current_user_message is not None
+            else None
+        )
         resumed = (
             pending_wait_state is not None
             and waiting_slug == node.slug
-            and current_user_message is not None
-            and current_input_item_id
-            and waiting_input_id != current_input_item_id
+            and current_message_id is not None
+            and waiting_input_id is not None
+            and waiting_input_id != current_message_id
         )
 
         if resumed:
@@ -141,8 +146,8 @@ class WaitNodeHandler(BaseNodeHandler):
         # Build and save wait state
         wait_state_payload: dict[str, Any] = {
             "slug": node.slug,
-            "input_item_id": current_input_item_id
-            if current_user_message is not None
+            "input_item_id": current_message_id
+            if current_message_id is not None
             else waiting_input_id
             if waiting_input_id is not None
             else current_input_item_id,

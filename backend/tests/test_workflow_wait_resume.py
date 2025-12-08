@@ -311,6 +311,102 @@ def test_wait_state_cleared_when_workflow_ends_without_transition(monkeypatch):
     asyncio.run(_run())
 
 
+def test_wait_does_not_resume_with_same_user_message_id(monkeypatch):
+    async def _run() -> None:
+        WorkflowInput = executor.WorkflowInput
+        run_workflow = executor.run_workflow
+
+        if not hasattr(WorkflowInput, "model_dump"):
+            WorkflowInput.model_dump = WorkflowInput.dict  # type: ignore[assignment]
+
+        agent_calls: list[str] = []
+
+        def _fake_run_streamed(
+            agent, *, input, run_config, context, previous_response_id
+        ):
+            agent_name = getattr(agent, "name", "unknown")
+            agent_calls.append(agent_name)
+            return _FakeStreamResult({"agent": agent_name})
+
+        async def _fake_ingest_vector_store_step(*args, **kwargs):
+            return None
+
+        monkeypatch.setitem(
+            runtime_agents.AGENT_BUILDERS,
+            "post_wait_agent",
+            lambda overrides: _DummyAgent("post-wait"),
+        )
+        monkeypatch.setattr(executor.Runner, "run_streamed", _fake_run_streamed)
+        monkeypatch.setattr(executor, "stream_agent_response", _noop_async_generator)
+        monkeypatch.setattr(
+            executor,
+            "ingest_vector_store_step",
+            _fake_ingest_vector_store_step,
+        )
+
+        start_step = _build_step("start", "start", 0)
+        wait_step = _build_step("wait", "wait_for_user_input", 1)
+        after_wait_agent = _build_step(
+            "after-wait", "agent", 2, agent_key="post_wait_agent"
+        )
+        transitions = [
+            _build_transition(start_step, wait_step, 1),
+            _build_transition(wait_step, after_wait_agent, 2),
+        ]
+
+        definition = SimpleNamespace(
+            workflow_id=1,
+            workflow=SimpleNamespace(slug="no-resume-same-id", display_name="No resume"),
+            steps=[start_step, wait_step, after_wait_agent],
+            transitions=transitions,
+        )
+
+        class _FakeWorkflowService:
+            def get_available_model_capabilities(self):  # pragma: no cover - helper
+                return {}
+
+        agent_context = _FakeAgentContext()
+
+        first_message = SimpleNamespace(
+            id="msg-1",
+            thread_id=agent_context.thread.id,
+            created_at=datetime.now(),
+            content=[SimpleNamespace(type="input_text", text="Bonjour")],
+            inference_options=SimpleNamespace(),
+        )
+
+        summary_one = await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+            current_user_message=first_message,
+        )
+
+        assert summary_one.end_state is not None
+        assert summary_one.end_state.status_type == "waiting"
+        assert agent_calls == []
+
+        # Re-run the workflow with the same user message id; it should keep waiting
+        retry_input = WorkflowInput(input_as_text="", source_item_id="msg-retry")
+        summary_two = await run_workflow(
+            retry_input,
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+            current_user_message=first_message,
+        )
+
+        assert summary_two.end_state is not None
+        assert summary_two.end_state.status_type == "waiting"
+        assert agent_calls == []
+        wait_state_after_retry = agent_context.thread.metadata.get(_WAIT_STATE_METADATA_KEY)
+        assert wait_state_after_retry is not None
+        assert wait_state_after_retry.get("input_item_id") == "msg-1"
+
+    asyncio.run(_run())
+
+
 def test_post_wait_terminal_step_without_transition(monkeypatch):
     async def _run() -> None:
         WorkflowInput = executor.WorkflowInput
