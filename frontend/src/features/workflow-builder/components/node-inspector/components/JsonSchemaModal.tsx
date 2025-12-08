@@ -103,12 +103,12 @@ export function JsonSchemaModal({
       size="xl"
       footer={
         <div className={styles.footer}>
-          <button type="button" className={styles.cancelButton} onClick={onClose}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
             {t('workflowBuilder.agentInspector.jsonSchemaModal.cancel')}
           </button>
           <button
             type="button"
-            className={styles.saveButton}
+            className="btn btn-primary"
             onClick={handleSave}
             disabled={!hasChanges && !mergedError}
           >
