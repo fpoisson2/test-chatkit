@@ -45,6 +45,7 @@ class WaitNodeHandler(BaseNodeHandler):
         # Get runtime dependencies
         thread = context.runtime_vars.get("thread")
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
+        current_user_message = context.runtime_vars.get("current_user_message")
         initial_user_text = context.runtime_vars.get("initial_user_text")
         agent_context = context.runtime_vars.get("agent_context")
         on_stream_event = context.runtime_vars.get("on_stream_event")
@@ -62,6 +63,7 @@ class WaitNodeHandler(BaseNodeHandler):
         resumed = (
             pending_wait_state is not None
             and waiting_slug == node.slug
+            and current_user_message is not None
             and current_input_item_id
             and waiting_input_id != current_input_item_id
         )
@@ -139,7 +141,11 @@ class WaitNodeHandler(BaseNodeHandler):
         # Build and save wait state
         wait_state_payload: dict[str, Any] = {
             "slug": node.slug,
-            "input_item_id": current_input_item_id,
+            "input_item_id": current_input_item_id
+            if current_user_message is not None
+            else waiting_input_id
+            if waiting_input_id is not None
+            else current_input_item_id,
         }
 
         conversation_snapshot = _clone_conversation_history_snapshot(

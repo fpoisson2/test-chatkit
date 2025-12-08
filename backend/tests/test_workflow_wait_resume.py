@@ -509,3 +509,86 @@ def test_while_runs_wait_node_on_second_iteration(monkeypatch):
 
     asyncio.run(_run())
 
+
+def test_wait_in_while_does_not_resume_without_new_user_message(monkeypatch):
+    async def _run() -> None:
+        WorkflowInput = executor.WorkflowInput
+        run_workflow = executor.run_workflow
+
+        if not hasattr(WorkflowInput, "model_dump"):
+            WorkflowInput.model_dump = WorkflowInput.dict  # type: ignore[assignment]
+
+        async def _fake_ingest_vector_store_step(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(executor, "ingest_vector_store_step", _fake_ingest_vector_store_step)
+
+        start_step = _build_step("start", "start", 0)
+        while_step = _build_step(
+            "loop",
+            "while",
+            1,
+            parameters={"condition": "state.get('state', {}).get('loop_index', 0) < 2", "iteration_var": "loop_index"},
+        )
+        wait_step = _build_step("wait", "wait_for_user_input", 2)
+        wait_step.parent_slug = "loop"
+        wait_step.ui_metadata = {"position": {"x": 0, "y": 0}}
+
+        transitions = [
+            _build_transition(start_step, while_step, 1),
+            _build_transition(while_step, wait_step, 2),
+        ]
+
+        definition = SimpleNamespace(
+            workflow_id=1,
+            workflow=SimpleNamespace(slug="while-wait-retry", display_name="While with wait retry"),
+            steps=[start_step, while_step, wait_step],
+            transitions=transitions,
+        )
+
+        class _FakeWorkflowService:
+            def get_available_model_capabilities(self):  # pragma: no cover - helper
+                return {}
+
+        agent_context = _FakeAgentContext()
+
+        first_message = SimpleNamespace(
+            id="msg-1",
+            thread_id=agent_context.thread.id,
+            created_at=datetime.now(),
+            content=[SimpleNamespace(type="input_text", text="Bonjour")],
+            inference_options=SimpleNamespace(),
+        )
+
+        summary_one = await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+            current_user_message=first_message,
+        )
+
+        assert summary_one.end_state is not None
+        assert summary_one.end_state.status_type == "waiting"
+        wait_state = agent_context.thread.metadata.get(_WAIT_STATE_METADATA_KEY)
+        assert wait_state is not None
+        assert wait_state.get("input_item_id") == "msg-1"
+
+        # Re-run the workflow without a new user message (e.g., retry/resume)
+        retry_input = WorkflowInput(input_as_text="", source_item_id="msg-retry")
+        summary_two = await run_workflow(
+            retry_input,
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+            current_user_message=None,
+        )
+
+        assert summary_two.end_state is not None
+        assert summary_two.end_state.status_type == "waiting"
+        wait_state_after_retry = agent_context.thread.metadata.get(_WAIT_STATE_METADATA_KEY)
+        assert wait_state_after_retry is not None
+        assert wait_state_after_retry.get("input_item_id") == "msg-1"
+
+    asyncio.run(_run())
+
