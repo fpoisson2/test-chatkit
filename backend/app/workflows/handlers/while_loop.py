@@ -64,9 +64,9 @@ class WhileNodeHandler(BaseNodeHandler):
 
         # Check if we have a new user message
         has_new_input = (
-            iteration_count == 0 or  # First iteration
-            stored_input_id is None or  # No stored ID
-            current_input_item_id != stored_input_id  # Different input ID
+            iteration_count == 0  # First iteration
+            or stored_input_id is None  # No stored ID
+            or current_input_item_id != stored_input_id  # Different input ID
         )
 
         # If we've already iterated and there's no new input, exit to waiting state
@@ -75,6 +75,16 @@ class WhileNodeHandler(BaseNodeHandler):
         contains_wait_node = any(
             getattr(context.nodes_by_slug.get(slug), "kind", None) == "wait_for_user_input"
             for slug in inside_nodes
+        )
+
+        logger.info(
+            "[WAIT_TRACE] While %s: iteration=%s, stored_input_id=%s, current_input_item_id=%s, has_new_input=%s, contains_wait_node=%s",
+            node.slug,
+            iteration_count,
+            stored_input_id,
+            current_input_item_id,
+            has_new_input,
+            contains_wait_node,
         )
 
         if iteration_count > 0 and not has_new_input:
@@ -91,6 +101,11 @@ class WhileNodeHandler(BaseNodeHandler):
                 status_type="waiting",
                 status_reason="En attente d'un nouveau message utilisateur.",
                 message="En attente d'un nouveau message utilisateur.",
+            )
+
+            logger.info(
+                "[WAIT_TRACE] While %s: stopping without new input; waiting state recorded.",
+                node.slug,
             )
 
             return NodeResult(finished=True)

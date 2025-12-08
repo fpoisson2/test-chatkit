@@ -73,11 +73,28 @@ class WaitNodeHandler(BaseNodeHandler):
             and waiting_input_id != current_message_id
         )
 
+        logger.info(
+            "[WAIT_TRACE] Wait %s: pending_wait_state=%s, waiting_slug=%s, waiting_input_id=%s, current_message_id=%s, resumed=%s",
+            node.slug,
+            bool(pending_wait_state),
+            waiting_slug,
+            waiting_input_id,
+            current_message_id,
+            resumed,
+        )
+
         if resumed:
             # Resume from wait - user provided new message
             next_slug = pending_wait_state.get("next_step_slug")
             if next_slug is None:
                 next_slug = self._next_slug_or_fallback(node.slug, context)
+
+            logger.info(
+                "[WAIT_TRACE] Wait %s: resuming with new user message id=%s -> next_slug=%s",
+                node.slug,
+                current_message_id,
+                next_slug,
+            )
 
             # Clear wait state
             if thread is not None:
@@ -152,6 +169,15 @@ class WaitNodeHandler(BaseNodeHandler):
             if waiting_input_id is not None
             else current_input_item_id,
         }
+
+        logger.info(
+            "[WAIT_TRACE] Wait %s: saving wait state with input_item_id=%s (current=%s, waiting=%s, runtime_current_input=%s)",
+            node.slug,
+            wait_state_payload.get("input_item_id"),
+            current_message_id,
+            waiting_input_id,
+            current_input_item_id,
+        )
 
         conversation_snapshot = _clone_conversation_history_snapshot(
             context.conversation_history
