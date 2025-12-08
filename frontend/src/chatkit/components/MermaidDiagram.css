@@ -148,9 +148,6 @@
 
 .chatkit-mermaid-transform-content {
   width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
   min-height: 500px;
   padding: 1rem;
 }
