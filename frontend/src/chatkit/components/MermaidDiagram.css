@@ -2,15 +2,12 @@
 .chatkit-mermaid-container {
   width: 100%;
   height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
 }
 
 .chatkit-mermaid-container svg {
   width: 100% !important;
   height: auto !important;
-  max-width: none;
+  max-width: none !important;
   display: block;
 }
 
@@ -150,11 +147,12 @@
 }
 
 .chatkit-mermaid-transform-content {
+  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 500px;
-  padding: 2rem;
+  padding: 1rem;
 }
 
 /* Zoom controls */
