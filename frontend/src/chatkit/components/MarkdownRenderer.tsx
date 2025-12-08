@@ -175,6 +175,7 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
         }}
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
+        skipHtml={false}
       >
         {content}
       </ReactMarkdown>
