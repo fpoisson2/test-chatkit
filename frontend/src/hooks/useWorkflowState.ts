@@ -161,8 +161,11 @@ export function useWorkflowState({
 
       // Call resetChatState AFTER setWorkflowSelection to avoid updating parent during render
       if (shouldReset && resetConfig) {
-        resetChatState(resetConfig);
-        resetError();
+        // Defer to ensure it happens after all state updates complete
+        setTimeout(() => {
+          resetChatState(resetConfig);
+          resetError();
+        }, 0);
       }
     },
     [mode, resetChatState, resetError, setMode, workflowModes, isNewConversationDraftRef],
