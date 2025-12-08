@@ -46,28 +46,6 @@
   gap: 8px;
 }
 
-.cancelButton {
-  padding: 8px 12px;
-  border: 1px solid var(--border-subtle);
-  background: white;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.saveButton {
-  padding: 8px 12px;
-  background: var(--brand-primary);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.saveButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .modeToggle {
   display: flex;
   justify-content: center;
@@ -97,8 +75,8 @@
 }
 
 .toggleButtonActive {
-  background: var(--brand-primary);
-  color: white;
+  background: var(--accent-color-primary);
+  color: var(--accent-color-primary-inverse);
 }
 
 .toggleButton:not(:last-child) {
