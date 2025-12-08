@@ -128,10 +128,11 @@ export function MyChatContent() {
 
   // Sync workflow selection
   useEffect(() => {
-    // Defer state update to avoid updating parent during render
-    queueMicrotask(() => {
+    // Defer state update to next tick to avoid updating parent during render
+    const timeoutId = setTimeout(() => {
       setWorkflowSelection(managedWorkflowSelection);
-    });
+    }, 0);
+    return () => clearTimeout(timeoutId);
   }, [managedWorkflowSelection, setWorkflowSelection]);
 
   // LTI context
