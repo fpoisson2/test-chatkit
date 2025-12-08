@@ -127,7 +127,12 @@ export function MyChatContent() {
   });
 
   // Sync workflow selection
-  useEffect(() => { setWorkflowSelection(managedWorkflowSelection); }, [managedWorkflowSelection, setWorkflowSelection]);
+  useEffect(() => {
+    // Defer state update to avoid updating parent during render
+    queueMicrotask(() => {
+      setWorkflowSelection(managedWorkflowSelection);
+    });
+  }, [managedWorkflowSelection, setWorkflowSelection]);
 
   // LTI context
   const isLtiUser = user?.is_lti ?? false;
