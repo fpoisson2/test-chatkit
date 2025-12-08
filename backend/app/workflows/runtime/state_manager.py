@@ -84,13 +84,14 @@ class StateInitializer:
             pending_wait_state = (
                 _get_wait_state_metadata(thread) if thread is not None else None
             )
+            pending_wait_input_id = (
+                pending_wait_state.get("input_item_id")
+                if pending_wait_state
+                else None
+            )
+
             if current_user_message is not None:
                 candidate_id = getattr(current_user_message, "id", None)
-                pending_wait_input_id = (
-                    pending_wait_state.get("input_item_id")
-                    if pending_wait_state
-                    else None
-                )
                 if isinstance(candidate_id, str):
                     if (
                         isinstance(current_input_item_id, str)
@@ -113,6 +114,31 @@ class StateInitializer:
                         current_input_item_id = candidate_id
                     else:
                         current_input_item_id = candidate_id
+
+            # If we are resuming from a wait state and the incoming payload does not
+            # include a source_item_id, prefer the stored wait input identifier even
+            # if the reconstructed current_user_message has a different id. This
+            # avoids treating the same pending wait as a fresh user message when a
+            # workflow is retried without a new input.
+            if (
+                pending_wait_state
+                and pending_wait_input_id
+                and not workflow_payload.get("source_item_id")
+                and _normalize_user_text(
+                    pending_wait_state.get("input_text", "")
+                )
+                == _normalize_user_text(workflow_payload.get("input_as_text", ""))
+                and isinstance(pending_wait_input_id, str)
+                and (
+                    current_input_item_id is None
+                    or current_input_item_id != pending_wait_input_id
+                )
+            ):
+                logger.info(
+                    "[WAIT_TRACE] StateInitializer: falling back to pending wait input id %s because payload had no source_item_id",
+                    pending_wait_input_id,
+                )
+                current_input_item_id = pending_wait_input_id
 
             logger.info(
                 "[WAIT_TRACE] StateInitializer: payload_source_item_id=%s, current_user_message_id=%s, "

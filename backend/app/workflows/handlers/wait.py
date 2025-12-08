@@ -188,6 +188,9 @@ class WaitNodeHandler(BaseNodeHandler):
             "input_item_id": chosen_input_id,
         }
 
+        if initial_user_text:
+            wait_state_payload["input_text"] = initial_user_text
+
         logger.info(
             "[WAIT_TRACE] Wait %s: saving wait state with input_item_id=%s (current=%s, waiting=%s, runtime_current_input=%s)",
             node.slug,
