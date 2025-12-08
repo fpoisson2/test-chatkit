@@ -39,6 +39,7 @@
     "react-router-dom": "*",
     "react-syntax-highlighter": "^16.1.0",
     "react-vnc": "^3.2.0",
+    "react-zoom-pan-pinch": "^3.7.0",
     "reactflow": "*",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
