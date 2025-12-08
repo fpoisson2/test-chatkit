@@ -563,6 +563,28 @@ export const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.promptModal.cancel": "Cancel",
   "workflowBuilder.agentInspector.promptModal.unsavedChanges": "Unsaved changes",
   "workflowBuilder.agentInspector.promptModal.emptyPrompt": "No system prompt defined",
+  "workflowBuilder.assistantMessageInspector.messageLabel": "Assistant message",
+  "workflowBuilder.assistantMessageInspector.messagePlaceholder":
+    "Text displayed to users when this block is executed",
+  "workflowBuilder.assistantMessageInspector.messageHint":
+    "This message is sent as-is in the conversation before moving to the next block.",
+  "workflowBuilder.assistantMessageInspector.streamingLabel": "Streaming effect",
+  "workflowBuilder.assistantMessageInspector.streamingTitle": "Simulate a progressive reply",
+  "workflowBuilder.assistantMessageInspector.streamingDescription":
+    "When enabled, the text is delivered in several chunks to mimic an agent typing.",
+  "workflowBuilder.assistantMessageInspector.streamDelayLabel": "Delay between chunks (ms)",
+  "workflowBuilder.assistantMessageInspector.streamDelayHint":
+    "Adjust the pause between each update sent to users.",
+  "workflowBuilder.assistantMessageInspector.modal.expand": "Open in a larger editor",
+  "workflowBuilder.assistantMessageInspector.modal.title": "Assistant message",
+  "workflowBuilder.assistantMessageInspector.modal.cancel": "Cancel",
+  "workflowBuilder.assistantMessageInspector.modal.save": "Save",
+  "workflowBuilder.assistantMessageInspector.modal.editMode": "Edit",
+  "workflowBuilder.assistantMessageInspector.modal.previewMode": "Preview",
+  "workflowBuilder.assistantMessageInspector.modal.unsavedChanges": "Unsaved changes",
+  "workflowBuilder.assistantMessageInspector.modal.placeholder":
+    "Write the assistant message shown when this block runs…",
+  "workflowBuilder.assistantMessageInspector.modal.emptyMessage": "No message defined",
   "workflowBuilder.agentInspector.nestedWorkflowSectionTitle": "Delegate to another workflow",
   "workflowBuilder.agentInspector.nestedWorkflowMode.custom": "Configure locally",
   "workflowBuilder.agentInspector.nestedWorkflowMode.local": "Use another workflow from this workspace",

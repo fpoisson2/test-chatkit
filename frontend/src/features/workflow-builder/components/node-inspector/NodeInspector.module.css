@@ -380,6 +380,34 @@
   min-height: 4.5rem;
 }
 
+.nodeInspectorTextareaWithAction {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.nodeInspectorExpandButton {
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-color);
+  color: var(--text-color);
+  border-radius: 0.5rem;
+  padding: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.nodeInspectorExpandButton:hover,
+.nodeInspectorExpandButton:focus-visible {
+  background-color: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.45);
+  color: #2563eb;
+  transform: translateY(-1px);
+}
+
 .nodeInspectorTextareaLarge {
   resize: vertical;
   min-height: 12rem;

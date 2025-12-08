@@ -1,3 +1,8 @@
+import { Maximize2 } from "lucide-react";
+import { useState } from "react";
+
+import { useI18n } from "../../../../i18n";
+import { AssistantMessageModal } from "../components/AssistantMessageModal";
 import styles from "../NodeInspector.module.css";
 
 type AssistantMessageInspectorSectionProps = {
@@ -18,54 +23,82 @@ export const AssistantMessageInspectorSection = ({
   onAssistantMessageChange,
   onAssistantMessageStreamEnabledChange,
   onAssistantMessageStreamDelayChange,
-}: AssistantMessageInspectorSectionProps) => (
-  <>
-    <label className={styles.nodeInspectorField}>
-      <span className={styles.nodeInspectorLabel}>Texte du message assistant</span>
-      <textarea
-        value={assistantMessage}
-        onChange={(event) => onAssistantMessageChange(nodeId, event.target.value)}
-        rows={4}
-        placeholder="Texte affiché aux utilisateurs lorsque ce bloc est exécuté"
-        className={styles.nodeInspectorTextarea}
-      />
-      <p className={styles.nodeInspectorHintTextTight}>
-        Ce message est diffusé tel quel dans la conversation avant de passer au bloc suivant.
-      </p>
-    </label>
+}: AssistantMessageInspectorSectionProps) => {
+  const { t } = useI18n();
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-    <label className={styles.nodeInspectorField}>
-      <span className={styles.nodeInspectorLabel}>Effet de streaming</span>
-      <div className={styles.nodeInspectorInlineStack}>
-        <input
-          type="checkbox"
-          checked={assistantMessageStreamEnabled}
-          onChange={(event) => onAssistantMessageStreamEnabledChange(nodeId, event.target.checked)}
-        />
-        <div className={styles.nodeInspectorStackText}>
-          <strong>Simuler une réponse progressive</strong>
-          <p className={styles.nodeInspectorHintTextTight}>
-            Quand cette option est active, le texte est diffusé en plusieurs morceaux dans le chat afin d'imiter la frappe d'un
-            agent.
-          </p>
-        </div>
-      </div>
-    </label>
-
-    {assistantMessageStreamEnabled ? (
+  return (
+    <>
       <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Délai entre les paquets (ms)</span>
-        <input
-          type="number"
-          min={0}
-          step={10}
-          value={String(assistantMessageStreamDelay)}
-          onChange={(event) => onAssistantMessageStreamDelayChange(nodeId, event.target.value)}
-        />
+        <span className={styles.nodeInspectorLabel}>
+          {t("workflowBuilder.assistantMessageInspector.messageLabel")}
+        </span>
+        <div className={styles.nodeInspectorTextareaWithAction}>
+          <textarea
+            value={assistantMessage}
+            onChange={(event) => onAssistantMessageChange(nodeId, event.target.value)}
+            rows={4}
+            placeholder={t("workflowBuilder.assistantMessageInspector.messagePlaceholder")}
+            className={styles.nodeInspectorTextarea}
+          />
+          <button
+            type="button"
+            className={styles.nodeInspectorExpandButton}
+            onClick={() => setIsModalOpen(true)}
+            title={t("workflowBuilder.assistantMessageInspector.modal.expand")}
+            aria-label={t("workflowBuilder.assistantMessageInspector.modal.expand")}
+          >
+            <Maximize2 size={16} />
+          </button>
+        </div>
         <p className={styles.nodeInspectorHintTextTight}>
-          Ajustez le temps d'attente entre chaque mise à jour envoyée aux utilisateurs.
+          {t("workflowBuilder.assistantMessageInspector.messageHint")}
         </p>
       </label>
-    ) : null}
-  </>
-);
+
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
+          {t("workflowBuilder.assistantMessageInspector.streamingLabel")}
+        </span>
+        <div className={styles.nodeInspectorInlineStack}>
+          <input
+            type="checkbox"
+            checked={assistantMessageStreamEnabled}
+            onChange={(event) => onAssistantMessageStreamEnabledChange(nodeId, event.target.checked)}
+          />
+          <div className={styles.nodeInspectorStackText}>
+            <strong>{t("workflowBuilder.assistantMessageInspector.streamingTitle")}</strong>
+            <p className={styles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.assistantMessageInspector.streamingDescription")}
+            </p>
+          </div>
+        </div>
+      </label>
+
+      {assistantMessageStreamEnabled ? (
+        <label className={styles.nodeInspectorField}>
+          <span className={styles.nodeInspectorLabel}>
+            {t("workflowBuilder.assistantMessageInspector.streamDelayLabel")}
+          </span>
+          <input
+            type="number"
+            min={0}
+            step={10}
+            value={String(assistantMessageStreamDelay)}
+            onChange={(event) => onAssistantMessageStreamDelayChange(nodeId, event.target.value)}
+          />
+          <p className={styles.nodeInspectorHintTextTight}>
+            {t("workflowBuilder.assistantMessageInspector.streamDelayHint")}
+          </p>
+        </label>
+      ) : null}
+
+      <AssistantMessageModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        value={assistantMessage}
+        onChange={(value) => onAssistantMessageChange(nodeId, value)}
+      />
+    </>
+  );
+};

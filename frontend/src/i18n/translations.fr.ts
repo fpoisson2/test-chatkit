@@ -582,6 +582,28 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.promptModal.cancel": "Annuler",
   "workflowBuilder.agentInspector.promptModal.unsavedChanges": "Modifications non enregistrées",
   "workflowBuilder.agentInspector.promptModal.emptyPrompt": "Aucun prompt système défini",
+  "workflowBuilder.assistantMessageInspector.messageLabel": "Message assistant",
+  "workflowBuilder.assistantMessageInspector.messagePlaceholder":
+    "Texte affiché aux utilisateurs lorsque ce bloc est exécuté",
+  "workflowBuilder.assistantMessageInspector.messageHint":
+    "Ce message est diffusé tel quel dans la conversation avant de passer au bloc suivant.",
+  "workflowBuilder.assistantMessageInspector.streamingLabel": "Effet de streaming",
+  "workflowBuilder.assistantMessageInspector.streamingTitle": "Simuler une réponse progressive",
+  "workflowBuilder.assistantMessageInspector.streamingDescription":
+    "Quand cette option est active, le texte est diffusé en plusieurs morceaux dans le chat afin d'imiter la frappe d'un agent.",
+  "workflowBuilder.assistantMessageInspector.streamDelayLabel": "Délai entre les paquets (ms)",
+  "workflowBuilder.assistantMessageInspector.streamDelayHint":
+    "Ajustez le temps d'attente entre chaque mise à jour envoyée aux utilisateurs.",
+  "workflowBuilder.assistantMessageInspector.modal.expand": "Ouvrir dans un grand éditeur",
+  "workflowBuilder.assistantMessageInspector.modal.title": "Message assistant",
+  "workflowBuilder.assistantMessageInspector.modal.cancel": "Annuler",
+  "workflowBuilder.assistantMessageInspector.modal.save": "Enregistrer",
+  "workflowBuilder.assistantMessageInspector.modal.editMode": "Édition",
+  "workflowBuilder.assistantMessageInspector.modal.previewMode": "Aperçu",
+  "workflowBuilder.assistantMessageInspector.modal.unsavedChanges": "Modifications non enregistrées",
+  "workflowBuilder.assistantMessageInspector.modal.placeholder":
+    "Rédigez le message assistant affiché lorsque ce bloc s'exécute…",
+  "workflowBuilder.assistantMessageInspector.modal.emptyMessage": "Aucun message défini",
   "workflowBuilder.agentInspector.nestedWorkflowSectionTitle": "Déléguer à un autre workflow",
   "workflowBuilder.agentInspector.nestedWorkflowMode.custom": "Configurer localement",
   "workflowBuilder.agentInspector.nestedWorkflowMode.local": "Utiliser un workflow de cet espace",
