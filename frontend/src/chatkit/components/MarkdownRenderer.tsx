@@ -1,7 +1,7 @@
 /**
  * Composant pour afficher du contenu markdown avec support LaTeX
  */
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -19,6 +19,35 @@ export interface MarkdownRendererProps {
   content: string;
   theme?: 'light' | 'dark';
   isStreaming?: boolean;
+}
+
+const HTML_ENTITY_PATTERN = /&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);/;
+
+function decodeHtmlEntities(value: string): string {
+  // Only attempt entity decoding when we actually detect encoded sequences to
+  // avoid stripping legitimate HTML tags that are already raw in the content.
+  if (!HTML_ENTITY_PATTERN.test(value)) {
+    return value;
+  }
+
+  const textarea = document.createElement('textarea');
+  let decoded = value;
+  let iterations = 0;
+
+  // Handle multiple-encoded HTML entities (e.g., "&amp;lt;") by decoding until the
+  // content is stable or we reach a small safety cap to avoid infinite loops.
+  while (HTML_ENTITY_PATTERN.test(decoded) && iterations < 3) {
+    textarea.innerHTML = decoded;
+    const nextValue = textarea.value;
+    if (nextValue === decoded) {
+      break;
+    }
+
+    decoded = nextValue;
+    iterations += 1;
+  }
+
+  return decoded;
 }
 
 interface CodeBlockProps {
@@ -123,6 +152,8 @@ function MermaidBlock({ codeContent, theme = 'light', isStreaming = false }: Mer
 }
 
 export function MarkdownRenderer({ content, theme = 'light', isStreaming = false }: MarkdownRendererProps): JSX.Element {
+  const normalizedContent = useMemo(() => decodeHtmlEntities(content), [content]);
+
   return (
     <div className="chatkit-markdown">
       <ReactMarkdown
@@ -175,8 +206,9 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
         }}
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
+        skipHtml={false}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );
