@@ -59,8 +59,19 @@ export function useLtiContext({
     }
 
     // Once ready, stay ready (don't reset)
-    if (ltiReady || !activeWorkflow || workflowsLoading) {
+    if (ltiReady) {
       return;
+    }
+
+    // Safety timeout: force ready after 3 seconds to prevent indefinite loading on mobile
+    const safetyTimer = setTimeout(() => {
+      console.log('[useLtiContext] Safety timeout reached, forcing LTI ready state');
+      setLtiReady(true);
+    }, 3000);
+
+    // If workflow is still loading, wait for it
+    if (!activeWorkflow || workflowsLoading) {
+      return () => clearTimeout(safetyTimer);
     }
 
     console.log('[useLtiContext] LTI workflow selected, waiting for ChatKit to render...');
@@ -71,7 +82,10 @@ export function useLtiContext({
       setLtiReady(true);
     }, 500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(safetyTimer);
+    };
   }, [ltiReady, isLtiContext, activeWorkflow, workflowsLoading]);
 
   const shouldShowLoadingOverlay = isLtiContext && !ltiReady;

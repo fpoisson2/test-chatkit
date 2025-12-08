@@ -271,20 +271,18 @@ export function MyChatContent() {
   return (
     <>
       <LoadingOverlay isVisible={shouldShowLoadingOverlay} message="Chargement..." variant="fullscreen" />
-      <div style={{ display: shouldShowLoadingOverlay ? "none" : "contents" }}>
-        <ChatWorkflowSidebar mode={mode} setMode={setMode} onWorkflowActivated={handleWorkflowActivated} api={sidebarApiConfig}
-          currentThreadId={initialThreadId === null ? null : ((currentThread?.id as string | undefined) ?? initialThreadId)}
-          activeThreadSnapshot={initialThreadId === null ? null : (currentThread as Thread | null)} streamingThreadIds={streamingThreadIds}
-          onThreadSelect={handleSidebarThreadSelect} onThreadDeleted={handleSidebarThreadDeleted} onNewConversation={handleNewConversation} hideWorkflows isNewConversationActive={initialThreadId === null} />
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", overflow: "hidden" }}>
-          <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
-            {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
-              <WorkflowChatInstance key={instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
-                token={token} activeWorkflow={instance.workflow} initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
-                reportError={reportError} mode={instance.mode} isActive={instanceId === currentWorkflowId} autoStartEnabled={!hasVoiceAgent}
-                onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined} />
-            ))}
-          </div>
+      <ChatWorkflowSidebar mode={mode} setMode={setMode} onWorkflowActivated={handleWorkflowActivated} api={sidebarApiConfig}
+        currentThreadId={initialThreadId === null ? null : ((currentThread?.id as string | undefined) ?? initialThreadId)}
+        activeThreadSnapshot={initialThreadId === null ? null : (currentThread as Thread | null)} streamingThreadIds={streamingThreadIds}
+        onThreadSelect={handleSidebarThreadSelect} onThreadDeleted={handleSidebarThreadDeleted} onNewConversation={handleNewConversation} hideWorkflows isNewConversationActive={initialThreadId === null} />
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", overflow: "hidden" }}>
+        <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+          {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
+            <WorkflowChatInstance key={instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
+              token={token} activeWorkflow={instance.workflow} initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
+              reportError={reportError} mode={instance.mode} isActive={instanceId === currentWorkflowId} autoStartEnabled={!hasVoiceAgent}
+              onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined} />
+          ))}
         </div>
       </div>
     </>
