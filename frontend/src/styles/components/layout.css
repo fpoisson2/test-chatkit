@@ -11,6 +11,8 @@
   width: 100%;
   background: var(--main-background);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .chatkit-layout__main {
@@ -20,6 +22,7 @@
   min-width: 0;
   height: 100%;
   width: 100%;
+  flex: 1 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
   z-index: 0;
@@ -92,6 +95,11 @@
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-hidden .chatkit-layout__main {
   grid-column: 1;
+  border-left: none;
+}
+
+/* On mobile, remove left border since sidebar is overlay */
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-layout__main {
   border-left: none;
 }
 
