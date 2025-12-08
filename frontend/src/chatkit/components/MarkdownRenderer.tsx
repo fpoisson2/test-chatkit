@@ -21,7 +21,15 @@ export interface MarkdownRendererProps {
   isStreaming?: boolean;
 }
 
+const HTML_ENTITY_PATTERN = /&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);/;
+
 function decodeHtmlEntities(value: string): string {
+  // Only attempt entity decoding when we actually detect encoded sequences to
+  // avoid stripping legitimate HTML tags that are already raw in the content.
+  if (!HTML_ENTITY_PATTERN.test(value)) {
+    return value;
+  }
+
   const textarea = document.createElement('textarea');
   textarea.innerHTML = value;
   return textarea.value;
