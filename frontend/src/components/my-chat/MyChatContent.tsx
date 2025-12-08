@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
 import { useParams } from "react-router-dom";
 import type { ChatKitOptions } from "../../chatkit";
 import type { Thread } from "../../chatkit/types";
@@ -82,11 +82,10 @@ export function MyChatContent() {
     if (isInitialMountRef.current) {
       const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
       if (storedId && storedId !== initialThreadId) {
-        // Defer state update to avoid updating parent during render
-        const timeoutId = setTimeout(() => {
+        // Use startTransition to mark update as non-urgent
+        startTransition(() => {
           setInitialThreadId(storedId);
-        }, 0);
-        return () => clearTimeout(timeoutId);
+        });
       }
     }
   }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef]);
@@ -132,11 +131,10 @@ export function MyChatContent() {
 
   // Sync workflow selection
   useEffect(() => {
-    // Defer state update to next tick to avoid updating parent during render
-    const timeoutId = setTimeout(() => {
+    // Use startTransition to mark update as non-urgent
+    startTransition(() => {
       setWorkflowSelection(managedWorkflowSelection);
-    }, 0);
-    return () => clearTimeout(timeoutId);
+    });
   }, [managedWorkflowSelection, setWorkflowSelection]);
 
   // LTI context
