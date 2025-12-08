@@ -58,18 +58,59 @@ class WhileNodeHandler(BaseNodeHandler):
 
         iteration_count = context.state["state"].get(loop_counter_key, 0)
 
+        pending_wait_state = context.runtime_vars.get("pending_wait_state")
+        pending_wait_input_id = None
+        if pending_wait_state and isinstance(pending_wait_state, dict):
+            pending_wait_input_id = pending_wait_state.get("input_item_id")
+
         # Get current input ID to detect if there's a new user message
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
         stored_input_id = context.state["state"].get(loop_input_id_key)
+        if stored_input_id is None and pending_wait_input_id:
+            stored_input_id = pending_wait_input_id
+            context.state["state"][loop_input_id_key] = pending_wait_input_id
+            if iteration_count == 0:
+                iteration_count = max(iteration_count, 1)
 
         # Check if we have a new user message
-        has_new_input = (
-            iteration_count == 0 or  # First iteration
-            stored_input_id is None or  # No stored ID
-            current_input_item_id != stored_input_id  # Different input ID
-        )
+        if iteration_count == 0:
+            new_input_reason = "first_iteration"
+        elif stored_input_id is None:
+            new_input_reason = "no_stored_input"
+        elif current_input_item_id != stored_input_id:
+            new_input_reason = "different_input_id"
+        else:
+            new_input_reason = "no_new_input"
+
+        has_new_input = new_input_reason != "no_new_input"
 
         # If we've already iterated and there's no new input, exit to waiting state
+        # unless the loop contains a wait_for_user_input node that will handle waiting.
+        inside_nodes = self._get_nodes_inside_while(node, context)
+        contains_wait_node = any(
+            getattr(context.nodes_by_slug.get(slug), "kind", None) == "wait_for_user_input"
+            for slug in inside_nodes
+        )
+
+        logger.info(
+            "[WAIT_TRACE] While %s: iteration=%s, stored_input_id=%s, current_input_item_id=%s, has_new_input=%s, contains_wait_node=%s, pending_wait_input_id=%s",
+            node.slug,
+            iteration_count,
+            stored_input_id,
+            current_input_item_id,
+            has_new_input,
+            contains_wait_node,
+            pending_wait_input_id,
+        )
+
+        logger.info(
+            "[WAIT_TRACE] While %s: new_input_reason=%s (stored=%s, current=%s)",
+            node.slug,
+            new_input_reason,
+            stored_input_id,
+            current_input_item_id,
+        )
+
         if iteration_count > 0 and not has_new_input:
             from ..executor import WorkflowEndState
 
@@ -84,6 +125,11 @@ class WhileNodeHandler(BaseNodeHandler):
                 status_type="waiting",
                 status_reason="En attente d'un nouveau message utilisateur.",
                 message="En attente d'un nouveau message utilisateur.",
+            )
+
+            logger.info(
+                "[WAIT_TRACE] While %s: stopping without new input; waiting state recorded.",
+                node.slug,
             )
 
             return NodeResult(finished=True)

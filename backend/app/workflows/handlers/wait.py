@@ -45,6 +45,8 @@ class WaitNodeHandler(BaseNodeHandler):
         # Get runtime dependencies
         thread = context.runtime_vars.get("thread")
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
+        current_user_message = context.runtime_vars.get("current_user_message")
+        runtime_current_input_id = context.runtime_vars.get("current_input_item_id")
         initial_user_text = context.runtime_vars.get("initial_user_text")
         agent_context = context.runtime_vars.get("agent_context")
         on_stream_event = context.runtime_vars.get("on_stream_event")
@@ -59,18 +61,46 @@ class WaitNodeHandler(BaseNodeHandler):
         waiting_input_id = (
             pending_wait_state.get("input_item_id") if pending_wait_state else None
         )
+        current_message_id = (
+            getattr(current_user_message, "id", None)
+            if current_user_message is not None
+            else None
+        )
         resumed = (
             pending_wait_state is not None
             and waiting_slug == node.slug
-            and current_input_item_id
-            and waiting_input_id != current_input_item_id
+            and current_message_id is not None
+            and waiting_input_id is not None
+            and waiting_input_id not in {current_message_id, runtime_current_input_id}
         )
+
+        logger.info(
+            "[WAIT_TRACE] Wait %s: pending_wait_state=%s, waiting_slug=%s, waiting_input_id=%s, current_message_id=%s, resumed=%s",
+            node.slug,
+            bool(pending_wait_state),
+            waiting_slug,
+            waiting_input_id,
+            current_message_id,
+            resumed,
+        )
+
+        if pending_wait_state:
+            logger.info(
+                "[WAIT_TRACE] Wait %s: pending_wait_state_keys=%s", node.slug, list(pending_wait_state.keys())
+            )
 
         if resumed:
             # Resume from wait - user provided new message
             next_slug = pending_wait_state.get("next_step_slug")
             if next_slug is None:
                 next_slug = self._next_slug_or_fallback(node.slug, context)
+
+            logger.info(
+                "[WAIT_TRACE] Wait %s: resuming with new user message id=%s -> next_slug=%s",
+                node.slug,
+                current_message_id,
+                next_slug,
+            )
 
             # Clear wait state
             if thread is not None:
@@ -137,10 +167,38 @@ class WaitNodeHandler(BaseNodeHandler):
                 await emit_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
         # Build and save wait state
+        # Prefer the previously saved wait input when the runtime payload points to the same message,
+        # even if the reconstructed current_user_message has a different id (e.g., snapshot restore).
+        chosen_input_id: str | None
+        if (
+            pending_wait_state
+            and waiting_input_id is not None
+            and waiting_input_id == runtime_current_input_id
+        ):
+            chosen_input_id = waiting_input_id
+        elif current_message_id is not None:
+            chosen_input_id = current_message_id
+        elif waiting_input_id is not None:
+            chosen_input_id = waiting_input_id
+        else:
+            chosen_input_id = current_input_item_id
+
         wait_state_payload: dict[str, Any] = {
             "slug": node.slug,
-            "input_item_id": current_input_item_id,
+            "input_item_id": chosen_input_id,
         }
+
+        if initial_user_text:
+            wait_state_payload["input_text"] = initial_user_text
+
+        logger.info(
+            "[WAIT_TRACE] Wait %s: saving wait state with input_item_id=%s (current=%s, waiting=%s, runtime_current_input=%s)",
+            node.slug,
+            wait_state_payload.get("input_item_id"),
+            current_message_id,
+            waiting_input_id,
+            current_input_item_id,
+        )
 
         conversation_snapshot = _clone_conversation_history_snapshot(
             context.conversation_history

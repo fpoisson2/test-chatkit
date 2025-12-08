@@ -1135,6 +1135,10 @@ async def run_workflow_v2(
             "current_user_message": current_user_message,
             "workflow_call_stack": workflow_call_stack or (),
             "current_input_item_id": current_input_item_id,
+            "pending_wait_state": pending_wait_state,
+            "pending_wait_input_id": pending_wait_state.get("input_item_id")
+            if pending_wait_state
+            else None,
             "initial_user_text": initial_user_text,
             "widget_configs_by_step": widget_configs_by_step,
             "nested_workflow_configs": nested_workflow_configs,
