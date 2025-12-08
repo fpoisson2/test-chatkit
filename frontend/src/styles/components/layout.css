@@ -11,6 +11,8 @@
   width: 100%;
   background: var(--main-background);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .chatkit-layout__main {
@@ -18,8 +20,9 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
   width: 100%;
+  flex: 1 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
   z-index: 0;
@@ -75,6 +78,18 @@
   min-height: 0;
 }
 
+/* Mobile layout (default) - flex layout, reset grid properties */
+.chatkit-layout:not(.chatkit-layout--desktop) {
+  grid-template-columns: none;
+}
+
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-layout__main {
+  border-left: none;
+  grid-column: auto;
+  transform: none;
+}
+
+/* Desktop layout - grid layout */
 .chatkit-layout--desktop {
   display: grid;
   grid-template-columns: var(--chatkit-sidebar-collapsed-width) 1fr;
