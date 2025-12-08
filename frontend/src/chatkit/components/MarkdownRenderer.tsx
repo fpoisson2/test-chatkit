@@ -31,8 +31,23 @@ function decodeHtmlEntities(value: string): string {
   }
 
   const textarea = document.createElement('textarea');
-  textarea.innerHTML = value;
-  return textarea.value;
+  let decoded = value;
+  let iterations = 0;
+
+  // Handle multiple-encoded HTML entities (e.g., "&amp;lt;") by decoding until the
+  // content is stable or we reach a small safety cap to avoid infinite loops.
+  while (HTML_ENTITY_PATTERN.test(decoded) && iterations < 3) {
+    textarea.innerHTML = decoded;
+    const nextValue = textarea.value;
+    if (nextValue === decoded) {
+      break;
+    }
+
+    decoded = nextValue;
+    iterations += 1;
+  }
+
+  return decoded;
 }
 
 interface CodeBlockProps {
