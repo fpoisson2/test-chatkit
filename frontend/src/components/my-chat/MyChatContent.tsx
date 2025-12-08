@@ -275,7 +275,7 @@ export function MyChatContent() {
         currentThreadId={initialThreadId === null ? null : ((currentThread?.id as string | undefined) ?? initialThreadId)}
         activeThreadSnapshot={initialThreadId === null ? null : (currentThread as Thread | null)} streamingThreadIds={streamingThreadIds}
         onThreadSelect={handleSidebarThreadSelect} onThreadDeleted={handleSidebarThreadDeleted} onNewConversation={handleNewConversation} hideWorkflows isNewConversationActive={initialThreadId === null} />
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", overflow: "hidden" }}>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", minHeight: 0, overflow: "hidden" }}>
         <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
             <WorkflowChatInstance key={instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
