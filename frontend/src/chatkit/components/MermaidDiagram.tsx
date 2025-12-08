@@ -109,7 +109,7 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
   return (
     <>
       <TransformWrapper
-        initialScale={1.2}
+        initialScale={1.8}
         minScale={0.5}
         maxScale={4}
         centerOnInit={true}
@@ -247,7 +247,7 @@ function MermaidModal({ svg, onClose }: MermaidModalProps) {
           </svg>
         </button>
         <TransformWrapper
-          initialScale={1.2}
+          initialScale={1.8}
           minScale={0.3}
           maxScale={8}
           centerOnInit={true}
