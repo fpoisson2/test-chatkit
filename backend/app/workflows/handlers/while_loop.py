@@ -77,7 +77,7 @@ class WhileNodeHandler(BaseNodeHandler):
             for slug in inside_nodes
         )
 
-        if iteration_count > 0 and not has_new_input and not contains_wait_node:
+        if iteration_count > 0 and not has_new_input:
             from ..executor import WorkflowEndState
 
             # Clean up loop state
