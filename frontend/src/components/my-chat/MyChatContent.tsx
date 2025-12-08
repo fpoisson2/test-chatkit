@@ -82,7 +82,11 @@ export function MyChatContent() {
     if (isInitialMountRef.current) {
       const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
       if (storedId && storedId !== initialThreadId) {
-        setInitialThreadId(storedId);
+        // Defer state update to avoid updating parent during render
+        const timeoutId = setTimeout(() => {
+          setInitialThreadId(storedId);
+        }, 0);
+        return () => clearTimeout(timeoutId);
       }
     }
   }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef]);

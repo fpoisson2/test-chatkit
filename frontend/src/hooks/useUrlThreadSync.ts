@@ -35,17 +35,24 @@ export function useUrlThreadSync({
     if (currentUrlThreadId !== null && currentUrlThreadId !== initialThreadId) {
       isNewConversationDraftRef.current = false;
       persistStoredThreadId(sessionOwner, currentUrlThreadId, persistenceSlug);
-      setInitialThreadId(currentUrlThreadId);
-      setChatInstanceKey((v) => v + 1);
-      return;
+      // Defer state updates to avoid updating parent during render
+      const timeoutId = setTimeout(() => {
+        setInitialThreadId(currentUrlThreadId);
+        setChatInstanceKey((v) => v + 1);
+      }, 0);
+      return () => clearTimeout(timeoutId);
     }
 
     // Navigate to new conversation (URL cleared)
     if (currentUrlThreadId === null && prevUrlThreadId !== undefined) {
       clearStoredThreadId(sessionOwner, persistenceSlug);
       isNewConversationDraftRef.current = true;
-      setInitialThreadId(null);
-      setChatInstanceKey((v) => v + 1);
+      // Defer state updates to avoid updating parent during render
+      const timeoutId = setTimeout(() => {
+        setInitialThreadId(null);
+        setChatInstanceKey((v) => v + 1);
+      }, 0);
+      return () => clearTimeout(timeoutId);
     }
   }, [
     urlThreadId,

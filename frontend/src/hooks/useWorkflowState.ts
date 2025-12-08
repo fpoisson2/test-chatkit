@@ -102,13 +102,17 @@ export function useWorkflowState({
       }
 
       const selection: WorkflowActivation = { kind: "local", workflow };
-      resetChatState({
-        selection,
-        preserveStoredThread: !isNewConversationDraftRef.current,
-        targetMode: mode,
-      });
-      resetError();
-      setWorkflowSelection(selection);
+      // Defer state updates to avoid updating parent during render
+      const timeoutId = setTimeout(() => {
+        resetChatState({
+          selection,
+          preserveStoredThread: !isNewConversationDraftRef.current,
+          targetMode: mode,
+        });
+        resetError();
+        setWorkflowSelection(selection);
+      }, 0);
+      return () => clearTimeout(timeoutId);
     }
   }, [mode, providerSelectedWorkflowId, workflows, workflowSelection, resetChatState, resetError, token, isAdmin, isNewConversationDraftRef]);
 
