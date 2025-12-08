@@ -46,6 +46,7 @@ class WaitNodeHandler(BaseNodeHandler):
         thread = context.runtime_vars.get("thread")
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
         current_user_message = context.runtime_vars.get("current_user_message")
+        runtime_current_input_id = context.runtime_vars.get("current_input_item_id")
         initial_user_text = context.runtime_vars.get("initial_user_text")
         agent_context = context.runtime_vars.get("agent_context")
         on_stream_event = context.runtime_vars.get("on_stream_event")
@@ -70,7 +71,7 @@ class WaitNodeHandler(BaseNodeHandler):
             and waiting_slug == node.slug
             and current_message_id is not None
             and waiting_input_id is not None
-            and waiting_input_id != current_message_id
+            and waiting_input_id not in {current_message_id, runtime_current_input_id}
         )
 
         logger.info(
@@ -166,13 +167,25 @@ class WaitNodeHandler(BaseNodeHandler):
                 await emit_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
         # Build and save wait state
+        # Prefer the previously saved wait input when the runtime payload points to the same message,
+        # even if the reconstructed current_user_message has a different id (e.g., snapshot restore).
+        chosen_input_id: str | None
+        if (
+            pending_wait_state
+            and waiting_input_id is not None
+            and waiting_input_id == runtime_current_input_id
+        ):
+            chosen_input_id = waiting_input_id
+        elif current_message_id is not None:
+            chosen_input_id = current_message_id
+        elif waiting_input_id is not None:
+            chosen_input_id = waiting_input_id
+        else:
+            chosen_input_id = current_input_item_id
+
         wait_state_payload: dict[str, Any] = {
             "slug": node.slug,
-            "input_item_id": current_message_id
-            if current_message_id is not None
-            else waiting_input_id
-            if waiting_input_id is not None
-            else current_input_item_id,
+            "input_item_id": chosen_input_id,
         }
 
         logger.info(

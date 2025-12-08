@@ -86,8 +86,23 @@ class StateInitializer:
             )
             if current_user_message is not None:
                 candidate_id = getattr(current_user_message, "id", None)
+                pending_wait_input_id = (
+                    pending_wait_state.get("input_item_id")
+                    if pending_wait_state
+                    else None
+                )
                 if isinstance(candidate_id, str):
-                    if isinstance(current_input_item_id, str) and (
+                    if (
+                        isinstance(current_input_item_id, str)
+                        and current_input_item_id != candidate_id
+                        and pending_wait_input_id == current_input_item_id
+                    ):
+                        logger.info(
+                            "[WAIT_TRACE] StateInitializer: keeping wait input id %s despite new message id %s",
+                            current_input_item_id,
+                            candidate_id,
+                        )
+                    elif isinstance(current_input_item_id, str) and (
                         current_input_item_id != candidate_id
                     ):
                         logger.debug(
@@ -95,7 +110,9 @@ class StateInitializer:
                             current_input_item_id,
                             candidate_id,
                         )
-                    current_input_item_id = candidate_id
+                        current_input_item_id = candidate_id
+                    else:
+                        current_input_item_id = candidate_id
 
             logger.info(
                 "[WAIT_TRACE] StateInitializer: payload_source_item_id=%s, current_user_message_id=%s, "

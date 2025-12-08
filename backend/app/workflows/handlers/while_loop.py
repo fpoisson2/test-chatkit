@@ -58,9 +58,19 @@ class WhileNodeHandler(BaseNodeHandler):
 
         iteration_count = context.state["state"].get(loop_counter_key, 0)
 
+        pending_wait_state = context.runtime_vars.get("pending_wait_state")
+        pending_wait_input_id = None
+        if pending_wait_state and isinstance(pending_wait_state, dict):
+            pending_wait_input_id = pending_wait_state.get("input_item_id")
+
         # Get current input ID to detect if there's a new user message
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
         stored_input_id = context.state["state"].get(loop_input_id_key)
+        if stored_input_id is None and pending_wait_input_id:
+            stored_input_id = pending_wait_input_id
+            context.state["state"][loop_input_id_key] = pending_wait_input_id
+            if iteration_count == 0:
+                iteration_count = max(iteration_count, 1)
 
         # Check if we have a new user message
         if iteration_count == 0:
@@ -83,13 +93,14 @@ class WhileNodeHandler(BaseNodeHandler):
         )
 
         logger.info(
-            "[WAIT_TRACE] While %s: iteration=%s, stored_input_id=%s, current_input_item_id=%s, has_new_input=%s, contains_wait_node=%s",
+            "[WAIT_TRACE] While %s: iteration=%s, stored_input_id=%s, current_input_item_id=%s, has_new_input=%s, contains_wait_node=%s, pending_wait_input_id=%s",
             node.slug,
             iteration_count,
             stored_input_id,
             current_input_item_id,
             has_new_input,
             contains_wait_node,
+            pending_wait_input_id,
         )
 
         logger.info(
