@@ -3,6 +3,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
+import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pan-pinch';
 import './MermaidDiagram.css';
 
 export interface MermaidDiagramProps {
@@ -21,6 +22,7 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
   const [svg, setSvg] = useState<string>(cached.svg);
   const [error, setError] = useState<string | null>(cached.error);
   const [idRef] = useState(() => `mermaid-${++mermaidIdCounter}-${Date.now()}`);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const renderDiagram = async () => {
@@ -104,10 +106,165 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="chatkit-mermaid-container"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <>
+      <TransformWrapper
+        initialScale={1}
+        minScale={0.5}
+        maxScale={4}
+        centerOnInit={true}
+        wheel={{ step: 0.1 }}
+        doubleClick={{ mode: 'reset' }}
+      >
+        <div className="chatkit-mermaid-zoom-wrapper">
+          <button
+            className="chatkit-mermaid-expand-btn"
+            onClick={() => setIsModalOpen(true)}
+            title="Agrandir le diagramme"
+            aria-label="Agrandir le diagramme"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+          </button>
+          <Controls />
+          <TransformComponent
+            wrapperClass="chatkit-mermaid-transform-wrapper"
+            contentClass="chatkit-mermaid-transform-content"
+          >
+            <div
+              ref={containerRef}
+              className="chatkit-mermaid-container"
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          </TransformComponent>
+        </div>
+      </TransformWrapper>
+
+      {isModalOpen && (
+        <MermaidModal
+          svg={svg}
+          onClose={() => setIsModalOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// Zoom controls component
+function Controls() {
+  const { zoomIn, zoomOut, resetTransform } = useControls();
+
+  return (
+    <div className="chatkit-mermaid-controls">
+      <button
+        className="chatkit-mermaid-control-btn"
+        onClick={() => zoomIn()}
+        title="Zoom avant"
+        aria-label="Zoom avant"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8" />
+          <path d="M21 21l-4.35-4.35" />
+          <line x1="11" y1="8" x2="11" y2="14" />
+          <line x1="8" y1="11" x2="14" y2="11" />
+        </svg>
+      </button>
+      <button
+        className="chatkit-mermaid-control-btn"
+        onClick={() => zoomOut()}
+        title="Zoom arrière"
+        aria-label="Zoom arrière"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8" />
+          <path d="M21 21l-4.35-4.35" />
+          <line x1="8" y1="11" x2="14" y2="11" />
+        </svg>
+      </button>
+      <button
+        className="chatkit-mermaid-control-btn"
+        onClick={() => resetTransform()}
+        title="Réinitialiser le zoom"
+        aria-label="Réinitialiser le zoom"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+          <path d="M3 21v-5h5" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// Modal component for expanded view
+interface MermaidModalProps {
+  svg: string;
+  onClose: () => void;
+}
+
+function MermaidModal({ svg, onClose }: MermaidModalProps) {
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  return (
+    <div className="chatkit-mermaid-modal-overlay" onClick={handleOverlayClick}>
+      <div className="chatkit-mermaid-modal-content">
+        <button
+          className="chatkit-mermaid-modal-close"
+          onClick={onClose}
+          title="Fermer"
+          aria-label="Fermer le modal"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <TransformWrapper
+          initialScale={1}
+          minScale={0.3}
+          maxScale={8}
+          centerOnInit={true}
+          wheel={{ step: 0.15 }}
+          doubleClick={{ mode: 'reset' }}
+        >
+          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+            <Controls />
+            <TransformComponent
+              wrapperClass="chatkit-mermaid-transform-wrapper"
+              contentClass="chatkit-mermaid-transform-content"
+              wrapperStyle={{ width: '100%', height: '100%' }}
+            >
+              <div
+                className="chatkit-mermaid-container"
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />
+            </TransformComponent>
+          </div>
+        </TransformWrapper>
+      </div>
+    </div>
   );
 }
