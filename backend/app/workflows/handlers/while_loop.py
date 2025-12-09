@@ -58,24 +58,22 @@ class WhileNodeHandler(BaseNodeHandler):
         iteration_count = context.state["state"].get(loop_counter_key, 0)
 
         # Get current input ID to detect if there's a new user message.
-        # Some runtimes clear current_input_item_id when the workflow is resumed, which would
-        # make it look like a new message if we simply substitute a constant sentinel. To avoid
-        # that, when no current input is present we reuse the previously stored input id so the
-        # comparison remains stable until a real user message arrives.
+        # Some runtimes clear current_input_item_id when the workflow is resumed, so we rely on
+        # the actual current_input_item_id when present and otherwise keep the previously
+        # observed value without inventing a sentinel that could look like a "new" message.
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
         stored_input_id = context.state["state"].get(loop_input_id_key)
-        normalized_current_input = (
-            current_input_item_id
-            if current_input_item_id is not None
-            else stored_input_id or "__no_input__"
+
+        # True only when a real current_input_item_id exists and differs from what we last
+        # processed. When there is no current_input_item_id, we must treat it as no new input to
+        # avoid running the loop body on an empty/absent user message.
+        has_new_input = (
+            current_input_item_id is not None
+            and current_input_item_id != stored_input_id
         )
 
-        # Check if we have a new user message (compare normalized IDs so None values don't
-        # trigger a fake "new" message on each iteration)
-        has_new_input = stored_input_id is None or normalized_current_input != stored_input_id
-
-        # If we've already iterated and there's no new input, exit to waiting state
-        if iteration_count > 0 and not has_new_input:
+        # If there's no new input at all, immediately wait instead of iterating.
+        if not has_new_input:
             from ..executor import WorkflowEndState
 
             # Clean up loop state
@@ -142,10 +140,11 @@ class WhileNodeHandler(BaseNodeHandler):
             # Save iteration counter
             context.state["state"][loop_counter_key] = iteration_count
 
-            # Store current input ID for next iteration comparison
-            # Always store the current input id (normalized) so repeated calls without a new
-            # user message do not re-run the loop body.
-            context.state["state"][loop_input_id_key] = normalized_current_input
+            # Store current input ID for next iteration comparison only when we actually have
+            # one; this prevents persisting placeholder values that could be mistaken for new
+            # user input on subsequent resumes.
+            if current_input_item_id is not None:
+                context.state["state"][loop_input_id_key] = current_input_item_id
 
             logger.debug(
                 "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
