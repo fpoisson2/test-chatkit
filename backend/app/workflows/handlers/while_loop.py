@@ -32,8 +32,7 @@ class WhileNodeHandler(BaseNodeHandler):
 
         params = node.parameters or {}
         condition_expr = str(params.get("condition", "")).strip()
-        max_iterations = int(params.get("max_iterations", 100))
-        max_iterations = max(max_iterations - 1, 0)
+        max_iterations = max(int(params.get("max_iterations", 100)), 0)
         iteration_var = str(params.get("iteration_var", "")).strip()
 
         # Initialize loop state keys
@@ -113,48 +112,63 @@ class WhileNodeHandler(BaseNodeHandler):
             iteration_count = iteration_count + 1
 
             # Check max iterations safety limit
-            if iteration_count > max_iterations:
+            if iteration_count >= max_iterations and max_iterations > 0:
+                from ..executor import WorkflowEndState
+
                 context.state["state"].pop(loop_counter_key, None)
                 context.state["state"].pop(loop_entry_key, None)
                 context.state["state"].pop(loop_input_id_key, None)
-                transition = self._find_while_exit_transition(node, context)
-            else:
-                # Save iteration counter
-                context.state["state"][loop_counter_key] = iteration_count
 
-                # Store current input ID for next iteration comparison
-                if current_input_item_id is not None:
-                    context.state["state"][loop_input_id_key] = current_input_item_id
-
-                logger.debug(
-                    "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
-                    node.slug,
-                    iteration_count,
-                    context.state["state"].get(loop_counter_key),
+                context.runtime_vars["final_end_state"] = WorkflowEndState(
+                    slug=node.slug,
+                    status_type="waiting",
+                    status_reason=(
+                        "Nombre maximal d'itérations atteint, en attente d'un nouveau "
+                        "message utilisateur."
+                    ),
+                    message=(
+                        "Nombre maximal d'itérations atteint, en attente d'un nouveau "
+                        "message utilisateur."
+                    ),
                 )
+                return NodeResult(finished=True)
 
-                # Update iteration variable if specified (1-based)
-                if iteration_var:
-                    context.state["state"][iteration_var] = iteration_count
+            # Save iteration counter
+            context.state["state"][loop_counter_key] = iteration_count
 
-                # Find the entry point to the while loop
-                entry_slug = self._find_while_entry_point(node, context, loop_entry_key)
+            # Store current input ID for next iteration comparison
+            if current_input_item_id is not None:
+                context.state["state"][loop_input_id_key] = current_input_item_id
 
-                logger.info(
-                    "[WHILE_DEBUG] iteration=%d, entry_slug=%s, current_input_id=%s, stored_input_id=%s",
-                    iteration_count,
-                    entry_slug,
-                    current_input_item_id,
-                    stored_input_id,
-                )
+            logger.debug(
+                "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
+                node.slug,
+                iteration_count,
+                context.state["state"].get(loop_counter_key),
+            )
 
-                if entry_slug is not None:
-                    return NodeResult(next_slug=entry_slug)
+            # Update iteration variable if specified (1-based)
+            if iteration_var:
+                context.state["state"][iteration_var] = iteration_count
 
-                # No entry point found, try normal transitions
-                transition = self._next_edge(context, node.slug, "loop")
-                if transition is None:
-                    transition = self._next_edge(context, node.slug)
+            # Find the entry point to the while loop
+            entry_slug = self._find_while_entry_point(node, context, loop_entry_key)
+
+            logger.info(
+                "[WHILE_DEBUG] iteration=%d, entry_slug=%s, current_input_id=%s, stored_input_id=%s",
+                iteration_count,
+                entry_slug,
+                current_input_item_id,
+                stored_input_id,
+            )
+
+            if entry_slug is not None:
+                return NodeResult(next_slug=entry_slug)
+
+            # No entry point found, try normal transitions
+            transition = self._next_edge(context, node.slug, "loop")
+            if transition is None:
+                transition = self._next_edge(context, node.slug)
 
         if transition is None:
             # No explicit transition found - use fallback logic
