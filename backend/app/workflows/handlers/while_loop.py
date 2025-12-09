@@ -79,6 +79,17 @@ class WhileNodeHandler(BaseNodeHandler):
                 current_input_item_id = candidate_id
         stored_input_id = context.state["state"].get(loop_input_id_key)
 
+        # Fallback: if the loop state was restored but the stored input ID was
+        # not persisted for some reason, reuse the pending wait state's input
+        # item ID. This prevents the same user message from being treated as
+        # "new" and triggering another full iteration before the user replies.
+        if stored_input_id is None:
+            pending_wait_state = context.runtime_vars.get("pending_wait_state")
+            if isinstance(pending_wait_state, dict):
+                wait_input_id = pending_wait_state.get("input_item_id")
+                if isinstance(wait_input_id, str):
+                    stored_input_id = wait_input_id
+
         # True only when we have an actual user message and its ID differs from what we last
         # processed. When there is no user message (or the ID is cleared), we must treat it as
         # no new input to avoid running the loop body on an empty/absent user message or on
