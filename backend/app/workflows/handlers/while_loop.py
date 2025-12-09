@@ -79,7 +79,6 @@ class WhileNodeHandler(BaseNodeHandler):
             # Clean up loop state
             context.state["state"].pop(loop_counter_key, None)
             context.state["state"].pop(loop_entry_key, None)
-            context.state["state"].pop(loop_input_id_key, None)
 
             # Set waiting state
             context.runtime_vars["final_end_state"] = WorkflowEndState(
@@ -121,7 +120,6 @@ class WhileNodeHandler(BaseNodeHandler):
 
                 context.state["state"].pop(loop_counter_key, None)
                 context.state["state"].pop(loop_entry_key, None)
-                context.state["state"].pop(loop_input_id_key, None)
 
                 context.runtime_vars["final_end_state"] = WorkflowEndState(
                     slug=node.slug,
