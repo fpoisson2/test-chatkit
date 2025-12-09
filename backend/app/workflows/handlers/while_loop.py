@@ -140,6 +140,14 @@ class WhileNodeHandler(BaseNodeHandler):
                 # Find the entry point to the while loop
                 entry_slug = self._find_while_entry_point(node, context, loop_entry_key)
 
+                logger.info(
+                    "[WHILE_DEBUG] iteration=%d, entry_slug=%s, current_input_id=%s, stored_input_id=%s",
+                    iteration_count,
+                    entry_slug,
+                    current_input_item_id,
+                    stored_input_id,
+                )
+
                 if entry_slug is not None:
                     return NodeResult(next_slug=entry_slug)
 
