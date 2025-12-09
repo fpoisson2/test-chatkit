@@ -57,12 +57,18 @@ class WhileNodeHandler(BaseNodeHandler):
 
         iteration_count = context.state["state"].get(loop_counter_key, 0)
 
-        # Get current input ID to detect if there's a new user message
+        # Get current input ID to detect if there's a new user message.
+        # Some runtimes clear current_input_item_id when the workflow is resumed, which would
+        # make it look like a new message if we simply substitute a constant sentinel. To avoid
+        # that, when no current input is present we reuse the previously stored input id so the
+        # comparison remains stable until a real user message arrives.
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
-        normalized_current_input = (
-            current_input_item_id if current_input_item_id is not None else "__no_input__"
-        )
         stored_input_id = context.state["state"].get(loop_input_id_key)
+        normalized_current_input = (
+            current_input_item_id
+            if current_input_item_id is not None
+            else stored_input_id or "__no_input__"
+        )
 
         # Check if we have a new user message (compare normalized IDs so None values don't
         # trigger a fake "new" message on each iteration)
