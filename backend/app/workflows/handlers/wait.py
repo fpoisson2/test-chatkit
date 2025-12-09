@@ -76,6 +76,11 @@ class WaitNodeHandler(BaseNodeHandler):
             if thread is not None:
                 _set_wait_state_metadata(thread, None)
 
+            # Also clear pending_wait_state in runtime_vars so that agent steps
+            # in while loops don't incorrectly clear conversation history
+            # (see executor_v2.py lines 820-823)
+            context.runtime_vars["pending_wait_state"] = None
+
             # Build context with user message
             last_step_context = {"user_message": initial_user_text}
 

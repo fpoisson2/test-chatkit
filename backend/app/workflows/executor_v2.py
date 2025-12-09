@@ -817,8 +817,14 @@ async def run_workflow_v2(
                     in_while_loop_iteration = True
                     break
 
+        # Check runtime_vars for current pending_wait_state status
+        # (may have been cleared by wait node after resuming)
+        current_pending_wait_state = context.runtime_vars.get(
+            "pending_wait_state", pending_wait_state
+        )
+
         if in_while_loop_iteration and (
-            sanitized_previous_response_id or pending_wait_state
+            sanitized_previous_response_id or current_pending_wait_state
         ):
             conversation_history_input = []
 
@@ -1146,6 +1152,8 @@ async def run_workflow_v2(
             "generated_image_urls": generated_image_urls,
             "voice_session_manager": initialization.voice_session_manager,
             "voice_overrides": initialization.voice_overrides,
+            # Track pending_wait_state so wait node can clear it after resuming
+            "pending_wait_state": pending_wait_state,
         }
     )
 
