@@ -59,14 +59,14 @@ class WhileNodeHandler(BaseNodeHandler):
 
         # Get current input ID to detect if there's a new user message
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
+        normalized_current_input = (
+            current_input_item_id if current_input_item_id is not None else "__no_input__"
+        )
         stored_input_id = context.state["state"].get(loop_input_id_key)
 
-        # Check if we have a new user message
-        has_new_input = (
-            iteration_count == 0 or  # First iteration
-            stored_input_id is None or  # No stored ID
-            current_input_item_id != stored_input_id  # Different input ID
-        )
+        # Check if we have a new user message (compare normalized IDs so None values don't
+        # trigger a fake "new" message on each iteration)
+        has_new_input = stored_input_id is None or normalized_current_input != stored_input_id
 
         # If we've already iterated and there's no new input, exit to waiting state
         if iteration_count > 0 and not has_new_input:
@@ -137,8 +137,9 @@ class WhileNodeHandler(BaseNodeHandler):
             context.state["state"][loop_counter_key] = iteration_count
 
             # Store current input ID for next iteration comparison
-            if current_input_item_id is not None:
-                context.state["state"][loop_input_id_key] = current_input_item_id
+            # Always store the current input id (normalized) so repeated calls without a new
+            # user message do not re-run the loop body.
+            context.state["state"][loop_input_id_key] = normalized_current_input
 
             logger.debug(
                 "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
