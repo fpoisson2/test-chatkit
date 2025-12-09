@@ -19,9 +19,16 @@ _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 
 def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
     """Retourne l'état d'attente stocké dans les métadonnées du fil."""
+    import logging
+    logger = logging.getLogger("chatkit.server")
 
     # Pour les threads ChatKit en mémoire (SDK), utiliser thread.metadata
     metadata = getattr(thread, "metadata", None)
+    if not isinstance(metadata, dict):
+        payload = getattr(thread, "payload", None)
+        if isinstance(payload, dict):
+            metadata = payload.get("metadata")
+            use_payload = True
 
     # Pour les threads chargés depuis la DB (ChatThread SQLAlchemy), utiliser payload
     if not isinstance(metadata, dict):
@@ -30,9 +37,19 @@ def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
             metadata = payload.get("metadata")
 
     if not isinstance(metadata, dict):
+        logger.info(
+            "[WAIT_STATE_DEBUG] _get_wait_state_metadata: no metadata dict, returning None"
+        )
         return None
 
     state = metadata.get(_WAIT_STATE_METADATA_KEY)
+    logger.info(
+        "[WAIT_STATE_DEBUG] _get_wait_state_metadata: thread_type=%s, "
+        "has_wait_key=%s, state_input_id=%s",
+        type(thread).__name__,
+        state is not None,
+        state.get("input_item_id") if isinstance(state, dict) else None,
+    )
     if isinstance(state, dict):
         return dict(state)
     return None
@@ -40,30 +57,88 @@ def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
 
 def _set_wait_state_metadata(thread: Any, state: Mapping[str, Any] | None) -> None:
     """Met à jour l'état d'attente dans les métadonnées du fil."""
+    import logging
+    logger = logging.getLogger("chatkit.server")
 
     metadata = getattr(thread, "metadata", None)
-    if isinstance(metadata, dict):
-        updated = dict(metadata)
-    else:
-        updated = {}
+    use_payload = False
+    if not isinstance(metadata, dict):
+        payload = getattr(thread, "payload", None)
+        if isinstance(payload, dict):
+            metadata = payload.get("metadata")
+            use_payload = True
+    logger.info(
+        "[WAIT_STATE_DEBUG] _set_wait_state_metadata called: state=%s, "
+        "thread_type=%s, metadata_type=%s, has_wait_key=%s",
+        "clearing" if state is None else "setting",
+        type(thread).__name__,
+        type(metadata).__name__ if metadata else "None",
+        _WAIT_STATE_METADATA_KEY in metadata if isinstance(metadata, dict) else False,
+    )
 
-    if state is None:
-        updated.pop(_WAIT_STATE_METADATA_KEY, None)
-    else:
+    # IMPORTANT: Modify the dict IN PLACE first if possible.
+    # This is critical because thread.metadata may return a reference to an
+    # internal dict, and reassigning thread.metadata = new_dict may not persist
+    # if the property returns a copy each time it's accessed.
+    if isinstance(metadata, dict):
+        if state is None:
+            metadata.pop(_WAIT_STATE_METADATA_KEY, None)
+            logger.info(
+                "[WAIT_STATE_DEBUG] Removed wait key from metadata dict in place"
+            )
+        else:
+            metadata[_WAIT_STATE_METADATA_KEY] = dict(state)
+            logger.info(
+                "[WAIT_STATE_DEBUG] Set wait key in metadata dict in place"
+            )
+        return
+
+    # Fallback: build updated dict and try to assign
+    updated: dict[str, Any] = {}
+    if state is not None:
         updated[_WAIT_STATE_METADATA_KEY] = dict(state)
+
+    # Write to the same location we read from
+    if use_payload:
+        # Thread uses payload.metadata (SQLAlchemy ChatThread)
+        payload = getattr(thread, "payload", None)
+        if isinstance(payload, dict):
+            if "metadata" not in payload:
+                payload["metadata"] = {}
+            if isinstance(payload["metadata"], dict):
+                if state is None:
+                    payload["metadata"].pop(_WAIT_STATE_METADATA_KEY, None)
+                else:
+                    payload["metadata"][_WAIT_STATE_METADATA_KEY] = dict(state)
+            else:
+                payload["metadata"] = updated
+            # Mark as modified for SQLAlchemy
+            try:
+                from sqlalchemy.orm.attributes import flag_modified
+
+                flag_modified(thread, "payload")
+            except Exception:
+                pass
+            logger.info("[WAIT_STATE_DEBUG] Updated thread.payload['metadata']")
+            return
 
     if hasattr(thread, "metadata"):
         try:
             thread.metadata = updated
+            logger.info("[WAIT_STATE_DEBUG] Assigned to thread.metadata")
             return
-        except Exception:  # pragma: no cover - dépend du type de l'objet
-            pass
+        except Exception as exc:  # pragma: no cover - dépend du type de l'objet
+            logger.warning(
+                "[WAIT_STATE_DEBUG] Failed to assign to thread.metadata: %s", exc
+            )
 
     if isinstance(metadata, dict):  # pragma: no cover - repli pour les mocks
         metadata.clear()
         metadata.update(updated)
+        logger.info("[WAIT_STATE_DEBUG] Modified metadata dict in place")
     else:
         thread.metadata = updated
+        logger.info("[WAIT_STATE_DEBUG] Set thread.metadata directly")
 
 
 @dataclass(frozen=True)

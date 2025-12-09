@@ -32,8 +32,7 @@ class WhileNodeHandler(BaseNodeHandler):
 
         params = node.parameters or {}
         condition_expr = str(params.get("condition", "")).strip()
-        max_iterations = int(params.get("max_iterations", 100))
-        max_iterations = max(max_iterations - 1, 0)
+        max_iterations = max(int(params.get("max_iterations", 100)), 0)
         iteration_var = str(params.get("iteration_var", "")).strip()
 
         # Initialize loop state keys
@@ -58,25 +57,56 @@ class WhileNodeHandler(BaseNodeHandler):
 
         iteration_count = context.state["state"].get(loop_counter_key, 0)
 
-        # Get current input ID to detect if there's a new user message
+        # Get the current user message and its ID to detect new user input. We explicitly
+        # require a user message object to avoid misclassifying assistant/system items as
+        # new user input when a wait state resumes.
+        current_user_message = context.runtime_vars.get("current_user_message")
+        try:
+            from chatkit.types import UserMessageItem
+
+            if not isinstance(current_user_message, UserMessageItem):
+                current_user_message = None
+        except Exception:  # pragma: no cover - defensive import
+            current_user_message = None
+
+        # Some runtimes clear current_input_item_id when the workflow is resumed, so we rely on
+        # the actual current_input_item_id when present and otherwise keep the previously
+        # observed value without inventing a sentinel that could look like a "new" message.
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
+        if current_input_item_id is None and current_user_message is not None:
+            candidate_id = getattr(current_user_message, "id", None)
+            if isinstance(candidate_id, str):
+                current_input_item_id = candidate_id
         stored_input_id = context.state["state"].get(loop_input_id_key)
 
-        # Check if we have a new user message
+        # Fallback: if the loop state was restored but the stored input ID was
+        # not persisted for some reason, reuse the pending wait state's input
+        # item ID. This prevents the same user message from being treated as
+        # "new" and triggering another full iteration before the user replies.
+        if stored_input_id is None:
+            pending_wait_state = context.runtime_vars.get("pending_wait_state")
+            if isinstance(pending_wait_state, dict):
+                wait_input_id = pending_wait_state.get("input_item_id")
+                if isinstance(wait_input_id, str):
+                    stored_input_id = wait_input_id
+
+        # True only when we have an actual user message and its ID differs from what we last
+        # processed. When there is no user message (or the ID is cleared), we must treat it as
+        # no new input to avoid running the loop body on an empty/absent user message or on
+        # assistant/system items.
         has_new_input = (
-            iteration_count == 0 or  # First iteration
-            stored_input_id is None or  # No stored ID
-            current_input_item_id != stored_input_id  # Different input ID
+            current_user_message is not None
+            and current_input_item_id is not None
+            and current_input_item_id != stored_input_id
         )
 
-        # If we've already iterated and there's no new input, exit to waiting state
-        if iteration_count > 0 and not has_new_input:
+        # If there's no new input at all, immediately wait instead of iterating.
+        if not has_new_input:
             from ..executor import WorkflowEndState
 
             # Clean up loop state
             context.state["state"].pop(loop_counter_key, None)
             context.state["state"].pop(loop_entry_key, None)
-            context.state["state"].pop(loop_input_id_key, None)
 
             # Set waiting state
             context.runtime_vars["final_end_state"] = WorkflowEndState(
@@ -113,40 +143,64 @@ class WhileNodeHandler(BaseNodeHandler):
             iteration_count = iteration_count + 1
 
             # Check max iterations safety limit
-            if iteration_count > max_iterations:
+            if iteration_count >= max_iterations and max_iterations > 0:
+                from ..executor import WorkflowEndState
+
                 context.state["state"].pop(loop_counter_key, None)
                 context.state["state"].pop(loop_entry_key, None)
-                context.state["state"].pop(loop_input_id_key, None)
-                transition = self._find_while_exit_transition(node, context)
-            else:
-                # Save iteration counter
-                context.state["state"][loop_counter_key] = iteration_count
 
-                # Store current input ID for next iteration comparison
-                if current_input_item_id is not None:
-                    context.state["state"][loop_input_id_key] = current_input_item_id
-
-                logger.debug(
-                    "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
-                    node.slug,
-                    iteration_count,
-                    context.state["state"].get(loop_counter_key),
+                context.runtime_vars["final_end_state"] = WorkflowEndState(
+                    slug=node.slug,
+                    status_type="waiting",
+                    status_reason=(
+                        "Nombre maximal d'itérations atteint, en attente d'un nouveau "
+                        "message utilisateur."
+                    ),
+                    message=(
+                        "Nombre maximal d'itérations atteint, en attente d'un nouveau "
+                        "message utilisateur."
+                    ),
                 )
+                return NodeResult(finished=True)
 
-                # Update iteration variable if specified (1-based)
-                if iteration_var:
-                    context.state["state"][iteration_var] = iteration_count
+            # Save iteration counter
+            context.state["state"][loop_counter_key] = iteration_count
 
-                # Find the entry point to the while loop
-                entry_slug = self._find_while_entry_point(node, context, loop_entry_key)
+            # Store current input ID for next iteration comparison only when we actually have
+            # a user message; this prevents persisting placeholder values that could be
+            # mistaken for new user input on subsequent resumes.
+            if current_user_message is not None and current_input_item_id is not None:
+                context.state["state"][loop_input_id_key] = current_input_item_id
 
-                if entry_slug is not None:
-                    return NodeResult(next_slug=entry_slug)
+            logger.debug(
+                "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
+                node.slug,
+                iteration_count,
+                context.state["state"].get(loop_counter_key),
+            )
 
-                # No entry point found, try normal transitions
-                transition = self._next_edge(context, node.slug, "loop")
-                if transition is None:
-                    transition = self._next_edge(context, node.slug)
+            # Update iteration variable if specified (1-based)
+            if iteration_var:
+                context.state["state"][iteration_var] = iteration_count
+
+            # Find the entry point to the while loop
+            entry_slug = self._find_while_entry_point(node, context, loop_entry_key)
+
+            logger.info(
+                "[WHILE_DEBUG] iteration=%d, entry_slug=%s, current_input_id=%s, stored_input_id=%s",
+                iteration_count,
+                entry_slug,
+                current_input_item_id,
+                stored_input_id,
+            )
+
+            if entry_slug is not None:
+                return NodeResult(next_slug=entry_slug)
+
+            # No entry point found, try normal transitions
+            transition = self._next_edge(context, node.slug, "loop")
+            if transition is None:
+                transition = self._next_edge(context, node.slug)
 
         if transition is None:
             # No explicit transition found - use fallback logic

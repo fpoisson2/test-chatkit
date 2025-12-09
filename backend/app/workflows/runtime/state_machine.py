@@ -80,12 +80,13 @@ async def _update_workflow_metadata(
                     )
 
                     # Stocker le workflow_item dans runtime_vars pour le partager entre étapes
-                    context.runtime_vars["workflow_item"] = workflow_item
+                    if context is not None and hasattr(context, "runtime_vars"):
+                        context.runtime_vars["workflow_item"] = workflow_item
 
-                    # Aussi le stocker dans le thread pour plus de sécurité
-                    thread = context.runtime_vars.get("thread")
-                    if thread:
-                        thread._workflow_item = workflow_item
+                        # Aussi le stocker dans le thread pour plus de sécurité
+                        thread = context.runtime_vars.get("thread")
+                        if thread:
+                            thread._workflow_item = workflow_item
 
                     # Forcer la mise à jour du frontend en remplaçant l'item dans le thread
 
@@ -93,7 +94,10 @@ async def _update_workflow_metadata(
                     logger.info(f"[TITLE_TRACE] workflow_item.workflow is None")
             else:
                 # Essayer de restaurer le workflow_item depuis runtime_vars
-                stored_workflow_item = context.runtime_vars.get("workflow_item")
+                stored_workflow_item = None
+                if context is not None and hasattr(context, "runtime_vars"):
+                    stored_workflow_item = context.runtime_vars.get("workflow_item")
+
                 if stored_workflow_item is not None:
                     logger.info(
                         f"[TITLE_TRACE] Restoring workflow_item from runtime_vars"

@@ -59,12 +59,26 @@ class WaitNodeHandler(BaseNodeHandler):
         waiting_input_id = (
             pending_wait_state.get("input_item_id") if pending_wait_state else None
         )
+
+        logger.info(
+            "[WAIT_DEBUG] node=%s, thread=%s, pending_wait_state=%s, "
+            "waiting_slug=%s, waiting_input_id=%s, current_input_item_id=%s",
+            node.slug,
+            "exists" if thread is not None else "None",
+            "exists" if pending_wait_state else "None",
+            waiting_slug,
+            waiting_input_id,
+            current_input_item_id,
+        )
+
         resumed = (
             pending_wait_state is not None
             and waiting_slug == node.slug
             and current_input_item_id
             and waiting_input_id != current_input_item_id
         )
+
+        logger.info("[WAIT_DEBUG] resumed=%s", resumed)
 
         if resumed:
             # Resume from wait - user provided new message
@@ -75,6 +89,11 @@ class WaitNodeHandler(BaseNodeHandler):
             # Clear wait state
             if thread is not None:
                 _set_wait_state_metadata(thread, None)
+
+            # Also clear pending_wait_state in runtime_vars so that agent steps
+            # in while loops don't incorrectly clear conversation history
+            # (see executor_v2.py lines 820-823)
+            context.runtime_vars["pending_wait_state"] = None
 
             # Build context with user message
             last_step_context = {"user_message": initial_user_text}
@@ -175,6 +194,13 @@ class WaitNodeHandler(BaseNodeHandler):
             status_type="waiting",
             status_reason=wait_reason,
             message=wait_reason,
+        )
+
+        logger.info(
+            "[WAIT_DEBUG] Pausing workflow at node=%s, returning finished=True, "
+            "wait_state_saved=%s",
+            node.slug,
+            thread is not None,
         )
 
         # Finish execution with wait state
