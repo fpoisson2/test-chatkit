@@ -61,10 +61,22 @@ class WhileNodeHandler(BaseNodeHandler):
         # require a user message object to avoid misclassifying assistant/system items as
         # new user input when a wait state resumes.
         current_user_message = context.runtime_vars.get("current_user_message")
+        try:
+            from chatkit.types import UserMessageItem
+
+            if not isinstance(current_user_message, UserMessageItem):
+                current_user_message = None
+        except Exception:  # pragma: no cover - defensive import
+            current_user_message = None
+
         # Some runtimes clear current_input_item_id when the workflow is resumed, so we rely on
         # the actual current_input_item_id when present and otherwise keep the previously
         # observed value without inventing a sentinel that could look like a "new" message.
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
+        if current_input_item_id is None and current_user_message is not None:
+            candidate_id = getattr(current_user_message, "id", None)
+            if isinstance(candidate_id, str):
+                current_input_item_id = candidate_id
         stored_input_id = context.state["state"].get(loop_input_id_key)
 
         # True only when we have an actual user message and its ID differs from what we last
@@ -144,9 +156,9 @@ class WhileNodeHandler(BaseNodeHandler):
             context.state["state"][loop_counter_key] = iteration_count
 
             # Store current input ID for next iteration comparison only when we actually have
-            # one; this prevents persisting placeholder values that could be mistaken for new
-            # user input on subsequent resumes.
-            if current_input_item_id is not None:
+            # a user message; this prevents persisting placeholder values that could be
+            # mistaken for new user input on subsequent resumes.
+            if current_user_message is not None and current_input_item_id is not None:
                 context.state["state"][loop_input_id_key] = current_input_item_id
 
             logger.debug(
