@@ -1483,7 +1483,7 @@ def _build_thread_title_agent() -> Agent:
         "name": "TitreFil",
         "model": model or DEFAULT_THREAD_TITLE_MODEL,
         "instructions": instructions,
-        "model_settings": _model_settings(store=False),
+        "model_settings": _model_settings(store=False, reasoning={"effort": "low"}),
     }
     if provider_binding is not None:
         base_kwargs["_provider_binding"] = provider_binding
