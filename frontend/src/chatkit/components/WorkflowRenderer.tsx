@@ -39,10 +39,14 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   }, [workflow.expanded]);
 
   const isReasoning = workflow.type === 'reasoning';
+  // Pour l'animation: on se base uniquement sur workflow.completed (pas sur summary)
+  // car le summary est défini dès le début avec le titre de l'étape
+  const isAnimationComplete = workflow.completed === true;
+  // Pour les autres logiques (affichage), on garde l'ancienne définition
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
-  console.log(`[WORKFLOW_STATE] isCompleted=${isCompleted}, workflowCompleted=${workflow.completed}, hasSummary=${workflow.summary !== undefined}, summaryTitle=${workflow.summary?.title}, taskCount=${currentTaskCount}`);
+  console.log(`[WORKFLOW_STATE] isAnimationComplete=${isAnimationComplete}, workflowCompleted=${workflow.completed}, hasSummary=${workflow.summary !== undefined}, summaryTitle=${workflow.summary?.title}, taskCount=${currentTaskCount}`);
 
   // Stop animation when step has produced content (has tasks)
   const hasStepContent = currentTaskCount > 0;
@@ -233,7 +237,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
-      <div className={`chatkit-workflow-header ${!isCompleted ? 'chatkit-workflow-active' : 'chatkit-workflow-completed'}`} onClick={toggleExpanded}>
+      <div className={`chatkit-workflow-header ${!isAnimationComplete ? 'chatkit-workflow-active' : 'chatkit-workflow-completed'}`} onClick={toggleExpanded}>
         <div className="chatkit-workflow-summary">
           {(() => {
             const willShowSummary = workflow.summary && workflow.summary.title && workflow.summary.title !== 'Workflow';
