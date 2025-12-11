@@ -216,6 +216,7 @@ const useGraphEditor = ({
       } = {},
     ) => {
       try {
+        const perfStart = performance.now();
         const { nodes: importedNodes, edges: importedEdges } = graph;
 
         const existingNodes = nodesRef.current;
@@ -305,6 +306,7 @@ const useGraphEditor = ({
 
         // Apply auto-layout if no nodes have position metadata
         if (nodesWithPositionCount === 0 && nodesToInsert.length > 1) {
+          const layoutStart = performance.now();
           // Build edges with mapped slugs for layout computation
           // Use Set for O(1) lookup instead of O(n) .some() calls
           const nodeIdSet = new Set(nodesToInsert.map((n) => n.id));
@@ -331,6 +333,7 @@ const useGraphEditor = ({
               node.position = newPos;
             }
           }
+          console.log(`[Workflow Import] Dagre layout: ${(performance.now() - layoutStart).toFixed(1)}ms`);
         }
 
         let minX = Number.POSITIVE_INFINITY;
@@ -458,6 +461,8 @@ const useGraphEditor = ({
         const newNodeIds = adjustedNodes.map((node) => node.id);
         const newEdgeIds = edgesToInsert.map((edge) => edge.id);
 
+        console.log(`[Workflow Import] Prepared ${newNodeIds.length} nodes, ${newEdgeIds.length} edges in ${(performance.now() - perfStart).toFixed(1)}ms`);
+        const stateStart = performance.now();
         setNodes((current) => [...current, ...adjustedNodes]);
         setEdges((current) => [...current, ...edgesToInsert]);
         updateHasPendingChanges(true);
@@ -468,6 +473,8 @@ const useGraphEditor = ({
           edgeIds: [],
           primaryNodeId: firstNodeId,
         });
+        console.log(`[Workflow Import] State updates queued in ${(performance.now() - stateStart).toFixed(1)}ms`);
+        console.log(`[Workflow Import] Total: ${(performance.now() - perfStart).toFixed(1)}ms`);
 
         return { success: true as const, nodeIds: newNodeIds, edgeIds: newEdgeIds };
       } catch (error) {
