@@ -2,6 +2,9 @@ import { type FC, memo, useMemo } from "react";
 import { useNodes, BaseEdge, getBezierPath, type EdgeProps, type Node } from "@xyflow/react";
 import { getSmartEdge } from "@tisoap/react-flow-smart-edge";
 
+// Threshold for disabling smart edge calculation (performance optimization)
+const SMART_EDGE_NODE_THRESHOLD = 40;
+
 const SmartEdge: FC<EdgeProps> = (props) => {
   const {
     id,
@@ -24,25 +27,34 @@ const SmartEdge: FC<EdgeProps> = (props) => {
 
   const nodes = useNodes();
 
+  // For large workflows, skip smart edge calculation entirely (too expensive)
+  const shouldUseSmartEdge = nodes.length <= SMART_EDGE_NODE_THRESHOLD;
+
   // Transform nodes to include width/height at top level for compatibility
   // with @tisoap/react-flow-smart-edge which expects v11-style nodes
+  // Only compute when smart edge is enabled
   const nodesWithDimensions = useMemo(() => {
+    if (!shouldUseSmartEdge) return [];
     return nodes.map((node) => ({
       ...node,
       width: node.measured?.width ?? node.width ?? 150,
       height: node.measured?.height ?? node.height ?? 40,
     }));
-  }, [nodes]);
+  }, [nodes, shouldUseSmartEdge]);
 
-  const result = getSmartEdge({
-    sourcePosition,
-    targetPosition,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    nodes: nodesWithDimensions,
-  });
+  // Memoize smart edge calculation - only recalculate when positions or nodes change
+  const result = useMemo(() => {
+    if (!shouldUseSmartEdge) return null;
+    return getSmartEdge({
+      sourcePosition,
+      targetPosition,
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      nodes: nodesWithDimensions,
+    });
+  }, [shouldUseSmartEdge, sourcePosition, targetPosition, sourceX, sourceY, targetX, targetY, nodesWithDimensions]);
 
   // If smart edge calculation fails, fallback to bezier
   if (result === null || result instanceof Error) {

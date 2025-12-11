@@ -10,6 +10,7 @@ import {
   buildEdgeStyle,
   buildGraphPayloadFrom,
   buildNodeStyle,
+  computeAutoLayout,
   defaultEdgeOptions,
   extractPosition,
   humanizeSlug,
@@ -215,6 +216,7 @@ const useGraphEditor = ({
       } = {},
     ) => {
       try {
+        const perfStart = performance.now();
         const { nodes: importedNodes, edges: importedEdges } = graph;
 
         const existingNodes = nodesRef.current;
@@ -228,6 +230,7 @@ const useGraphEditor = ({
         const startNodeExists = existingNodes.some((node) => node.data.kind === "start");
 
         const nodesToInsert: FlowNode[] = [];
+        let nodesWithPositionCount = 0;
 
         for (const node of importedNodes) {
           if (!isValidNodeKind(node.kind)) {
@@ -255,7 +258,11 @@ const useGraphEditor = ({
           existingNodeSlugs.add(nextSlug);
           slugMapping.set(node.slug, nextSlug);
 
-          const position = extractPosition(node.metadata) ?? { x: 0, y: 0 };
+          const positionFromMetadata = extractPosition(node.metadata);
+          const position = positionFromMetadata ?? { x: 0, y: 0 };
+          if (positionFromMetadata !== null) {
+            nodesWithPositionCount++;
+          }
           const displayName = node.display_name ?? humanizeSlug(node.slug);
           const agentKey = kind === "agent" ? node.agent_key ?? null : null;
           const parameters =
@@ -295,6 +302,38 @@ const useGraphEditor = ({
 
         if (nodesToInsert.length === 0) {
           return { success: false as const, reason: "nothing_to_insert" as const };
+        }
+
+        // Apply auto-layout if no nodes have position metadata
+        if (nodesWithPositionCount === 0 && nodesToInsert.length > 1) {
+          const layoutStart = performance.now();
+          // Build edges with mapped slugs for layout computation
+          // Use Set for O(1) lookup instead of O(n) .some() calls
+          const nodeIdSet = new Set(nodesToInsert.map((n) => n.id));
+          const edgesForLayout = importedEdges
+            .map((edge) => ({
+              source: slugMapping.get(edge.source) ?? edge.source,
+              target: slugMapping.get(edge.target) ?? edge.target,
+            }))
+            .filter(
+              (edge) => nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target),
+            );
+
+          const layoutPositions = computeAutoLayout(nodesToInsert, edgesForLayout, {
+            direction: "TB",
+            nodeWidth: 280,
+            nodeHeight: 80,
+            rankSep: 100,
+            nodeSep: 60,
+          });
+
+          for (const node of nodesToInsert) {
+            const newPos = layoutPositions.get(node.id);
+            if (newPos) {
+              node.position = newPos;
+            }
+          }
+          console.log(`[Workflow Import] Dagre layout: ${(performance.now() - layoutStart).toFixed(1)}ms`);
         }
 
         let minX = Number.POSITIVE_INFINITY;
@@ -422,14 +461,20 @@ const useGraphEditor = ({
         const newNodeIds = adjustedNodes.map((node) => node.id);
         const newEdgeIds = edgesToInsert.map((edge) => edge.id);
 
+        console.log(`[Workflow Import] Prepared ${newNodeIds.length} nodes, ${newEdgeIds.length} edges in ${(performance.now() - perfStart).toFixed(1)}ms`);
+        const stateStart = performance.now();
         setNodes((current) => [...current, ...adjustedNodes]);
         setEdges((current) => [...current, ...edgesToInsert]);
         updateHasPendingChanges(true);
+        // Only select the first node to avoid O(n²) style recalculations for large imports
+        const firstNodeId = newNodeIds[0] ?? null;
         applySelection({
-          nodeIds: newNodeIds,
-          edgeIds: newEdgeIds,
-          primaryNodeId: newNodeIds[0] ?? null,
+          nodeIds: firstNodeId ? [firstNodeId] : [],
+          edgeIds: [],
+          primaryNodeId: firstNodeId,
         });
+        console.log(`[Workflow Import] State updates queued in ${(performance.now() - stateStart).toFixed(1)}ms`);
+        console.log(`[Workflow Import] Total: ${(performance.now() - perfStart).toFixed(1)}ms`);
 
         return { success: true as const, nodeIds: newNodeIds, edgeIds: newEdgeIds };
       } catch (error) {

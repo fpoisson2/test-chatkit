@@ -10,7 +10,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   type Connection,
   type EdgeChange,
   type EdgeMouseHandler,
@@ -29,13 +28,10 @@ import styles from "../WorkflowBuilderPage.module.css";
 import {
   defaultEdgeOptions,
   connectionLineStyle,
-  NODE_COLORS,
 } from "../utils";
 import type {
   FlowEdge,
-  FlowEdgeData,
   FlowNode,
-  FlowNodeData,
 } from "../types";
 import {
   loadingStyle,
@@ -409,16 +405,6 @@ const WorkflowBuilderCanvas = ({
                     }}
                   >
                     <Background gap={18} size={1} />
-                    {!isMobileLayout ? (
-                      <MiniMap
-                        nodeStrokeColor={(node) =>
-                          NODE_COLORS[(node.data as FlowNodeData).kind]
-                        }
-                        nodeColor={(node) =>
-                          NODE_COLORS[(node.data as FlowNodeData).kind]
-                        }
-                      />
-                    ) : null}
                     <Controls />
                   </ReactFlow>
                 )}
