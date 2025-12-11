@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type ChangeEvent } from "react";
 
-import type { ReactFlowInstance, Viewport } from "reactflow";
+import type { ReactFlowInstance, Viewport } from "@xyflow/react";
 
 import { makeApiEndpointCandidates } from "../../../utils/backend";
 import { WorkflowImportError, parseWorkflowImport } from "../importWorkflow";

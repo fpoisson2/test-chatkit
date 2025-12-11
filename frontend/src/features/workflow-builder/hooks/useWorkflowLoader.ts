@@ -19,7 +19,7 @@
  */
 
 import { useCallback } from "react";
-import type { MarkerType } from "reactflow";
+import type { MarkerType } from "@xyflow/react";
 import { makeApiEndpointCandidates } from "../../../utils/backend";
 import {
   backendUrl,
@@ -53,7 +53,7 @@ import { useSaveContext } from "../contexts/SaveContext";
 import { useSelectionContext } from "../contexts/SelectionContext";
 import { useViewportContext } from "../contexts/ViewportContext";
 import { useWorkflowContext } from "../contexts/WorkflowContext";
-import type { NodeMouseHandler, EdgeMouseHandler, PaneClickHandler, OnSelectionChangeFunc } from "reactflow";
+import type { NodeMouseHandler, EdgeMouseHandler, PaneClickHandler, OnSelectionChangeFunc } from "@xyflow/react";
 
 type TranslationFunction = (key: string, params?: Record<string, unknown>) => string;
 

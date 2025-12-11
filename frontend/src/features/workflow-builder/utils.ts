@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { MarkerType, type EdgeOptions } from "reactflow";
+import { MarkerType, type EdgeOptions } from "@xyflow/react";
 
 import { getParallelSplitBranches, getParallelSplitJoinSlug, getStateAssignments, stringifyAgentParameters as stringifyAgentParametersUtil } from "../../utils/workflows";
 import type { AgentParameters } from "./types";
@@ -139,6 +139,7 @@ export const buildEdgeStyle = (options: { isSelected?: boolean } = {}) => {
 };
 
 export const defaultEdgeOptions: EdgeOptions = {
+  type: "smart",
   markerEnd: { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
   style: buildEdgeStyle(),
   labelStyle: { fill: "var(--text-color)", fontWeight: 600 },

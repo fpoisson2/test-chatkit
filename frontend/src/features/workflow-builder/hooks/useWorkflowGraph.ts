@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useMemo } from "react";
-import type { NodeChange, EdgeChange, Connection } from "reactflow";
+import type { NodeChange, EdgeChange, Connection } from "@xyflow/react";
 import { useGraphContext } from "../contexts/GraphContext";
 import { validateGraphStructure } from "../utils/graphValidation";
 import type { FlowNode, FlowEdge, FlowNodeData, FlowEdgeData } from "../types";

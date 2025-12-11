@@ -1,4 +1,4 @@
-import { ReactFlowProvider } from "reactflow";
+import { ReactFlowProvider } from "@xyflow/react";
 import {
   WorkflowProvider,
   SelectionProvider,

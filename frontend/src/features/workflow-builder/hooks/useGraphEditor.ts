@@ -4,7 +4,7 @@ import {
   MarkerType,
   type ReactFlowInstance,
   type Viewport,
-} from "reactflow";
+} from "@xyflow/react";
 
 import {
   buildEdgeStyle,

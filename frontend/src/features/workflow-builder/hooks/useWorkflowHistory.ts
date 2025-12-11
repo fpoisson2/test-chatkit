@@ -1,5 +1,5 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
-import { MarkerType } from "reactflow";
+import { MarkerType } from "@xyflow/react";
 import { parseWorkflowImport } from "../importWorkflow";
 import { resolveNodeParameters } from "../utils/parameterResolver";
 import {

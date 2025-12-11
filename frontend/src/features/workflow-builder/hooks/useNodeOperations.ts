@@ -1,5 +1,5 @@
 import { useCallback, type MutableRefObject } from "react";
-import type { ReactFlowInstance, Viewport } from "reactflow";
+import type { ReactFlowInstance, Viewport } from "@xyflow/react";
 import type { FlowNode, FlowNodeData } from "../types";
 
 export interface UseNodeOperationsParams {

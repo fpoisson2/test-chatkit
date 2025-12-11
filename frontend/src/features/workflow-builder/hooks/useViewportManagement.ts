@@ -1,5 +1,5 @@
 import { useCallback, type MutableRefObject } from "react";
-import type { Viewport } from "reactflow";
+import type { Viewport } from "@xyflow/react";
 
 export interface UseViewportManagementParams {
   viewportRef: MutableRefObject<Viewport>;

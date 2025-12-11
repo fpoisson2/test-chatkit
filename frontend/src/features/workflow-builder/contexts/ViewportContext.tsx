@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
-import type { ReactFlowInstance, Viewport } from "reactflow";
+import type { ReactFlowInstance, Viewport } from "@xyflow/react";
 import { viewportKeyFor, type DeviceType } from "../WorkflowBuilderUtils";
 
 // Context types

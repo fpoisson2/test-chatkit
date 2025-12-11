@@ -7,7 +7,7 @@ import {
   type NodeChange,
   type EdgeChange,
   type Connection,
-} from "reactflow";
+} from "@xyflow/react";
 import type { FlowNode, FlowEdge, FlowNodeData, FlowEdgeData } from "../types";
 import { buildEdgeStyle, defaultEdgeOptions } from "../utils";
 

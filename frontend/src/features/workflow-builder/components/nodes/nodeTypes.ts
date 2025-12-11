@@ -1,4 +1,4 @@
-import type { NodeTypes } from "reactflow";
+import type { NodeTypes } from "@xyflow/react";
 import { WhileNode } from "./WhileNode";
 
 export const nodeTypes: NodeTypes = {

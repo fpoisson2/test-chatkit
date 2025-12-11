@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
-import type { EdgeMouseHandler, NodeMouseHandler, OnSelectionChangeFunc, PaneClickHandler } from "reactflow";
+import type { EdgeMouseHandler, NodeMouseHandler, OnSelectionChangeFunc, PaneClickHandler } from "@xyflow/react";
 
 // Generic types for ReactFlow handlers
 type FlowNode = any;

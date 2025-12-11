@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { NodeResizer, type NodeProps } from "reactflow";
+import { NodeResizer, type NodeProps } from "@xyflow/react";
 import type { FlowNodeData } from "../../types";
 import styles from "./WhileNode.module.css";
 

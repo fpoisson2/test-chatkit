@@ -6,7 +6,8 @@ import {
   useMemo,
   useRef,
 } from "react";
-import ReactFlow, {
+import {
+  ReactFlow,
   Background,
   Controls,
   MiniMap,
@@ -20,7 +21,7 @@ import ReactFlow, {
   type PaneClickHandler,
   type ReactFlowInstance,
   type Viewport,
-} from "reactflow";
+} from "@xyflow/react";
 
 import { Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
 
@@ -51,6 +52,7 @@ import {
 import { DESKTOP_WORKSPACE_HORIZONTAL_PADDING } from "../WorkflowBuilderUtils";
 import { useI18n } from "../../../i18n";
 import { nodeTypes } from "./nodes/nodeTypes";
+import { edgeTypes } from "./edges/edgeTypes";
 
 export interface MobileActionLabels {
   redo: string;
@@ -358,6 +360,7 @@ const WorkflowBuilderCanvas = ({
                     nodes={nodes}
                     edges={edges}
                     nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     onNodeDragStart={handleNodeDragStart}

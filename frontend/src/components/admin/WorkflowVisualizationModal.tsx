@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import ReactFlow, {
+import {
+  ReactFlow,
   Background,
   Controls,
   Handle,
@@ -8,8 +9,8 @@ import ReactFlow, {
   type Node,
   type Edge,
   type NodeProps,
-} from "reactflow";
-import "reactflow/dist/style.css";
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { Modal } from "../Modal";
 import { useAuth } from "../../auth";
 import { workflowsApi } from "../../utils/backend";

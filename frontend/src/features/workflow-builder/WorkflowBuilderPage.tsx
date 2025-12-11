@@ -9,10 +9,9 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { type EdgeChange, type NodeChange, type ReactFlowInstance, type Viewport } from "reactflow";
+import { type EdgeChange, type NodeChange, type ReactFlowInstance, type Viewport } from "@xyflow/react";
 
-import "reactflow/dist/style.css";
-import "@reactflow/node-resizer/dist/style.css";
+import "@xyflow/react/dist/style.css";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
