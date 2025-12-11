@@ -1603,6 +1603,7 @@ const WorkflowBuilderPage = () => {
             shouldShowVersionPath={versionSummaryForPromotion != null}
             appearanceModalTarget={appearanceModalTarget}
             onCloseAppearanceModal={handleCloseAppearanceModal}
+            workflowId={selectedWorkflowId}
           />
         </SelectionProvider>
       </GraphProvider>

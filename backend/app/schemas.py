@@ -1564,3 +1564,76 @@ class ActiveWorkflowSessionsResponse(BaseModel):
 
     sessions: list[ActiveWorkflowSession]
     total_count: int
+
+
+# ============================================================================
+# Workflow Generation (Admin)
+# ============================================================================
+
+
+class WorkflowGenerationPromptBase(BaseModel):
+    """Base schema for workflow generation prompts."""
+
+    name: str = Field(..., min_length=1, max_length=200)
+    model: str = Field(..., min_length=1, max_length=100)
+    effort: Literal["low", "medium", "high"] = "medium"
+    verbosity: Literal["low", "medium", "high"] = "medium"
+    developer_message: str = Field(..., min_length=1)
+
+
+class WorkflowGenerationPromptCreateRequest(WorkflowGenerationPromptBase):
+    """Request schema for creating a workflow generation prompt."""
+
+    pass
+
+
+class WorkflowGenerationPromptUpdateRequest(BaseModel):
+    """Request schema for updating a workflow generation prompt."""
+
+    name: str | None = Field(None, min_length=1, max_length=200)
+    model: str | None = Field(None, min_length=1, max_length=100)
+    effort: Literal["low", "medium", "high"] | None = None
+    verbosity: Literal["low", "medium", "high"] | None = None
+    developer_message: str | None = Field(None, min_length=1)
+
+
+class WorkflowGenerationPromptResponse(WorkflowGenerationPromptBase):
+    """Response schema for workflow generation prompts."""
+
+    id: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkflowGenerationStartRequest(BaseModel):
+    """Request schema for starting workflow generation."""
+
+    prompt_id: int
+    user_message: str = Field(..., min_length=1)
+
+
+class WorkflowGenerationTaskResponse(BaseModel):
+    """Response schema for workflow generation task status."""
+
+    task_id: str
+    workflow_id: int
+    prompt_id: int | None = None
+    user_message: str
+    status: Literal["pending", "running", "completed", "failed"]
+    progress: int
+    error_message: str | None = None
+    result_json: dict[str, Any] | None = None
+    created_at: datetime.datetime
+    completed_at: datetime.datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkflowGenerationStartResponse(BaseModel):
+    """Response schema for starting workflow generation."""
+
+    task_id: str
+    status: str
+    message: str

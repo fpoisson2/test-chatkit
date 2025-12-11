@@ -18,6 +18,12 @@ type ModalContextValue = {
   // Appearance Modal State
   isAppearanceModalOpen: boolean;
 
+  // Generation Modal State
+  isGenerationModalOpen: boolean;
+  isGenerating: boolean;
+  generationTaskId: string | null;
+  generationError: string | null;
+
   // Create Modal Methods
   openCreateModal: (kind?: "local" | "hosted") => void;
   closeCreateModal: () => void;
@@ -36,6 +42,13 @@ type ModalContextValue = {
   // Appearance Modal Methods
   openAppearanceModal: () => void;
   closeAppearanceModal: () => void;
+
+  // Generation Modal Methods
+  openGenerationModal: () => void;
+  closeGenerationModal: () => void;
+  setIsGenerating: (generating: boolean) => void;
+  setGenerationTaskId: (taskId: string | null) => void;
+  setGenerationError: (error: string | null) => void;
 };
 
 const ModalContext = createContext<ModalContextValue | null>(null);
@@ -68,6 +81,12 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
 
   // Appearance Modal State
   const [isAppearanceModalOpen, setIsAppearanceModalOpen] = useState(false);
+
+  // Generation Modal State
+  const [isGenerationModalOpen, setIsGenerationModalOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationTaskId, setGenerationTaskId] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   // Create Modal Methods
   const openCreateModal = useCallback((kind: "local" | "hosted" = "local") => {
@@ -103,6 +122,20 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
     setIsAppearanceModalOpen(false);
   }, []);
 
+  // Generation Modal Methods
+  const openGenerationModal = useCallback(() => {
+    setGenerationError(null);
+    setGenerationTaskId(null);
+    setIsGenerationModalOpen(true);
+  }, []);
+
+  const closeGenerationModal = useCallback(() => {
+    setIsGenerationModalOpen(false);
+    setGenerationError(null);
+    setGenerationTaskId(null);
+    setIsGenerating(false);
+  }, []);
+
   const value = useMemo<ModalContextValue>(
     () => ({
       // Create Modal State
@@ -120,6 +153,12 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
 
       // Appearance Modal State
       isAppearanceModalOpen,
+
+      // Generation Modal State
+      isGenerationModalOpen,
+      isGenerating,
+      generationTaskId,
+      generationError,
 
       // Create Modal Methods
       openCreateModal,
@@ -139,6 +178,13 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
       // Appearance Modal Methods
       openAppearanceModal,
       closeAppearanceModal,
+
+      // Generation Modal Methods
+      openGenerationModal,
+      closeGenerationModal,
+      setIsGenerating,
+      setGenerationTaskId,
+      setGenerationError,
     }),
     [
       isCreateModalOpen,
@@ -151,12 +197,18 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
       deployToProduction,
       isDeploying,
       isAppearanceModalOpen,
+      isGenerationModalOpen,
+      isGenerating,
+      generationTaskId,
+      generationError,
       openCreateModal,
       closeCreateModal,
       openDeployModal,
       closeDeployModal,
       openAppearanceModal,
       closeAppearanceModal,
+      openGenerationModal,
+      closeGenerationModal,
     ],
   );
 

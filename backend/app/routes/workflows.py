@@ -863,3 +863,189 @@ async def update_share_permission(
     return WorkflowSharedUserResponse(
         id=target_user.id, email=target_user.email, permission=payload.permission
     )
+
+
+# ============================================================================
+# Workflow Generation
+# ============================================================================
+
+
+import uuid
+
+from sqlalchemy import select as sa_select
+
+from ..models import (
+    Workflow,
+    WorkflowGenerationPrompt,
+    WorkflowGenerationTask,
+)
+from ..schemas import (
+    WorkflowGenerationPromptResponse,
+    WorkflowGenerationStartRequest,
+    WorkflowGenerationStartResponse,
+    WorkflowGenerationTaskResponse,
+)
+
+
+@router.get(
+    "/api/workflows/generation/prompts",
+    response_model=list[WorkflowGenerationPromptResponse],
+)
+async def list_generation_prompts(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """List all available workflow generation prompts."""
+    _ensure_admin(current_user)
+    prompts = session.scalars(
+        sa_select(WorkflowGenerationPrompt).order_by(WorkflowGenerationPrompt.name.asc())
+    ).all()
+    return prompts
+
+
+@router.post(
+    "/api/workflows/{workflow_id}/generate",
+    response_model=WorkflowGenerationStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_workflow_generation(
+    workflow_id: int,
+    payload: WorkflowGenerationStartRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Start workflow generation for a specific workflow."""
+    from ..tasks.workflow_generation import generate_workflow_task
+
+    _ensure_admin(current_user)
+
+    # Verify workflow exists
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow introuvable",
+        )
+
+    # Verify prompt exists
+    prompt = session.get(WorkflowGenerationPrompt, payload.prompt_id)
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt de génération introuvable",
+        )
+
+    # Create task in database
+    task_id = str(uuid.uuid4())
+    task = WorkflowGenerationTask(
+        task_id=task_id,
+        workflow_id=workflow_id,
+        prompt_id=payload.prompt_id,
+        user_message=payload.user_message,
+        status="pending",
+        progress=0,
+    )
+    session.add(task)
+    session.commit()
+
+    # Start Celery task
+    generate_workflow_task.delay(
+        task_id=task_id,
+        workflow_id=workflow_id,
+        prompt_id=payload.prompt_id,
+        user_message=payload.user_message,
+    )
+
+    return WorkflowGenerationStartResponse(
+        task_id=task_id,
+        status="pending",
+        message=f"Génération démarrée pour le workflow {workflow.display_name}",
+    )
+
+
+@router.get(
+    "/api/workflows/generation/tasks/{task_id}",
+    response_model=WorkflowGenerationTaskResponse,
+)
+async def get_generation_task_status(
+    task_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Get the status of a workflow generation task."""
+    _ensure_admin(current_user)
+
+    task = session.scalar(
+        sa_select(WorkflowGenerationTask).where(
+            WorkflowGenerationTask.task_id == task_id
+        )
+    )
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tâche de génération introuvable",
+        )
+
+    return WorkflowGenerationTaskResponse.model_validate(task)
+
+
+@router.post(
+    "/api/workflows/{workflow_id}/generation/apply",
+    response_model=WorkflowDefinitionResponse,
+)
+async def apply_generated_workflow(
+    workflow_id: int,
+    task_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(get_workflow_persistence_service),
+):
+    """Apply a generated workflow to the target workflow."""
+    _ensure_admin(current_user)
+
+    # Verify task exists and is completed
+    task = session.scalar(
+        sa_select(WorkflowGenerationTask).where(
+            WorkflowGenerationTask.task_id == task_id
+        )
+    )
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tâche de génération introuvable",
+        )
+
+    if task.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La tâche n'est pas terminée (status: {task.status})",
+        )
+
+    if task.workflow_id != workflow_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La tâche ne correspond pas au workflow demandé",
+        )
+
+    if not task.result_json:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La tâche n'a pas de résultat JSON",
+        )
+
+    # Import the generated workflow
+    try:
+        definition = service.import_workflow(
+            workflow_id=workflow_id,
+            graph_payload=task.result_json,
+            session=session,
+            version_name="Version générée par IA",
+            mark_as_active=False,
+        )
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Erreur de validation du workflow généré: {exc.message}",
+        ) from exc
+
+    return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))

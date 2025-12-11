@@ -11,3 +11,4 @@ export * from "./useWorkflows";
 export * from "./useLanguages";
 export * from "./useSipAccounts";
 export * from "./useCleanup";
+export * from "./useWorkflowGeneration";

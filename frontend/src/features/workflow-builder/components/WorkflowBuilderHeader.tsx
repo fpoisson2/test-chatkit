@@ -78,6 +78,8 @@ export default function WorkflowBuilderHeader({
 
   const {
     isDeploying,
+    isGenerating,
+    openGenerationModal,
   } = useModalContext();
 
   // selectedWorkflowId vient de selectedWorkflow
@@ -89,6 +91,8 @@ export default function WorkflowBuilderHeader({
     loading || !selectedWorkflowId || !selectedVersionId || isExporting;
   const deployDisabled =
     loading || !selectedWorkflowId || versions.length === 0 || isDeploying;
+  const generateDisabled =
+    loading || !selectedWorkflowId || isGenerating;
 
   // Labels dynamiques
   const importLabel = isImporting
@@ -98,6 +102,8 @@ export default function WorkflowBuilderHeader({
   const exportLabel = isExporting
     ? t("workflowBuilder.export.preparing")
     : t("workflowBuilder.actions.exportJson");
+
+  const generateLabel = t("workflowBuilder.actions.generateWorkflow");
 
   // IDs pour accessibilité
   const mobileActionsDialogId = "mobile-actions-menu";
@@ -123,14 +129,17 @@ export default function WorkflowBuilderHeader({
       importDisabled={importDisabled}
       exportDisabled={exportDisabled}
       deployDisabled={deployDisabled}
+      generateDisabled={generateDisabled}
       importLabel={importLabel}
       exportLabel={exportLabel}
+      generateLabel={generateLabel}
       onVersionChange={onVersionChange}
       importFileInputRef={importFileInputRef}
       onImportFileChange={onImportFileChange}
       onTriggerImport={onTriggerImport}
       onExportWorkflow={onExportWorkflow}
       onOpenDeployModal={onOpenDeployModal}
+      onOpenGenerationModal={openGenerationModal}
       mobileActionsTriggerRef={mobileActionsTriggerRef}
       mobileActionsMenuRef={mobileActionsMenuRef}
       isMobileActionsOpen={isMobileActionsOpen}

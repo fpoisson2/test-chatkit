@@ -23,14 +23,17 @@ type WorkflowBuilderHeaderControlsProps = {
   importDisabled: boolean;
   exportDisabled: boolean;
   deployDisabled: boolean;
+  generateDisabled: boolean;
   importLabel: string;
   exportLabel: string;
+  generateLabel: string;
   onVersionChange: (event: ChangeEvent<HTMLSelectElement>) => void;
   importFileInputRef: MutableRefObject<HTMLInputElement | null>;
   onImportFileChange: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
   onTriggerImport: () => void;
   onExportWorkflow: () => void | Promise<void>;
   onOpenDeployModal: () => void;
+  onOpenGenerationModal: () => void;
   mobileActionsTriggerRef: MutableRefObject<HTMLButtonElement | null>;
   mobileActionsMenuRef: MutableRefObject<HTMLDivElement | null>;
   isMobileActionsOpen: boolean;
@@ -58,14 +61,17 @@ const WorkflowBuilderHeaderControls = ({
   importDisabled,
   exportDisabled,
   deployDisabled,
+  generateDisabled,
   importLabel,
   exportLabel,
+  generateLabel,
   onVersionChange,
   importFileInputRef,
   onImportFileChange,
   onTriggerImport,
   onExportWorkflow,
   onOpenDeployModal,
+  onOpenGenerationModal,
   mobileActionsTriggerRef,
   mobileActionsMenuRef,
   isMobileActionsOpen,
@@ -235,6 +241,18 @@ const WorkflowBuilderHeaderControls = ({
                     type="button"
                     role="menuitem"
                     onClick={() => {
+                      onOpenGenerationModal();
+                      closeMobileActions();
+                    }}
+                    disabled={generateDisabled}
+                    style={getMobileActionButtonStyle({ disabled: generateDisabled })}
+                  >
+                    {generateLabel}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
                       onOpenDeployModal();
                       closeMobileActions();
                     }}
@@ -280,6 +298,39 @@ const WorkflowBuilderHeaderControls = ({
           })}
         >
           {exportLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onOpenGenerationModal}
+          disabled={generateDisabled}
+          title={generateLabel}
+          style={{
+            ...getDeployButtonStyle(false, {
+              disabled: generateDisabled,
+            }),
+            padding: "0.5rem 0.75rem",
+          }}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M15 4V2" />
+            <path d="M15 16v-2" />
+            <path d="M8 9h2" />
+            <path d="M20 9h2" />
+            <path d="M17.8 11.8L19 13" />
+            <path d="M15 9h.01" />
+            <path d="M17.8 6.2L19 5" />
+            <path d="M3 21l9-9" />
+            <path d="M12.2 6.2L11 5" />
+          </svg>
         </button>
         <button
           type="button"

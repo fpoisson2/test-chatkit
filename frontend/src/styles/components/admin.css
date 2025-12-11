@@ -694,3 +694,37 @@
 .actions-menu-item--danger[data-highlighted] {
   background: color-mix(in srgb, var(--danger-color) 8%, var(--color-surface)) !important;
 }
+
+/* Workflow Generation Modal */
+.workflow-generation-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.workflow-generation-modal__progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+}
+
+.workflow-generation-modal__progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--color-surface-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.workflow-generation-modal__progress-fill {
+  height: 100%;
+  background: var(--primary-color);
+  transition: width 0.3s ease;
+}
+
+.workflow-generation-modal__progress-text {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}

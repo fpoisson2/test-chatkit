@@ -4,6 +4,7 @@ import { useI18n } from "../../../i18n";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import DeployWorkflowModal from "./DeployWorkflowModal";
 import WorkflowAppearanceModal from "../../workflows/WorkflowAppearanceModal";
+import { WorkflowGenerationModal } from "./WorkflowGenerationModal";
 
 /**
  * Props for modals that require external handlers
@@ -26,6 +27,9 @@ interface WorkflowBuilderModalsProps {
   // Appearance modal
   appearanceModalTarget: "local" | "hosted" | null;
   onCloseAppearanceModal: () => void;
+
+  // Generation modal
+  workflowId: number | null;
 }
 
 /**
@@ -44,6 +48,7 @@ export default function WorkflowBuilderModals({
   shouldShowVersionPath,
   appearanceModalTarget,
   onCloseAppearanceModal,
+  workflowId,
 }: WorkflowBuilderModalsProps) {
   const { token } = useAuth();
   const { t } = useI18n();
@@ -112,6 +117,8 @@ export default function WorkflowBuilderModals({
         primaryActionLabel={deployModalPrimaryLabel}
         isPrimaryActionDisabled={isPrimaryActionDisabled}
       />
+
+      {workflowId !== null && <WorkflowGenerationModal workflowId={workflowId} />}
     </>
   );
 }
