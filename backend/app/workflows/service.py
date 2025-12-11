@@ -1191,10 +1191,10 @@ class WorkflowGraphValidator:
                     "Le nœud de fin ne doit pas avoir de sortie."
                 )
             if node.kind == "condition":
-                if len(outgoing) < 2:
+                if len(outgoing) < 1:
                     raise WorkflowValidationError(
-                        f"Le nœud conditionnel {slug} doit comporter au moins deux "
-                        "sorties."
+                        f"Le nœud conditionnel {slug} doit comporter au moins une "
+                        "sortie."
                     )
                 seen_branches: set[str] = set()
                 default_count = 0
@@ -1272,21 +1272,15 @@ class WorkflowGraphValidator:
                         "entrées."
                     )
 
+        # Traverse graph to find visited nodes (cycles are allowed)
         visited: set[str] = set()
-        stack: set[str] = set()
 
         def dfs(slug: str) -> None:
-            if slug in stack:
-                raise WorkflowValidationError(
-                    "Une boucle a été détectée dans la configuration du workflow."
-                )
             if slug in visited:
                 return
-            stack.add(slug)
+            visited.add(slug)
             for edge in adjacency.get(slug, []):
                 dfs(edge.target_slug)
-            stack.remove(slug)
-            visited.add(slug)
 
         dfs(start_nodes[0])
 

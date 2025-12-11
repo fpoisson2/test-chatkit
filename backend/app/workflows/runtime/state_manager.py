@@ -188,15 +188,9 @@ class StateInitializer:
                 if isinstance(stored_state, Mapping):
                     restored_state = copy.deepcopy(dict(stored_state))
 
-            state = {
-                "has_all_details": False,
-                "infos_manquantes": initial_user_text,
-                "should_finalize": False,
-                "state": {},  # Initialize nested state dict for while loop counters
-            }
+            state = {}
             if restored_state:
                 state.update(restored_state)
-                state["infos_manquantes"] = initial_user_text
             last_step_context = None
         else:
             initial_user_text = _normalize_user_text(

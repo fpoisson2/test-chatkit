@@ -41,21 +41,12 @@ class WhileNodeHandler(BaseNodeHandler):
         loop_input_id_key = f"__while_{node.slug}_input_id"
 
         logger.debug(
-            "While %s: avant init, 'state' in state=%s, state.keys()=%s",
+            "While %s: avant init, state.keys()=%s",
             node.slug,
-            "state" in context.state,
             list(context.state.keys()),
         )
 
-        # Ensure state["state"] exists
-        if "state" not in context.state:
-            logger.error(
-                "While %s: clé 'state' absente de state - ERREUR INATTENDUE!",
-                node.slug,
-            )
-            context.state["state"] = {}
-
-        iteration_count = context.state["state"].get(loop_counter_key, 0)
+        iteration_count = context.state.get(loop_counter_key, 0)
 
         # Get the current user message and its ID to detect new user input. We explicitly
         # require a user message object to avoid misclassifying assistant/system items as
@@ -77,7 +68,7 @@ class WhileNodeHandler(BaseNodeHandler):
             candidate_id = getattr(current_user_message, "id", None)
             if isinstance(candidate_id, str):
                 current_input_item_id = candidate_id
-        stored_input_id = context.state["state"].get(loop_input_id_key)
+        stored_input_id = context.state.get(loop_input_id_key)
 
         # Fallback: if the loop state was restored but the stored input ID was
         # not persisted for some reason, reuse the pending wait state's input
@@ -105,8 +96,8 @@ class WhileNodeHandler(BaseNodeHandler):
             from ..executor import WorkflowEndState
 
             # Clean up loop state
-            context.state["state"].pop(loop_counter_key, None)
-            context.state["state"].pop(loop_entry_key, None)
+            context.state.pop(loop_counter_key, None)
+            context.state.pop(loop_entry_key, None)
 
             # Set waiting state
             context.runtime_vars["final_end_state"] = WorkflowEndState(
@@ -134,9 +125,9 @@ class WhileNodeHandler(BaseNodeHandler):
         # Check if we should exit the loop
         if not condition_result:
             # Condition is false, exit the loop
-            context.state["state"].pop(loop_counter_key, None)
-            context.state["state"].pop(loop_entry_key, None)
-            context.state["state"].pop(loop_input_id_key, None)
+            context.state.pop(loop_counter_key, None)
+            context.state.pop(loop_entry_key, None)
+            context.state.pop(loop_input_id_key, None)
             transition = self._find_while_exit_transition(node, context)
         else:
             # Condition is true, continue loop
@@ -146,8 +137,8 @@ class WhileNodeHandler(BaseNodeHandler):
             if iteration_count >= max_iterations and max_iterations > 0:
                 from ..executor import WorkflowEndState
 
-                context.state["state"].pop(loop_counter_key, None)
-                context.state["state"].pop(loop_entry_key, None)
+                context.state.pop(loop_counter_key, None)
+                context.state.pop(loop_entry_key, None)
 
                 context.runtime_vars["final_end_state"] = WorkflowEndState(
                     slug=node.slug,
@@ -164,24 +155,24 @@ class WhileNodeHandler(BaseNodeHandler):
                 return NodeResult(finished=True)
 
             # Save iteration counter
-            context.state["state"][loop_counter_key] = iteration_count
+            context.state[loop_counter_key] = iteration_count
 
             # Store current input ID for next iteration comparison only when we actually have
             # a user message; this prevents persisting placeholder values that could be
             # mistaken for new user input on subsequent resumes.
             if current_user_message is not None and current_input_item_id is not None:
-                context.state["state"][loop_input_id_key] = current_input_item_id
+                context.state[loop_input_id_key] = current_input_item_id
 
             logger.debug(
                 "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
                 node.slug,
                 iteration_count,
-                context.state["state"].get(loop_counter_key),
+                context.state.get(loop_counter_key),
             )
 
             # Update iteration variable if specified (1-based)
             if iteration_var:
-                context.state["state"][iteration_var] = iteration_count
+                context.state[iteration_var] = iteration_count
 
             # Find the entry point to the while loop
             entry_slug = self._find_while_entry_point(node, context, loop_entry_key)
@@ -205,9 +196,9 @@ class WhileNodeHandler(BaseNodeHandler):
         if transition is None:
             # No explicit transition found - use fallback logic
             # Reset loop counter before leaving
-            context.state["state"].pop(loop_counter_key, None)
-            context.state["state"].pop(loop_entry_key, None)
-            context.state["state"].pop(loop_input_id_key, None)
+            context.state.pop(loop_counter_key, None)
+            context.state.pop(loop_entry_key, None)
+            context.state.pop(loop_input_id_key, None)
 
             # Use standard fallback: while parent or start node
             next_slug = self._next_slug_or_fallback(node.slug, context)
@@ -256,7 +247,7 @@ class WhileNodeHandler(BaseNodeHandler):
         loop_entry_key: str,
     ) -> str | None:
         """Find the entry point (first node) inside the while loop."""
-        entry_slug = context.state["state"].get(loop_entry_key)
+        entry_slug = context.state.get(loop_entry_key)
 
         if entry_slug is not None:
             # Already have cached entry point
@@ -276,7 +267,7 @@ class WhileNodeHandler(BaseNodeHandler):
             for edge in context.edges_by_source.get(node_slug, []):
                 if edge.target_step.slug in inside_nodes:
                     entry_slug = edge.target_step.slug
-                    context.state["state"][loop_entry_key] = entry_slug
+                    context.state[loop_entry_key] = entry_slug
                     return entry_slug
 
         # If still no entry point, take the first node by Y position
@@ -287,7 +278,7 @@ class WhileNodeHandler(BaseNodeHandler):
             )
             if sorted_nodes:
                 entry_slug = sorted_nodes[0].slug
-                context.state["state"][loop_entry_key] = entry_slug
+                context.state[loop_entry_key] = entry_slug
 
         return entry_slug
 

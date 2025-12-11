@@ -119,7 +119,6 @@ async def initialize_runtime_context(
                     ],
                 }
             )
-            state["infos_manquantes"] = configured_message
 
     assistant_message_payload = workflow_payload.get("auto_start_assistant_message")
     if not isinstance(assistant_message_payload, str):

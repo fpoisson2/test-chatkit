@@ -48,6 +48,8 @@ class WaitNodeHandler(BaseNodeHandler):
         initial_user_text = context.runtime_vars.get("initial_user_text")
         agent_context = context.runtime_vars.get("agent_context")
         on_stream_event = context.runtime_vars.get("on_stream_event")
+        current_user_message = context.runtime_vars.get("current_user_message")
+        thread_item_converter = context.runtime_vars.get("thread_item_converter")
 
         # Check if we're resuming from a wait
         pending_wait_state = (
@@ -95,8 +97,32 @@ class WaitNodeHandler(BaseNodeHandler):
             # (see executor_v2.py lines 820-823)
             context.runtime_vars["pending_wait_state"] = None
 
+            # Get the text from the NEW user message (not initial_user_text which is stale)
+            new_user_text = initial_user_text  # Default fallback
+            if current_user_message is not None:
+                # Extract text from current_user_message
+                typed_parts: list[str] = []
+                for part in getattr(current_user_message, "content", []) or []:
+                    text_value = getattr(part, "text", None)
+                    normalized = _normalize_user_text(text_value) if text_value else ""
+                    if normalized:
+                        typed_parts.append(normalized)
+                if typed_parts:
+                    new_user_text = "\n".join(typed_parts)
+                    logger.info(
+                        "[WAIT_DEBUG] Extracted new user text from current_user_message: %s",
+                        new_user_text[:100] if new_user_text else "empty"
+                    )
+
+            # Update runtime_vars with new user text so subsequent nodes use it
+            context.runtime_vars["initial_user_text"] = new_user_text
+
+            # NOTE: We do NOT add the user message to conversation_history here because
+            # the StateInitializer already adds it when the workflow resumes (see
+            # state_manager.py lines 177-183). Adding it here would cause duplication.
+
             # Build context with user message
-            last_step_context = {"user_message": initial_user_text}
+            last_step_context = {"user_message": new_user_text}
 
             if not next_slug:
                 # No transition after wait - finish workflow

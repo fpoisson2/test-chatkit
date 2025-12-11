@@ -1807,36 +1807,44 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 # Persist current step to metadata if it changed
                 current_step_slug = update.key
                 current_step_title = update.title
-                
+
+                # IMPORTANT: Read current metadata from thread each time to avoid
+                # overwriting changes made by other code (e.g., wait state clearing).
+                # We only update the workflow.current_step field, not the entire metadata.
+                current_metadata = (
+                    thread.metadata if isinstance(thread.metadata, Mapping) else {}
+                )
+
                 # Check if we need to update metadata
-                workflow_meta = thread_metadata.get("workflow", {})
+                workflow_meta = current_metadata.get("workflow", {})
                 stored_step = workflow_meta.get("current_step", {})
                 stored_slug = stored_step.get("slug")
-                
-                if stored_slug != current_step_slug:
-                    # Update metadata
-                    if "workflow" not in thread_metadata:
-                        thread_metadata["workflow"] = {}
-                    
-                    # Ensure workflow metadata has basic info if missing
-                    if not thread_metadata["workflow"].get("id") and workflow_slug:
-                         thread_metadata["workflow"]["slug"] = workflow_slug
 
-                    thread_metadata["workflow"]["current_step"] = {
+                if stored_slug != current_step_slug:
+                    # Update workflow.current_step in the current metadata
+                    if "workflow" not in current_metadata:
+                        if isinstance(thread.metadata, dict):
+                            thread.metadata["workflow"] = {}
+                        else:
+                            thread.metadata = {"workflow": {}}
+
+                    # Ensure workflow metadata has basic info if missing
+                    if not thread.metadata.get("workflow", {}).get("id") and workflow_slug:
+                         thread.metadata["workflow"]["slug"] = workflow_slug
+
+                    thread.metadata["workflow"]["current_step"] = {
                         "slug": current_step_slug,
                         "title": current_step_title,
                         "started_at": datetime.now().isoformat(),
                     }
-                    
+
                     # Persist thread
                     try:
-                        # We need to update the thread object's metadata field
-                        thread.metadata = thread_metadata
                         await self.store.save_thread(thread, context=agent_context.request_context)
                     except Exception:
                         logger.warning(
-                            "Failed to persist current step %s for thread %s", 
-                            current_step_slug, 
+                            "Failed to persist current step %s for thread %s",
+                            current_step_slug,
                             thread.id,
                             exc_info=True
                         )

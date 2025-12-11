@@ -823,10 +823,33 @@ async def run_workflow_v2(
             "pending_wait_state", pending_wait_state
         )
 
-        if in_while_loop_iteration and (
-            sanitized_previous_response_id or current_pending_wait_state
-        ):
+        # Only clear conversation history if we're in a while loop AND we have a
+        # previous_response_id AND we haven't just resumed from a wait state.
+        # When resuming from wait (pending_wait_state was cleared to None by wait handler),
+        # we need to keep the conversation history because it contains the new user message.
+        wait_was_resumed = (
+            pending_wait_state is not None
+            and context.runtime_vars.get("pending_wait_state") is None
+        )
+
+        if in_while_loop_iteration and sanitized_previous_response_id and not wait_was_resumed:
+            # Only clear history if we haven't just resumed from a wait
+            # (we need to keep the new user message in the history)
             conversation_history_input = []
+            logger.debug(
+                "[HISTORY_DEBUG] Cleared conversation_history_input for while loop iteration "
+                "(previous_response_id=%s, wait_was_resumed=%s)",
+                sanitized_previous_response_id[:20] if sanitized_previous_response_id else None,
+                wait_was_resumed,
+            )
+        elif in_while_loop_iteration:
+            logger.debug(
+                "[HISTORY_DEBUG] Keeping conversation_history_input for while loop iteration "
+                "(previous_response_id=%s, wait_was_resumed=%s, history_len=%d)",
+                sanitized_previous_response_id[:20] if sanitized_previous_response_id else None,
+                wait_was_resumed,
+                len(conversation_history_input),
+            )
 
         # Debug: log what's being sent to the LLM
         def _summarize_content(content):

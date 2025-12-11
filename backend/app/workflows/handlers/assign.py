@@ -90,6 +90,11 @@ class AssignNodeHandler(BaseNodeHandler):
         if path_parts[0] != "state":
             raise ValueError("Les mises à jour doivent commencer par 'state.'")
 
+        # Skip the "state" prefix - write directly to context.state
+        path_parts = path_parts[1:]
+        if not path_parts:
+            raise ValueError("Chemin de mise à jour d'état incomplet après 'state.'")
+
         cursor: Any = context.state
         for index, part in enumerate(path_parts):
             is_last = index == len(path_parts) - 1
