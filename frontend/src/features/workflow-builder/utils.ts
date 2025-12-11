@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { MarkerType, type EdgeOptions } from "@xyflow/react";
+import dagre from "@dagrejs/dagre";
 
 import { getParallelSplitBranches, getParallelSplitJoinSlug, getStateAssignments, stringifyAgentParameters as stringifyAgentParametersUtil } from "../../utils/workflows";
 import type { AgentParameters } from "./types";
@@ -458,10 +459,6 @@ export const computeAutoLayout = <
     rankSep = 80,
     nodeSep = 50,
   } = options;
-
-  // Lazy import dagre to avoid issues if not installed
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const dagre = require("@dagrejs/dagre");
 
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
