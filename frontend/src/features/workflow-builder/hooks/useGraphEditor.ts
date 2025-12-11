@@ -10,6 +10,7 @@ import {
   buildEdgeStyle,
   buildGraphPayloadFrom,
   buildNodeStyle,
+  computeAutoLayout,
   defaultEdgeOptions,
   extractPosition,
   humanizeSlug,
@@ -228,6 +229,7 @@ const useGraphEditor = ({
         const startNodeExists = existingNodes.some((node) => node.data.kind === "start");
 
         const nodesToInsert: FlowNode[] = [];
+        let nodesWithPositionCount = 0;
 
         for (const node of importedNodes) {
           if (!isValidNodeKind(node.kind)) {
@@ -255,7 +257,11 @@ const useGraphEditor = ({
           existingNodeSlugs.add(nextSlug);
           slugMapping.set(node.slug, nextSlug);
 
-          const position = extractPosition(node.metadata) ?? { x: 0, y: 0 };
+          const positionFromMetadata = extractPosition(node.metadata);
+          const position = positionFromMetadata ?? { x: 0, y: 0 };
+          if (positionFromMetadata !== null) {
+            nodesWithPositionCount++;
+          }
           const displayName = node.display_name ?? humanizeSlug(node.slug);
           const agentKey = kind === "agent" ? node.agent_key ?? null : null;
           const parameters =
@@ -295,6 +301,36 @@ const useGraphEditor = ({
 
         if (nodesToInsert.length === 0) {
           return { success: false as const, reason: "nothing_to_insert" as const };
+        }
+
+        // Apply auto-layout if no nodes have position metadata
+        if (nodesWithPositionCount === 0 && nodesToInsert.length > 1) {
+          // Build edges with mapped slugs for layout computation
+          const edgesForLayout = importedEdges
+            .map((edge) => ({
+              source: slugMapping.get(edge.source) ?? edge.source,
+              target: slugMapping.get(edge.target) ?? edge.target,
+            }))
+            .filter(
+              (edge) =>
+                nodesToInsert.some((n) => n.id === edge.source) &&
+                nodesToInsert.some((n) => n.id === edge.target),
+            );
+
+          const layoutPositions = computeAutoLayout(nodesToInsert, edgesForLayout, {
+            direction: "TB",
+            nodeWidth: 280,
+            nodeHeight: 80,
+            rankSep: 100,
+            nodeSep: 60,
+          });
+
+          for (const node of nodesToInsert) {
+            const newPos = layoutPositions.get(node.id);
+            if (newPos) {
+              node.position = newPos;
+            }
+          }
         }
 
         let minX = Number.POSITIVE_INFINITY;

@@ -432,3 +432,73 @@ export const resolveSelectionAfterLoad = ({
 
   return { nodeId: null, edgeId: null };
 };
+
+/**
+ * Auto-layout nodes using Dagre algorithm.
+ * Arranges nodes hierarchically from top to bottom based on edge connections.
+ */
+export const computeAutoLayout = <
+  N extends { id: string; position: { x: number; y: number }; measured?: { width?: number; height?: number } },
+  E extends { source: string; target: string },
+>(
+  nodes: N[],
+  edges: E[],
+  options: {
+    direction?: "TB" | "LR";
+    nodeWidth?: number;
+    nodeHeight?: number;
+    rankSep?: number;
+    nodeSep?: number;
+  } = {},
+): Map<string, { x: number; y: number }> => {
+  const {
+    direction = "TB",
+    nodeWidth = 280,
+    nodeHeight = 80,
+    rankSep = 80,
+    nodeSep = 50,
+  } = options;
+
+  // Lazy import dagre to avoid issues if not installed
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const dagre = require("@dagrejs/dagre");
+
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+
+  g.setGraph({
+    rankdir: direction,
+    ranksep: rankSep,
+    nodesep: nodeSep,
+    marginx: 50,
+    marginy: 50,
+  });
+
+  for (const node of nodes) {
+    const width = node.measured?.width ?? nodeWidth;
+    const height = node.measured?.height ?? nodeHeight;
+    g.setNode(node.id, { width, height });
+  }
+
+  for (const edge of edges) {
+    g.setEdge(edge.source, edge.target);
+  }
+
+  dagre.layout(g);
+
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const node of nodes) {
+    const nodeWithPos = g.node(node.id);
+    if (nodeWithPos) {
+      // Dagre returns center position, convert to top-left for React Flow
+      const width = node.measured?.width ?? nodeWidth;
+      const height = node.measured?.height ?? nodeHeight;
+      positions.set(node.id, {
+        x: nodeWithPos.x - width / 2,
+        y: nodeWithPos.y - height / 2,
+      });
+    }
+  }
+
+  return positions;
+};
