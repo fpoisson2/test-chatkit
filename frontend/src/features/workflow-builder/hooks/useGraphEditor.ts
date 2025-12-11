@@ -306,15 +306,15 @@ const useGraphEditor = ({
         // Apply auto-layout if no nodes have position metadata
         if (nodesWithPositionCount === 0 && nodesToInsert.length > 1) {
           // Build edges with mapped slugs for layout computation
+          // Use Set for O(1) lookup instead of O(n) .some() calls
+          const nodeIdSet = new Set(nodesToInsert.map((n) => n.id));
           const edgesForLayout = importedEdges
             .map((edge) => ({
               source: slugMapping.get(edge.source) ?? edge.source,
               target: slugMapping.get(edge.target) ?? edge.target,
             }))
             .filter(
-              (edge) =>
-                nodesToInsert.some((n) => n.id === edge.source) &&
-                nodesToInsert.some((n) => n.id === edge.target),
+              (edge) => nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target),
             );
 
           const layoutPositions = computeAutoLayout(nodesToInsert, edgesForLayout, {
@@ -461,10 +461,12 @@ const useGraphEditor = ({
         setNodes((current) => [...current, ...adjustedNodes]);
         setEdges((current) => [...current, ...edgesToInsert]);
         updateHasPendingChanges(true);
+        // Only select the first node to avoid O(n²) style recalculations for large imports
+        const firstNodeId = newNodeIds[0] ?? null;
         applySelection({
-          nodeIds: newNodeIds,
-          edgeIds: newEdgeIds,
-          primaryNodeId: newNodeIds[0] ?? null,
+          nodeIds: firstNodeId ? [firstNodeId] : [],
+          edgeIds: [],
+          primaryNodeId: firstNodeId,
         });
 
         return { success: true as const, nodeIds: newNodeIds, edgeIds: newEdgeIds };
