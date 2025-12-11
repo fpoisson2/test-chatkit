@@ -42,13 +42,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
-  console.log('[WORKFLOW_STATE]', {
-    isCompleted,
-    workflowCompleted: workflow.completed,
-    hasSummary: workflow.summary !== undefined,
-    summaryTitle: workflow.summary?.title,
-    taskCount: currentTaskCount
-  });
+  console.log(`[WORKFLOW_STATE] isCompleted=${isCompleted}, workflowCompleted=${workflow.completed}, hasSummary=${workflow.summary !== undefined}, summaryTitle=${workflow.summary?.title}, taskCount=${currentTaskCount}`);
 
   // Stop animation when step has produced content (has tasks)
   const hasStepContent = currentTaskCount > 0;
