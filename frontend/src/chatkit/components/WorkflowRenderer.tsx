@@ -231,7 +231,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
-      <div className={`chatkit-workflow-header ${!isCompleted ? 'chatkit-workflow-active' : 'chatkit-workflow-completed'}`} onClick={toggleExpanded}>
+      <div className={`chatkit-workflow-header ${workflow.completed !== true ? 'chatkit-workflow-active' : 'chatkit-workflow-completed'}`} onClick={toggleExpanded}>
         <div className="chatkit-workflow-summary">
           {(() => {
             const willShowSummary = workflow.summary && workflow.summary.title && workflow.summary.title !== 'Workflow';
