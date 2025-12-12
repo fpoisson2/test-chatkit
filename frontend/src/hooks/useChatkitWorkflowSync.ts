@@ -14,6 +14,8 @@ type UseChatkitWorkflowSyncParams = {
   autoStartEnabled?: boolean;
   /** Si true, ne pas appeler fetchUpdates lors du retour de focus (streaming en cours) */
   isStreaming?: boolean;
+  /** Ref indiquant si une nouvelle conversation est en cours de création (en attente de sélection de workflow) */
+  isNewConversationDraftRef?: React.MutableRefObject<boolean>;
 };
 
 type UseChatkitWorkflowSyncResult = {
@@ -33,6 +35,7 @@ export const useChatkitWorkflowSync = ({
   enabled = true,
   autoStartEnabled = true,
   isStreaming = false,
+  isNewConversationDraftRef,
 }: UseChatkitWorkflowSyncParams): UseChatkitWorkflowSyncResult => {
   const [chatkitWorkflowInfo, setChatkitWorkflowInfo] = useState<ChatKitWorkflowInfo | null>(null);
   const autoStartAttemptRef = useRef(false);
@@ -180,6 +183,14 @@ export const useChatkitWorkflowSync = ({
       return;
     }
 
+    // Don't auto-start if user is in the process of selecting a workflow
+    if (isNewConversationDraftRef?.current) {
+      if (import.meta.env.DEV) {
+        console.log("[ChatKit] Nouvelle conversation en cours de création, auto-start bloqué");
+      }
+      return;
+    }
+
     // Trigger auto-start
     autoStartAttemptRef.current = true;
 
@@ -213,6 +224,7 @@ export const useChatkitWorkflowSync = ({
       });
   }, [
     enabled,
+    autoStartEnabled,
     chatkitWorkflowInfo,
     initialThreadId,
     reportError,

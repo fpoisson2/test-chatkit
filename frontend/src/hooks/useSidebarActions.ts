@@ -152,6 +152,8 @@ export function useSidebarActions({
         }
 
         clearStoredThreadId(sessionOwner, persistenceSlug);
+        // User has selected a workflow, allow auto-start to trigger
+        isNewConversationDraftRef.current = false;
         setInitialThreadId(null);
         setChatInstanceKey((v) => v + 1);
       }
@@ -166,6 +168,7 @@ export function useSidebarActions({
       setManagedWorkflowSelection,
       setInitialThreadId,
       setChatInstanceKey,
+      isNewConversationDraftRef,
     ],
   );
 

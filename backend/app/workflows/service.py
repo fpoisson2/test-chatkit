@@ -4,6 +4,8 @@ import datetime
 import logging
 import math
 import re
+import threading
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
@@ -33,6 +35,46 @@ from ..models import (
 from ..token_sanitizer import sanitize_value
 
 logger = logging.getLogger(__name__)
+
+# Cache pour les définitions de workflow actives
+# Clé: workflow_id (int), Valeur: (definition, timestamp)
+_definition_cache: dict[int, tuple[WorkflowDefinition, float]] = {}
+_definition_cache_lock = threading.Lock()
+_DEFINITION_CACHE_TTL = 5.0  # secondes
+
+
+def _get_cached_definition(workflow_id: int) -> WorkflowDefinition | None:
+    """Récupère une définition depuis le cache si elle n'est pas expirée."""
+    with _definition_cache_lock:
+        entry = _definition_cache.get(workflow_id)
+        if entry is None:
+            return None
+        definition, cached_at = entry
+        if time.time() - cached_at > _DEFINITION_CACHE_TTL:
+            del _definition_cache[workflow_id]
+            return None
+        return definition
+
+
+def _set_cached_definition(workflow_id: int, definition: WorkflowDefinition) -> None:
+    """Met en cache une définition de workflow."""
+    with _definition_cache_lock:
+        _definition_cache[workflow_id] = (definition, time.time())
+
+
+def invalidate_workflow_definition_cache(workflow_id: int | None = None) -> None:
+    """Invalide le cache pour un workflow spécifique ou tout le cache."""
+    with _definition_cache_lock:
+        if workflow_id is None:
+            _definition_cache.clear()
+            logger.debug("Cache des définitions de workflow entièrement invalidé")
+        elif workflow_id in _definition_cache:
+            del _definition_cache[workflow_id]
+            logger.debug(
+                "Cache de la définition de workflow invalidé pour workflow_id=%d",
+                workflow_id,
+            )
+
 
 _TRUTHY_AUTO_START_VALUES = {"true", "1", "yes", "on"}
 _FALSY_AUTO_START_VALUES = {"false", "0", "no", "off"}
@@ -1785,6 +1827,9 @@ class WorkflowService:
         workflow.active_version_id = definition.id
         session.flush()
 
+        # Invalider le cache car la définition active a changé
+        invalidate_workflow_definition_cache(workflow.id)
+
     def _replace_definition_graph(
         self,
         definition: WorkflowDefinition,
@@ -1885,9 +1930,22 @@ class WorkflowService:
         return definition
 
     def get_current(self, session: Session | None = None) -> WorkflowDefinition:
+        start_time = time.time()
         db, owns_session = self._get_session(session)
         try:
             workflow = self._get_chatkit_workflow(db)
+
+            # Vérifier le cache d'abord
+            cached = _get_cached_definition(workflow.id)
+            if cached is not None:
+                elapsed = (time.time() - start_time) * 1000
+                logger.debug(
+                    "get_current() cache HIT pour workflow_id=%d en %.2fms",
+                    workflow.id,
+                    elapsed,
+                )
+                return cached
+
             definition = self._load_active_definition(workflow, db)
             if definition is None:
                 definition = self._create_default_definition(db, workflow)
@@ -1902,6 +1960,17 @@ class WorkflowService:
                 definition = self._backfill_legacy_definition(definition, db)
                 self._set_active_definition(workflow, definition, db)
                 db.commit()
+
+            # Mettre en cache la définition chargée
+            _set_cached_definition(workflow.id, definition)
+
+            elapsed = (time.time() - start_time) * 1000
+            logger.debug(
+                "get_current() cache MISS pour workflow_id=%d en %.2fms",
+                workflow.id,
+                elapsed,
+            )
+
             return definition
         finally:
             if owns_session:

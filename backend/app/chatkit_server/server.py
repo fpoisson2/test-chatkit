@@ -2037,6 +2037,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 inference_options=InferenceOptions(),
             )
             user_item = await self._build_user_message_item(user_input, thread, context)
+            # Persister le message utilisateur auto-start en base de données
+            await self.store.save_item(thread.id, user_item, context=context)
             events.append(ThreadItemAddedEvent(item=user_item))
             events.append(ThreadItemDoneEvent(item=user_item))
 
@@ -2047,6 +2049,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 created_at=datetime.now(),
                 content=[AssistantMessageContent(text=assistant_text)],
             )
+            # Persister le message assistant auto-start en base de données
+            await self.store.save_item(thread.id, assistant_item, context=context)
             events.append(ThreadItemAddedEvent(item=assistant_item))
             events.append(ThreadItemDoneEvent(item=assistant_item))
 

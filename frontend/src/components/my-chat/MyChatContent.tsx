@@ -80,13 +80,17 @@ export function MyChatContent() {
   // Initialize initialThreadId from URL or storage on mount
   useEffect(() => {
     if (isInitialMountRef.current) {
+      // Skip loading stored thread if user requested a new conversation
+      if (isNewConversationDraftRef.current) {
+        return;
+      }
       const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
       if (storedId && storedId !== initialThreadId) {
         // Initial mount - update immediately, don't defer
         setInitialThreadId(storedId);
       }
     }
-  }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef]);
+  }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef, isNewConversationDraftRef]);
 
   // Reset chat state hook (uses context internally)
   const { resetChatState } = useResetChatState({
@@ -277,12 +281,16 @@ export function MyChatContent() {
         onThreadSelect={handleSidebarThreadSelect} onThreadDeleted={handleSidebarThreadDeleted} onNewConversation={handleNewConversation} hideWorkflows isNewConversationActive={initialThreadId === null} />
       <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", minHeight: 0, overflow: "hidden" }}>
         <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
-          {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
-            <WorkflowChatInstance key={instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
-              token={token} activeWorkflow={instance.workflow} initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
-              reportError={reportError} mode={instance.mode} isActive={instanceId === currentWorkflowId} autoStartEnabled={!hasVoiceAgent}
-              onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined} />
-          ))}
+          {Array.from(activeInstances.entries()).map(([instanceId, instance]) => {
+            const isCurrentInstance = instanceId === currentWorkflowId;
+            return (
+              <WorkflowChatInstance key={`${instanceId}::${instance.instanceKey}`} workflowId={instanceId} chatkitOptions={isCurrentInstance ? chatkitOptions : instance.chatkitOptions}
+                token={token} activeWorkflow={instance.workflow} initialThreadId={isCurrentInstance ? initialThreadId : instance.initialThreadId}
+                reportError={reportError} mode={instance.mode} isActive={isCurrentInstance} autoStartEnabled={!hasVoiceAgent}
+                onRequestRefreshReady={isCurrentInstance ? handleRequestRefreshReady : undefined}
+                isNewConversationDraftRef={isCurrentInstance ? isNewConversationDraftRef : undefined} />
+            );
+          })}
         </div>
       </div>
     </>
