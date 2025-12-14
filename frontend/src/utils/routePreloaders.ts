@@ -45,7 +45,6 @@ export const preloadRoute = (route: string): Promise<any> | null => {
     return preloader().catch((err) => {
       // Remove from set if preload fails so we can retry
       preloadedRoutes.delete(normalizedRoute);
-      console.warn(`Failed to preload route: ${route}`, err);
     });
   }
 

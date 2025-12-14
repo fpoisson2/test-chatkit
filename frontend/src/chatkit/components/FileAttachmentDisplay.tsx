@@ -49,8 +49,8 @@ export function FileAttachmentDisplay({
 
       // Cleanup blob URL
       setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
-    } catch (error) {
-      console.error('[FileAttachmentDisplay] Download error:', error);
+    } catch (_error) {
+      // Error ignored
     }
   }, [downloadUrl, displayName, authToken]);
 

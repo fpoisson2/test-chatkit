@@ -46,9 +46,7 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
 
   // Reset thread when initialThread becomes null
   useEffect(() => {
-    console.log('[useThreadLoader] effect triggered, initialThread:', initialThread);
     if (initialThread === null) {
-      console.log('[useThreadLoader] resetting thread to null');
       const tempId = generateTempThreadId();
       setThread(null);
       activeThreadIdRef.current = tempId;
@@ -94,14 +92,12 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
           .catch((err) => {
             const errorMessage = err?.message || String(err);
             if (errorMessage.includes('404')) {
-              console.warn('[ChatKit] Initial thread not found, starting with empty thread');
               const tempId = generateTempThreadId();
               activeThreadIdRef.current = tempId;
               visibleThreadIdRef.current = tempId;
               setThread(null);
               onThreadLoadEnd?.({ threadId: initialThread });
             } else {
-              console.error('[ChatKit] Failed to load initial thread:', err);
               onError?.({ error: err instanceof Error ? err : new Error(errorMessage) });
             }
           })
@@ -135,7 +131,6 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
       setThreadLoading(updatedThread.id, false);
       onLog?.({ name: 'thread.refresh', data: { thread: updatedThread } });
     } catch (err) {
-      console.error('[ChatKit] Failed to fetch updates:', err);
       const error = err instanceof Error ? err : new Error(String(err));
       onError?.({ error });
     } finally {

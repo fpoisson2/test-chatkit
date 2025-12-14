@@ -109,7 +109,6 @@ export const useChatApiConfig = ({
     })();
 
     if (!rawDomainKey && !isLocalHost && !missingDomainKeyWarningShownRef.current) {
-      console.warn(
         "[ChatKit] Domaine personnalisé '%s' détecté sans VITE_CHATKIT_DOMAIN_KEY. Ajoutez la clé fournie par la console OpenAI pour éviter la désactivation du widget.",
         host || "inconnu",
       );
@@ -155,7 +154,6 @@ export const useChatApiConfig = ({
 
     if (!normalizedStrategy) {
       if (explicitCustomUrl) {
-        console.warn(
           "[ChatKit] VITE_CHATKIT_API_URL détecté sans VITE_CHATKIT_UPLOAD_STRATEGY : les pièces jointes seront désactivées.",
         );
       }
@@ -169,7 +167,6 @@ export const useChatApiConfig = ({
 
         if (normalizedDirectUpload.kind === "ok") {
           if (normalizedDirectUpload.wasUpgraded) {
-            console.info(
               "[ChatKit] URL de téléchargement directe mise à niveau vers HTTPS pour éviter le contenu mixte.",
             );
           }
@@ -177,15 +174,12 @@ export const useChatApiConfig = ({
           uploadStrategy = { type: "direct", uploadUrl: normalizedDirectUpload.url };
           attachmentsAreEnabled = true;
         } else {
-          console.warn(`${normalizedDirectUpload.message} Les pièces jointes restent désactivées.`);
         }
       } else {
-        console.warn(
           "[ChatKit] VITE_CHATKIT_UPLOAD_STRATEGY=direct nécessite VITE_CHATKIT_DIRECT_UPLOAD_URL. Les pièces jointes restent désactivées.",
         );
       }
     } else {
-      console.warn(
         `[ChatKit] Stratégie d'upload inconnue : "${normalizedStrategy}". Les pièces jointes restent désactivées.`,
       );
     }
@@ -306,7 +300,6 @@ export const useChatApiConfig = ({
 
       if (normalizedResource.kind === "error") {
         const message = `${normalizedResource.message} Cette requête a été bloquée pour éviter le contenu mixte.`;
-        console.warn(message);
         throw new Error(message);
       }
 
@@ -322,14 +315,12 @@ export const useChatApiConfig = ({
         typeof targetUrl === "string" && targetUrl.includes("/domain_keys/verify");
 
       if (wasUpgraded && originalUrl && normalizedUrl && originalUrl !== normalizedUrl) {
-        console.info(
           "[ChatKit] URL HTTP mise à niveau vers HTTPS pour éviter le contenu mixte.",
           { initialUrl: originalUrl, upgradedUrl: normalizedUrl },
         );
       }
 
       if (shouldBypassDomainCheck && targetUrl?.includes("/domain_keys/verify")) {
-        console.info("[ChatKit] Vérification de domaine ignorée (mode développement).");
         return new Response(
           JSON.stringify({ status: "skipped" }),
           {
@@ -351,7 +342,6 @@ export const useChatApiConfig = ({
           (response.status === 404 || response.status === 405 || response.status === 501)
         ) {
           if (import.meta.env.DEV) {
-            console.info(
               "[ChatKit] Endpoint de vérification de domaine indisponible. Passage en mode ignoré.",
             );
           }
@@ -368,7 +358,6 @@ export const useChatApiConfig = ({
             responseDetails = await response.clone().text();
           } catch (cloneError) {
             if (import.meta.env.DEV) {
-              console.warn("[ChatKit] Impossible de lire le corps de la réponse d'erreur", cloneError);
             }
           }
 
@@ -389,7 +378,6 @@ export const useChatApiConfig = ({
         if (err instanceof TypeError) {
           if (isDomainVerificationRequest) {
             if (import.meta.env.DEV) {
-              console.warn(
                 "[ChatKit] Impossible de joindre l'endpoint de vérification de domaine. Passage en mode ignoré.",
                 err,
               );

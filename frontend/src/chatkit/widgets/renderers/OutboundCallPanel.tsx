@@ -316,7 +316,6 @@ export const OutboundCallPanel = ({ widget, context }: { widget: OutboundCallWid
     try {
       outboundCall.hangupCall();
     } catch (error) {
-      console.error('[OutboundCallPanel] Error hanging up call', error);
     } finally {
       setIsHangingUp(false);
     }

@@ -33,7 +33,6 @@ export const loadStoredThreadId = (
       window.localStorage.removeItem(legacyKey);
     } catch (error) {
       if (import.meta.env.DEV) {
-        console.warn(
           "[ChatKit] Impossible de migrer l'identifiant du fil vers la clé par workflow",
           error,
         );
@@ -64,7 +63,6 @@ export const persistStoredThreadId = (
   try {
     window.localStorage.setItem(key, threadId);
   } catch (error) {
-    console.warn("[ChatKit] Impossible de persister l'identifiant du fil", error);
   }
 };
 

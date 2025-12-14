@@ -65,12 +65,9 @@ export const useChatkitSession = ({
     const detailMessage = normalizeDetail(detail);
     if (detail !== undefined) {
       if (detailMessage) {
-        console.error(`[ChatKit] ${message}: ${detailMessage}`, detail);
       } else {
-        console.error(`[ChatKit] ${message}`, detail);
       }
     } else {
-      console.error(`[ChatKit] ${message}`);
     }
   }, []);
 
@@ -78,7 +75,6 @@ export const useChatkitSession = ({
     async (currentSecret: string | null) => {
       if (mode !== "hosted") {
         if (import.meta.env.DEV) {
-          console.debug("[ChatKit] Demande de client_secret ignorée (mode %s).", mode);
         }
         throw new Error("Client secret unavailable outside hosted mode.");
       }
@@ -109,7 +105,6 @@ export const useChatkitSession = ({
       resetError();
 
       if (import.meta.env.DEV) {
-        console.debug("[ChatKit] Demande d'un client_secret pour %s.", sessionOwner);
       }
 
       try {
@@ -156,7 +151,6 @@ export const useChatkitSession = ({
 
           const detailMessage = extractDetailMessage(err.detail) ?? err.message;
           if (import.meta.env.DEV) {
-            console.error(
               "[ChatKit] Échec lors de la récupération du client_secret (%s) : %s",
               err.status ?? "inconnu",
               detailMessage,

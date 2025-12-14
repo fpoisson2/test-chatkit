@@ -344,7 +344,6 @@ const WidgetNodeContentEditor = ({
         mediaPreview: { fileName: file.name, previewUrl },
       });
     } catch (uploadError) {
-      console.error(uploadError);
     }
   };
 

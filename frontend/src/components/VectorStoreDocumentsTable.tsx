@@ -20,7 +20,6 @@ const serializeMetadata = (
     return { preview, full: serialized };
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.warn("Impossible de sérialiser les métadonnées", error);
     }
     return { preview: "Métadonnées non disponibles", full: undefined };
   }

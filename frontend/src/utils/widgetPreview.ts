@@ -365,7 +365,6 @@ const cloneDefinition = <T>(definition: T): T => {
       return structuredClone(definition);
     } catch (error) {
       if (import.meta.env.DEV) {
-        console.warn("structuredClone a échoué, repli sur JSON", error);
       }
     }
   }

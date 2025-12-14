@@ -63,7 +63,6 @@ export const readStoredChatKitSession = (
     }
     return { session: stored, shouldRefresh: shouldRefreshSession(stored, now) };
   } catch (error) {
-    console.warn("[ChatKit] Échec de la lecture du secret stocké", error);
     window.localStorage.removeItem(key);
     return { session: null, shouldRefresh: false };
   }
@@ -98,7 +97,6 @@ export const persistChatKitSecret = (
   try {
     window.localStorage.setItem(key, JSON.stringify(payload));
   } catch (error) {
-    console.warn("[ChatKit] Impossible de persister le secret de session", error);
   }
 };
 

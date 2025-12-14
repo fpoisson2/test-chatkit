@@ -205,18 +205,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     options.initialThread !== control.thread?.id;
   const showStartScreen = !isLoadingAnyThread && !control.thread && !isTransitioningToNewThread;
 
-  // Debug: log start screen conditions
-  console.log('[ChatKit] showStartScreen conditions:', {
-    showStartScreen,
-    isLoadingAnyThread,
-    hasThread: !!control.thread,
-    threadId: control.thread?.id,
-    isTransitioningToNewThread,
-    optionsInitialThread: options.initialThread,
-    hasStartScreen: !!startScreen,
-    hasGreeting: !!startScreen?.greeting,
-    hasPrompts: !!(startScreen?.prompts?.length),
-  });
 
   // Check if thread is closed or locked
   const threadStatus = control.thread?.status;
@@ -461,17 +449,6 @@ function MessageList({
   inlineVoiceWidget,
   inlineOutboundCallWidget,
 }: MessageListProps): JSX.Element {
-  // Debug: Check for duplicate items
-  const itemIds = items.map(item => item.id);
-  const duplicateIds = itemIds.filter((id, index) => itemIds.indexOf(id) !== index);
-  if (duplicateIds.length > 0) {
-    console.error('[MessageList] DUPLICATE ITEMS DETECTED:', {
-      duplicateIds,
-      totalItems: items.length,
-      uniqueItems: new Set(itemIds).size,
-      items: items.map(i => ({ id: i.id, type: i.type })),
-    });
-  }
   const renderInlineWidgets = (
     voiceWidget: VoiceSessionWidget | null,
     outboundCallWidget: OutboundCallWidget | null,

@@ -158,7 +158,6 @@ export const useWorkflowVoiceSession = ({
   const processedSessionsRef = useRef<Set<string>>(new Set());
   const resampler = useAudioResampler(SAMPLE_RATE);
   const logVoice = useCallback((...args: unknown[]) => {
-    console.info("[WorkflowVoice]", ...args);
   }, []);
 
   const cleanupCapture = useCallback(() => {
@@ -222,7 +221,6 @@ export const useWorkflowVoiceSession = ({
       setTransportError(message);
       onError?.(message);
       if (import.meta.env.DEV) {
-        console.error("[Voice] transport error", error);
       }
       setStatus("error");
     },
@@ -278,7 +276,6 @@ export const useWorkflowVoiceSession = ({
       const nextTranscripts = extractTranscriptsFromHistory(history);
       setTranscripts(nextTranscripts);
       if (import.meta.env.DEV) {
-        console.log('[WorkflowVoice] Histoire mise à jour, rafraîchissement du thread...', {
           sessionId,
           transcriptCount: nextTranscripts.length,
         });

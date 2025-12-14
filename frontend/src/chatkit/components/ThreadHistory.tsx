@@ -66,8 +66,7 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
       cachedThreads = updatedThreads;
       cachedHasMore = updatedHasMore;
       cachedAfter = updatedAfter;
-    } catch (err) {
-      console.error('[ThreadHistory] Failed to load threads:', err);
+    } catch (_err) {
       setError('Impossible de charger l\'historique');
       if (isInitial && !isRefresh && cachedThreads.length === 0) {
         setThreads([]);
@@ -159,8 +158,7 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
       if (currentThreadId === threadId) {
         onThreadDeleted?.(threadId);
       }
-    } catch (err) {
-      console.error('[ThreadHistory] Failed to delete thread:', err);
+    } catch (_err) {
       setDeleteError('Impossible de supprimer la conversation');
     } finally {
       setDeletingThreadId(null);

@@ -90,7 +90,6 @@ const decodePcm16 = (payload: string): Int16Array => {
 
 const logRealtime = (message: string, payload?: Record<string, unknown>) => {
   const safePayload = payload ? maskSensitiveFields(payload) : undefined;
-  console.info("[VoiceRealtime]", message, safePayload ?? "");
 };
 
 const stringifyError = (value: unknown): string => {
@@ -342,7 +341,6 @@ const playAudioChunk = (
     record.playbackTime = startTime + buffer.duration;
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.warn("Failed to play realtime audio chunk", error);
     }
     record.activeSources.delete(source);
   }
@@ -357,7 +355,6 @@ const handleMessageForRecord = async (
     payload = JSON.parse(event.data);
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.warn("Realtime gateway message parsing failed", error);
     }
     return;
   }
@@ -487,7 +484,6 @@ const handleMessageForRecord = async (
     }
     default: {
       if (import.meta.env.DEV) {
-        console.debug("Ignoré : message voix", payload);
       }
     }
   }

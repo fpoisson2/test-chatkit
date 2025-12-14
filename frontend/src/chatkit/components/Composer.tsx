@@ -320,7 +320,7 @@ export function Composer({
 
       await onSubmit(message, successfulAttachments);
     } catch (error) {
-      console.error('[Composer] Failed to send message:', error);
+      // Error ignored
     }
   };
 

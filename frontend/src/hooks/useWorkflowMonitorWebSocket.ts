@@ -64,24 +64,17 @@ let wakeLock: WakeLockSentinel | null = null;
 
 const requestWakeLock = async () => {
   if (typeof navigator === "undefined" || !("wakeLock" in navigator)) {
-    console.log("[WorkflowMonitor] Wake Lock API not supported");
     return;
   }
 
   if (wakeLock !== null && !wakeLock.released) {
-    console.log("[WorkflowMonitor] Wake Lock already active");
     return;
   }
 
   try {
     wakeLock = await navigator.wakeLock.request("screen");
-    console.log("[WorkflowMonitor] Wake Lock activated - websockets will stay alive in background");
-
-    wakeLock.addEventListener("release", () => {
-      console.log("[WorkflowMonitor] Wake Lock released");
-    });
-  } catch (error) {
-    console.log("[WorkflowMonitor] Failed to acquire Wake Lock:", error);
+  } catch {
+    // Wake Lock request failed
   }
 };
 
@@ -90,9 +83,8 @@ const releaseWakeLock = async () => {
     try {
       await wakeLock.release();
       wakeLock = null;
-      console.log("[WorkflowMonitor] Wake Lock released manually");
-    } catch (error) {
-      console.log("[WorkflowMonitor] Failed to release Wake Lock:", error);
+    } catch {
+      // Wake Lock release failed
     }
   }
 };
@@ -162,7 +154,6 @@ export const useWorkflowMonitorWebSocket = ({
 
     // Fermer toute connexion existante avant d'en créer une nouvelle
     if (wsRef.current) {
-      console.log("[WebSocket] Closing existing connection before creating new one");
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -171,14 +162,13 @@ export const useWorkflowMonitorWebSocket = ({
       const ws = new WebSocket(getWebSocketUrl());
 
       ws.onopen = () => {
-        console.log("[WebSocket] Connected to workflow monitor");
         setIsConnected(true);
         setError(null);
         reconnectAttemptsRef.current = 0;
 
         // Activate Wake Lock to keep connection alive
-        requestWakeLock().catch((error) => {
-          console.log("[WorkflowMonitor] Failed to activate Wake Lock on connect:", error);
+        requestWakeLock().catch(() => {
+          // Wake Lock activation failed
         });
       };
 
@@ -197,19 +187,17 @@ export const useWorkflowMonitorWebSocket = ({
             setSessions(message.data.sessions);
             onUpdateRef.current?.(message.data.sessions);
           }
-        } catch (err) {
-          console.error("[WebSocket] Error parsing message:", err);
+        } catch {
+          // Error parsing message
         }
       };
 
-      ws.onerror = (event) => {
-        console.error("[WebSocket] Error:", event);
+      ws.onerror = () => {
         setError("WebSocket connection error");
         onErrorRef.current?.("WebSocket connection error");
       };
 
-      ws.onclose = (event) => {
-        console.log("[WebSocket] Disconnected:", event.code, event.reason);
+      ws.onclose = () => {
         setIsConnected(false);
         wsRef.current = null;
 
@@ -219,9 +207,6 @@ export const useWorkflowMonitorWebSocket = ({
           reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS
         ) {
           reconnectAttemptsRef.current++;
-          console.log(
-            `[WebSocket] Reconnecting (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...`
-          );
 
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
@@ -233,8 +218,7 @@ export const useWorkflowMonitorWebSocket = ({
       };
 
       wsRef.current = ws;
-    } catch (err) {
-      console.error("[WebSocket] Connection error:", err);
+    } catch {
       setError("Failed to connect to WebSocket");
       onErrorRef.current?.("Failed to connect to WebSocket");
     }
@@ -255,8 +239,8 @@ export const useWorkflowMonitorWebSocket = ({
     setIsConnected(false);
 
     // Release Wake Lock when disconnecting
-    releaseWakeLock().catch((error) => {
-      console.log("[WorkflowMonitor] Failed to release Wake Lock on disconnect:", error);
+    releaseWakeLock().catch(() => {
+      // Wake Lock release failed
     });
   }, []);
 
@@ -279,16 +263,14 @@ export const useWorkflowMonitorWebSocket = ({
     // Handle page visibility changes (important for mobile)
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        // Only log and take action if we have an active websocket
+        // Only take action if we have an active websocket
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
           return;
         }
 
-        console.log("[WorkflowMonitor] Page became visible, checking connection");
-
         // Reacquire Wake Lock if websocket is connected
-        requestWakeLock().catch((error) => {
-          console.log("[WorkflowMonitor] Failed to reacquire Wake Lock:", error);
+        requestWakeLock().catch(() => {
+          // Wake Lock reacquisition failed
         });
 
         // If we're disconnected, reconnect logic is already in ws.onclose

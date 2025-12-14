@@ -54,7 +54,6 @@ export const makeApiEndpointCandidates = (
     candidates.push(resolved);
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.warn(
         "URL backend invalide ignorée pour VITE_BACKEND_URL:",
         backendUrl,
         error,
@@ -873,7 +872,6 @@ export const pollMcpOAuthSession = async ({
     try {
       await updateMcpServer(token ?? null, persistence.serverId, updatePayload);
     } catch (error) {
-      console.error("Failed to persist MCP server after OAuth flow", error);
     }
   }
 

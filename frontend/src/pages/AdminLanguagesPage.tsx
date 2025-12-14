@@ -118,8 +118,7 @@ export const AdminLanguagesPage = () => {
   const handleDownloadTaskResult = useCallback(async (taskId: string) => {
     try {
       await downloadTaskResult(token, taskId);
-    } catch (err) {
-      console.error("Failed to download task result:", err);
+    } catch {
       setFormError(t("admin.languages.errors.downloadFailed"));
     }
   }, [token, t]);
@@ -127,8 +126,7 @@ export const AdminLanguagesPage = () => {
   const handleDownloadStoredLanguage = useCallback(async (id: number) => {
     try {
       await downloadStoredLanguage(token, id);
-    } catch (err) {
-      console.error("Failed to download stored language:", err);
+    } catch {
       setError(t("admin.languages.errors.downloadFailed"));
     }
   }, [token, t]);
@@ -141,8 +139,7 @@ export const AdminLanguagesPage = () => {
     try {
       await deleteStoredLanguageMutation.mutateAsync({ token, id });
       setSuccess(t("admin.languages.feedback.deleted"));
-    } catch (err) {
-      console.error("Failed to delete stored language:", err);
+    } catch {
       setError(t("admin.languages.errors.deleteFailed"));
     }
   }, [token, deleteStoredLanguageMutation, t]);
@@ -156,7 +153,6 @@ export const AdminLanguagesPage = () => {
       const data = await activateStoredLanguageMutation.mutateAsync({ token, id });
       setSuccess(data.message || `Language ${name} activated successfully. Refresh the page to see it in the language selector.`);
     } catch (err) {
-      console.error("Failed to activate stored language:", err);
       setError(err instanceof Error ? err.message : "Failed to activate language");
     }
   }, [token, activateStoredLanguageMutation]);

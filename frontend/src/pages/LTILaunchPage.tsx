@@ -19,7 +19,6 @@ export const LTILaunchPage = () => {
   useEffect(() => {
     // Prevent re-execution in strict mode or on re-renders
     if (hasProcessed.current) {
-      console.log("LTI Launch: Already processed, skipping");
       return;
     }
 
@@ -27,15 +26,9 @@ export const LTILaunchPage = () => {
     const userJson = searchParams.get("user");
     const workflowId = searchParams.get("workflow");
 
-    console.log("LTI Launch: token present?", !!token);
-    console.log("LTI Launch: user present?", !!userJson);
-    console.log("LTI Launch: workflow present?", !!workflowId);
-    console.log("LTI Launch: full URL", window.location.href);
-
     setDebugInfo(`Token: ${token ? "présent" : "absent"}, User: ${userJson ? "présent" : "absent"}, Workflow: ${workflowId || "absent"}`);
 
     if (!token || !userJson) {
-      console.error("LTI Launch: Missing token or user data");
       setError("Paramètres manquants dans l'URL");
       hasProcessed.current = true;
       setTimeout(() => {
@@ -45,29 +38,21 @@ export const LTILaunchPage = () => {
     }
 
     try {
-      console.log("LTI Launch: Parsing user JSON...");
       const user: AuthUser = JSON.parse(decodeURIComponent(userJson));
-      console.log("LTI Launch: User parsed successfully", user);
 
       // Log the user in (stores token and user in localStorage)
-      console.log("LTI Launch: Calling login...");
       login(token, user);
-      console.log("LTI Launch: Login successful");
 
       // Store the workflow ID from the Deep Link for the ChatWorkflowSidebar
       if (workflowId) {
-        console.log("LTI Launch: Storing workflow ID", workflowId);
         localStorage.setItem('lti_launch_workflow_id', workflowId);
       }
 
-      console.log("LTI Launch: Redirecting to /");
       hasProcessed.current = true;
 
       // Immediate redirect - no setTimeout needed
-      console.log("LTI Launch: Performing hard redirect to /");
       window.location.replace("/");
     } catch (error) {
-      console.error("LTI Launch: Failed to parse user data", error);
       setError(`Erreur: ${error instanceof Error ? error.message : String(error)}`);
       hasProcessed.current = true;
       setTimeout(() => {

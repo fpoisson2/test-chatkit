@@ -71,7 +71,6 @@ export function useChatInstanceCache({
   }, [cachedInstances, currentWorkflowId, mode, activeWorkflow, initialThreadId, chatkitOptions, chatInstanceKey]);
 
   // Debug: log current workflow state
-  console.log('[useChatInstanceCache] state:', {
     currentWorkflowId,
     mode,
     activeWorkflowId,

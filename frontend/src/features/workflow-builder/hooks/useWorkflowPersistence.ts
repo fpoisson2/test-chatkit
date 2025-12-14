@@ -183,7 +183,6 @@ const useWorkflowPersistence = ({
           }
         }
       } catch (error) {
-        console.error(t("workflowBuilder.save.errorReadResponse"), error);
       }
       return formatSaveFailureWithStatus(response.status);
     },
@@ -237,7 +236,6 @@ const useWorkflowPersistence = ({
       try {
         for (const url of candidates) {
           if (draftVersionIdRef.current) {
-            console.warn("DraftExistsError", {
               workflowId: selectedWorkflowId,
               draftId: draftVersionIdRef.current,
             });

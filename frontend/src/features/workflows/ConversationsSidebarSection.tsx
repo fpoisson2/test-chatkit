@@ -191,8 +191,7 @@ export function ConversationsSidebarSection({
           newThreads.length > 0 ? newThreads[newThreads.length - 1].id : currentAfter
         );
       }
-    } catch (err) {
-      console.error("[ConversationsSidebarSection] Failed to load threads:", err);
+    } catch {
       setError("Impossible de charger les conversations");
       if (isInitial && !isRefresh && cachedThreads.length === 0) {
         setThreads([]);
@@ -219,7 +218,6 @@ export function ConversationsSidebarSection({
   // This allows the spinner to persist even after clicking "+" to start a new conversation
   useEffect(() => {
     if (activeThreadSnapshot?.id && streamingThreadIds?.has(activeThreadSnapshot.id)) {
-      console.info("[ConversationsSidebarSection] Setting lastStreamingSnapshot:", activeThreadSnapshot.id);
       setLastStreamingSnapshot(activeThreadSnapshot);
     }
   }, [activeThreadSnapshot, streamingThreadIds]);
@@ -227,31 +225,15 @@ export function ConversationsSidebarSection({
   // Clear lastStreamingSnapshot when streaming ends for that thread
   useEffect(() => {
     if (lastStreamingSnapshot?.id && !streamingThreadIds?.has(lastStreamingSnapshot.id)) {
-      console.info("[ConversationsSidebarSection] Clearing lastStreamingSnapshot:", lastStreamingSnapshot.id);
       setLastStreamingSnapshot(null);
     }
   }, [lastStreamingSnapshot?.id, streamingThreadIds]);
-
-  // Debug: Log streamingThreadIds changes
-  useEffect(() => {
-    console.info("[ConversationsSidebarSection] streamingThreadIds changed:",
-      streamingThreadIds ? Array.from(streamingThreadIds) : null);
-  }, [streamingThreadIds]);
 
   // Keep sidebar entry in sync with the latest active thread snapshot (title, metadata...)
   useEffect(() => {
     if (!activeThreadSnapshot?.id) {
       return;
     }
-
-    // Debug: Log the snapshot to trace title updates
-    const snapshotTitle = activeThreadSnapshot.title || (activeThreadSnapshot.metadata?.title as string | undefined);
-    console.debug("[ConversationsSidebarSection] activeThreadSnapshot sync:", {
-      id: activeThreadSnapshot.id,
-      title: activeThreadSnapshot.title,
-      metadataTitle: activeThreadSnapshot.metadata?.title,
-      resolvedTitle: snapshotTitle,
-    });
 
     setThreads((currentThreads) => {
       const targetIndex = currentThreads.findIndex((thread) => thread.id === activeThreadSnapshot.id);
@@ -301,7 +283,6 @@ export function ConversationsSidebarSection({
 
     // If the thread doesn't exist in our list AND we don't have it in the snapshot, refresh to fetch it
     if (!threadExists && !snapshotHasThread) {
-      console.debug("[ConversationsSidebarSection] New thread detected, refreshing list:", currentThreadId);
       loadThreads(true, true);
     }
   }, [api, currentThreadId, threads, loadThreads, activeThreadSnapshot]);
@@ -329,8 +310,8 @@ export function ConversationsSidebarSection({
       if (currentThreadId === threadId) {
         onThreadDeleted?.(threadId);
       }
-    } catch (err) {
-      console.error("[ConversationsSidebarSection] Failed to delete thread:", err);
+    } catch {
+      // Delete failed
     } finally {
       setDeletingThreadId(null);
     }
@@ -365,8 +346,7 @@ export function ConversationsSidebarSection({
       });
       setThreads(updatedThreads);
       cachedThreads = updatedThreads;
-    } catch (err) {
-      console.error("[ConversationsSidebarSection] Failed to rename thread:", err);
+    } catch {
       alert("Impossible de renommer la conversation.");
     }
   }, [api, threads]);
@@ -547,21 +527,6 @@ export function ConversationsSidebarSection({
               const shouldHideDefaultTitle = isNewlyCreated && isStreaming && rawTitle === "Conversation sans titre";
               const threadTitle = snapshotTitle || (shouldHideDefaultTitle ? "" : rawTitle);
 
-              // Debug: Log title resolution for active thread
-              if (isActive) {
-                console.debug("[ConversationsSidebarSection] Rendering active thread:", {
-                  threadId: thread.id,
-                  currentThreadId,
-                  hasSnapshot: !!activeThreadSnapshot,
-                  snapshotId: activeThreadSnapshot?.id,
-                  snapshotTitle: activeThreadSnapshot?.title,
-                  snapshotMetadataTitle: activeThreadSnapshot?.metadata?.title,
-                  threadInListTitle: thread.title,
-                  threadInListMetadataTitle: thread.metadata?.title,
-                  resolvedSnapshotTitle: snapshotTitle,
-                  finalTitle: threadTitle,
-                });
-              }
               const dateStr = items.length > 0 ? formatRelativeDate(items[0].created_at) : "";
               const isMenuOpen = openMenuId === thread.id;
               const menuId = `conversation-menu-${thread.id}`;

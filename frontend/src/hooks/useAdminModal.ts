@@ -34,7 +34,6 @@ export const useAdminModal = () => {
     try {
       localStorage.setItem(STORAGE_KEY, activeTab);
     } catch (error) {
-      console.warn("Failed to persist admin modal tab to localStorage:", error);
     }
   }, [activeTab]);
 

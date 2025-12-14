@@ -85,8 +85,7 @@ type UseWorkflowGraphReturn = {
  *   conditionGraphError
  * } = useWorkflowGraph({
  *   decorateNode: myDecoratorFunction,
- *   onGraphChange: () => console.log('Graph changed')
- * });
+ *   onGraphChange: () =>  * });
  * ```
  */
 export function useWorkflowGraph(options: UseWorkflowGraphOptions = {}): UseWorkflowGraphReturn {

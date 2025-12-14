@@ -110,8 +110,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       !resumedThreadsRef.current.has(threadId)
     ) {
       resumedThreadsRef.current.add(threadId);
-      resumeStream(threadId).catch((err) => {
-        console.error('[ChatKit] Failed to auto-resume stream:', err);
+      resumeStream(threadId).catch(() => {
+        // Error ignored
       });
     }
   }, [thread, isTempThreadId, resumeStream]);

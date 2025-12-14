@@ -45,7 +45,6 @@ export const useHostedFlow = ({ onDisable }: UseHostedFlowParams = {}): UseHoste
         if (nextMode === "local" && currentMode === "hosted") {
           if (import.meta.env.DEV) {
             const hint = reason ? ` (${reason})` : "";
-            console.info("[ChatKit] Désactivation du flux hébergé%s.", hint);
           }
           onDisable?.();
         }

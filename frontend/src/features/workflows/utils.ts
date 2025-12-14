@@ -213,7 +213,6 @@ const readSelectionStorageItem = (key: string): string | null => {
     try {
       return storage.getItem(key);
     } catch (error) {
-      console.warn("Unable to read workflow selection storage", error);
       return null;
     }
   };
@@ -232,7 +231,6 @@ const readSelectionStorageItem = (key: string): string | null => {
     try {
       localStorage.setItem(key, sessionValue);
     } catch (error) {
-      console.warn("Unable to migrate workflow selection storage", error);
     }
   }
 
@@ -240,7 +238,6 @@ const readSelectionStorageItem = (key: string): string | null => {
     try {
       sessionStorage.removeItem(key);
     } catch (error) {
-      console.warn("Unable to clear legacy workflow selection storage", error);
     }
   }
 
@@ -265,7 +262,6 @@ const writeSelectionStorageItem = (key: string, value: string | null) => {
     try {
       storage.removeItem(key);
     } catch (error) {
-      console.warn("Unable to clear workflow selection storage", error);
     }
   };
 
@@ -281,7 +277,6 @@ const writeSelectionStorageItem = (key: string, value: string | null) => {
       localStorage.setItem(key, value);
       stored = true;
     } catch (error) {
-      console.warn("Unable to write workflow selection storage", error);
     }
   }
 
@@ -290,7 +285,6 @@ const writeSelectionStorageItem = (key: string, value: string | null) => {
       sessionStorage.setItem(key, value);
       stored = true;
     } catch (error) {
-      console.warn("Unable to write workflow selection storage fallback", error);
     }
   }
 
@@ -367,7 +361,6 @@ const parseStoredSelection = (value: string | null): StoredWorkflowSelection | n
       } satisfies StoredWorkflowSelection;
     }
   } catch (error) {
-    console.warn("Unable to parse workflow selection", error);
   }
 
   return null;
@@ -382,7 +375,6 @@ const dispatchWorkflowSelectionChanged = () => {
     window.dispatchEvent(new Event(WORKFLOW_SELECTION_CHANGED_EVENT));
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.warn("Unable to dispatch workflow selection change event", error);
     }
   }
 };

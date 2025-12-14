@@ -98,9 +98,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
   const sendCommand = useCallback((command: { type: string; [key: string]: any }) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(command));
-      console.log("[OutboundCallSession] Sent command:", command);
     } else {
-      console.error("[OutboundCallSession] WebSocket not connected, cannot send command");
     }
   }, []);
 
@@ -109,7 +107,6 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     const authToken = authTokenRef.current;
 
     if (!currentCallId) {
-      console.error("[OutboundCallSession] No active call to hangup");
       return;
     }
 
@@ -132,9 +129,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
         throw new Error(errorData.detail || `HTTP ${response.status}`);
       }
 
-      console.log("[OutboundCallSession] Call hung up successfully");
     } catch (err) {
-      console.error("[OutboundCallSession] Failed to hang up call:", err);
       setError(`Échec du raccrochage: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [callId]);
@@ -149,7 +144,6 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     // Connect to outbound call events WebSocket
     const authToken = authTokenRef.current;
     if (!authToken) {
-      console.error("[OutboundCallSession] Missing auth token, cannot connect to websocket");
       setError("Jeton d'authentification manquant pour la session d'appels sortants");
       return;
     }
@@ -163,7 +157,6 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
 
     ws.onopen = () => {
       reconnectAttemptsRef.current = 0; // Reset reconnect attempts on successful connection
-      console.log("[OutboundCallSession] WebSocket connected to", wsUrl);
 
       // Activate Wake Lock to keep connection alive
       requestWakeLock().catch(() => {
@@ -185,7 +178,6 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
             if (typeof message.to_number === "string") {
               setToNumber(message.to_number);
             }
-            console.log(`[OutboundCallSession] Call started: ${message.call_id}`);
             break;
 
           case "call_status":
@@ -198,7 +190,6 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
             break;
 
           case "call_ended":
-            console.log(`[OutboundCallSession] Call ended: ${message.call_id}`);
             setIsActive(false);
             setStatus("completed");
             onCallEndRef.current?.();
@@ -238,7 +229,6 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
               try {
                 onTranscriptRef.current(payload);
               } catch (err) {
-                console.error("[OutboundCallSession] Transcript callback failed", err);
               }
             }
             break;
@@ -255,16 +245,13 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
             // Silent - ignore unknown event types
         }
       } catch (err) {
-        console.error("[OutboundCallSession] Failed to parse message:", err);
       }
     };
 
     ws.onerror = (error) => {
-      console.error("[OutboundCallSession] WebSocket error:", error);
     };
 
     ws.onclose = (event) => {
-      console.log("[OutboundCallSession] WebSocket closed:", event.code, event.reason);
       wsRef.current = null;
 
       // Attempt reconnection if component is still mounted

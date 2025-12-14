@@ -51,7 +51,6 @@ export function useChatkitCallbacks({
     ({ threadId, thread }: { threadId?: string | null; thread?: Record<string, unknown> }) => {
       // Use threadId if provided, otherwise extract from thread object
       const resolvedThreadId = threadId ?? (thread?.id as string | undefined) ?? null;
-      console.debug("[ChatKit] thread change", { threadId, resolvedThreadId, hasThread: !!thread, workflowsCount });
       // Check for null, undefined, or empty string
       if (!resolvedThreadId) {
         clearStoredThreadId(sessionOwner, persistenceSlug);
@@ -100,7 +99,6 @@ export function useChatkitCallbacks({
 
   const onResponseEnd = useCallback(
     ({ finalThreadId }: { threadId: string | null; finalThreadId: string | null }) => {
-      console.debug("[ChatKit] response end", { finalThreadId });
       requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
       setIsNewConversationStreaming(false);
       wasNewConversationStreamingRef.current = false;
@@ -124,7 +122,6 @@ export function useChatkitCallbacks({
           lastThreadSnapshotRef.current = thread;
           const metadata = thread.metadata as Record<string, unknown> | undefined;
           const hasTitle = !!(thread.title || metadata?.title);
-          console.log("[ChatKit] onLog thread update - title info:", {
             logName: entry.name,
             threadId: thread.id,
             title: thread.title,
@@ -141,9 +138,7 @@ export function useChatkitCallbacks({
   const onError = useCallback(
     ({ error }: { error: Error }) => {
       console.groupCollapsed("[ChatKit] onError");
-      console.error("error:", error);
       if (lastThreadSnapshotRef.current) {
-        console.log("thread snapshot:", lastThreadSnapshotRef.current);
       }
       console.groupEnd();
       reportError(error.message, error);
@@ -152,11 +147,9 @@ export function useChatkitCallbacks({
   );
 
   const onThreadLoadStart = useCallback(({ threadId }: { threadId: string }) => {
-    console.debug("[ChatKit] thread load start", { threadId });
   }, []);
 
   const onThreadLoadEnd = useCallback(({ threadId }: { threadId: string }) => {
-    console.debug("[ChatKit] thread load end", { threadId });
   }, []);
 
   return {

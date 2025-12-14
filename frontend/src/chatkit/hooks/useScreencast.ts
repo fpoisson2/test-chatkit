@@ -117,15 +117,7 @@ export function useScreencast({
         return;
       }
 
-      console.log('[useScreencast] Found computer_use task with token:', {
-        itemId: item.id,
-        token: token.substring(0, 8),
-        status: computerUseTask.status_indicator,
-        workflowId: item.id,
-      });
-
       if (failedScreencastTokens.has(token)) {
-        console.log('[useScreencast] Removing token from failed list (giving it another chance):', token.substring(0, 8));
         setFailedScreencastTokens(prev => {
           const next = new Set(prev);
           next.delete(token);
@@ -200,7 +192,6 @@ export function useScreencast({
         (!currentActiveScreencast ||
          newActiveScreencast.token !== currentActiveScreencast.token ||
          newActiveScreencast.itemId !== currentActiveScreencast.itemId)) {
-      console.log('[useScreencast] Setting active screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
     }
   }, [isLoading, threadItems, dismissedScreencastItems, failedScreencastTokens, lastScreencastScreenshot]);

@@ -216,7 +216,6 @@ const NodeInspector = ({
         });
         onWorkflowUpdate?.();
       } catch (error) {
-        console.error("Failed to update LTI enabled:", error);
       }
     },
     [currentWorkflow, token, onWorkflowUpdate]
@@ -236,7 +235,6 @@ const NodeInspector = ({
         });
         onWorkflowUpdate?.();
       } catch (error) {
-        console.error("Failed to update LTI registration IDs:", error);
       }
     },
     [currentWorkflow, token, onWorkflowUpdate]
@@ -256,7 +254,6 @@ const NodeInspector = ({
         });
         onWorkflowUpdate?.();
       } catch (error) {
-        console.error("Failed to update LTI show sidebar:", error);
       }
     },
     [currentWorkflow, token, onWorkflowUpdate]
@@ -276,7 +273,6 @@ const NodeInspector = ({
         });
         onWorkflowUpdate?.();
       } catch (error) {
-        console.error("Failed to update LTI show header:", error);
       }
     },
     [currentWorkflow, token, onWorkflowUpdate]
@@ -296,7 +292,6 @@ const NodeInspector = ({
         });
         onWorkflowUpdate?.();
       } catch (error) {
-        console.error("Failed to update LTI enable history:", error);
       }
     },
     [currentWorkflow, token, onWorkflowUpdate]

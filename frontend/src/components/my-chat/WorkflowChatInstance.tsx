@@ -31,7 +31,6 @@ export const WorkflowChatInstance = ({
   autoStartEnabled = true,
 }: WorkflowChatInstanceProps) => {
   // Debug: log instance state
-  console.log('[WorkflowChatInstance] render:', {
     workflowId,
     isActive,
     initialThreadId,
