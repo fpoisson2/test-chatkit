@@ -28,7 +28,44 @@ export function useScrollToBottom(
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+
+    const cleanupFrames: number[] = [];
+
+    const scrollAfterLayout = () => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    };
+
+    const scheduleScroll = () => {
+      // Use two rAF ticks to wait for layout/paint to settle before scrolling
+      const frame1 = requestAnimationFrame(() => {
+        const frame2 = requestAnimationFrame(scrollAfterLayout);
+        cleanupFrames.push(frame2);
+      });
+      cleanupFrames.push(frame1);
+    };
+
+    // Wait for images to finish loading to avoid jumping while height adjusts
+    const images = container?.querySelectorAll('img') ?? [];
+    const pendingImages = Array.from(images).filter(img => !img.complete);
+
+    if (pendingImages.length === 0) {
+      scheduleScroll();
+    } else {
+      const handleImageLoad = () => {
+        scheduleScroll();
+      };
+      pendingImages.forEach(img => img.addEventListener('load', handleImageLoad, { once: true }));
+
+      return () => {
+        pendingImages.forEach(img => img.removeEventListener('load', handleImageLoad));
+        cleanupFrames.forEach(frameId => cancelAnimationFrame(frameId));
+      };
+    }
+
+    return () => {
+      cleanupFrames.forEach(frameId => cancelAnimationFrame(frameId));
+    };
   }, [itemCount]);
 
   // Track scroll position to show/hide the "scroll to bottom" button
@@ -54,7 +91,9 @@ export function useScrollToBottom(
 
   // Function to scroll to bottom
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    });
   }, []);
 
   return {
