@@ -53,12 +53,7 @@ export const makeApiEndpointCandidates = (
     const resolved = new URL(normalizedPath, base).toString();
     candidates.push(resolved);
   } catch (error) {
-    if (import.meta.env.DEV) {
-        "URL backend invalide ignorée pour VITE_BACKEND_URL:",
-        backendUrl,
-        error,
-      );
-    }
+    // Invalid URL ignored in development
   }
 
   return toUniqueList(candidates);

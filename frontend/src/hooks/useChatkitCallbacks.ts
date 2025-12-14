@@ -121,13 +121,6 @@ export function useChatkitCallbacks({
           const thread = data.thread as Record<string, unknown>;
           lastThreadSnapshotRef.current = thread;
           const metadata = thread.metadata as Record<string, unknown> | undefined;
-          const hasTitle = !!(thread.title || metadata?.title);
-            logName: entry.name,
-            threadId: thread.id,
-            title: thread.title,
-            metadataTitle: metadata?.title,
-            hasTitle,
-          });
           setCurrentThread(thread);
         }
       }
@@ -137,13 +130,9 @@ export function useChatkitCallbacks({
 
   const onError = useCallback(
     ({ error }: { error: Error }) => {
-      console.groupCollapsed("[ChatKit] onError");
-      if (lastThreadSnapshotRef.current) {
-      }
-      console.groupEnd();
       reportError(error.message, error);
     },
-    [lastThreadSnapshotRef, reportError],
+    [reportError],
   );
 
   const onThreadLoadStart = useCallback(({ threadId }: { threadId: string }) => {

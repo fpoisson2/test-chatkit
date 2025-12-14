@@ -48,10 +48,12 @@ export type ChatProviderProps = {
 export function ChatProvider({ children, initialThreadId: propsInitialThreadId = null, urlThreadId }: ChatProviderProps) {
   // Thread state
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
-  const [initialThreadId, setInitialThreadId] = useState<string | null>(propsInitialThreadId);
+  const [initialThreadId, setInitialThreadIdRaw] = useState<string | null>(propsInitialThreadId);
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(new Set());
   const [isNewConversationStreaming, setIsNewConversationStreaming] = useState(false);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
+
+  const setInitialThreadId = setInitialThreadIdRaw;
 
   // Workflow state
   const [workflowSelection, setWorkflowSelection] = useState<WorkflowActivation>({

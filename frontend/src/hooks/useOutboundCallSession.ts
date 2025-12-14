@@ -80,15 +80,13 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
   const onTranscriptRef = useRef(options?.onTranscript);
   const onCallEndRef = useRef(options?.onCallEnd);
   const authTokenRef = useRef(options?.authToken);
-  const enabledRef = useRef(options?.enabled ?? true);
 
   // Update refs when options change
   useEffect(() => {
     onTranscriptRef.current = options?.onTranscript;
     onCallEndRef.current = options?.onCallEnd;
     authTokenRef.current = options?.authToken;
-    enabledRef.current = options?.enabled ?? true;
-  }, [options?.onTranscript, options?.onCallEnd, options?.authToken, options?.enabled]);
+  }, [options?.onTranscript, options?.onCallEnd, options?.authToken]);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -266,8 +264,23 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     };
   }, []);
 
+  const enabled = options?.enabled ?? true;
+
   useEffect(() => {
-    if (!enabledRef.current) {
+    if (!enabled) {
+      // If disabled, ensure we disconnect and clean up
+      shouldConnectRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      releaseWakeLock().catch(() => {
+        // Silent - no logging needed
+      });
       return;
     }
 
@@ -315,7 +328,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
         // Silent - no logging needed
       });
     };
-  }, [connectWebSocket]);
+  }, [connectWebSocket, enabled]);
 
   return { callId, isActive, status, toNumber, transcripts, error, sendCommand, hangupCall };
 }

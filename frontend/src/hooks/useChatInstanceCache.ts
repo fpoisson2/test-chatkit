@@ -70,16 +70,6 @@ export function useChatInstanceCache({
     return result;
   }, [cachedInstances, currentWorkflowId, mode, activeWorkflow, initialThreadId, chatkitOptions, chatInstanceKey]);
 
-  // Debug: log current workflow state
-    currentWorkflowId,
-    mode,
-    activeWorkflowId,
-    initialThreadId,
-    chatInstanceKey,
-    instancesCount: activeInstances.size,
-    instanceIds: Array.from(activeInstances.keys()),
-  });
-
   // Update cached instances asynchronously (for persistence across workflow switches)
   useEffect(() => {
     setCachedInstances((prev) => {

@@ -47,7 +47,9 @@ export function useSessionOwnerSync({
       isNewConversationDraftRef.current = false;
       // Defer state update to avoid updating parent during render
       const timeoutId = setTimeout(() => {
-        setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
+        setInitialThreadId((current) => {
+          return current === storedThreadId ? current : storedThreadId;
+        });
       }, 0);
       return () => clearTimeout(timeoutId);
     } else if (isInitialMountRef.current && persistenceSlug) {

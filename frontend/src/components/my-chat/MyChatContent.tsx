@@ -182,7 +182,7 @@ export function MyChatContent() {
   const handleOutboundTranscript = useCallback(() => requestRefreshRef.current?.("[OutboundCall] Transcription"), [requestRefreshRef]);
   const handleOutboundCallEnd = useCallback(() => requestRefreshRef.current?.("[OutboundCall] Appel terminé"), [requestRefreshRef]);
   const { callId: outboundCallId, isActive: outboundCallIsActive, status: outboundCallStatus, toNumber: outboundCallToNumber, transcripts: outboundCallTranscripts, error: outboundCallError, hangupCall: hangupOutboundCall } = useOutboundCallSession({
-    enabled: true, authToken: token, onTranscript: handleOutboundTranscript, onCallEnd: handleOutboundCallEnd,
+    enabled: hasOutboundCall, authToken: token, onTranscript: handleOutboundTranscript, onCallEnd: handleOutboundCallEnd,
   });
 
   useEffect(() => { stopVoiceSessionRef.current = stopVoiceSession; }, [stopVoiceSession, stopVoiceSessionRef]);
@@ -282,7 +282,7 @@ export function MyChatContent() {
       <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", minHeight: 0, overflow: "hidden" }}>
         <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
-            <WorkflowChatInstance key={instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
+            <WorkflowChatInstance key={instanceId === currentWorkflowId ? `${instanceId}-${chatInstanceKey}` : instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
               token={token} activeWorkflow={instance.workflow} initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
               reportError={reportError} mode={instance.mode} isActive={instanceId === currentWorkflowId} autoStartEnabled={!hasVoiceAgent && (initialThreadId !== null || workflows.length <= 1 || activeWorkflow !== null)}
               onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined} />

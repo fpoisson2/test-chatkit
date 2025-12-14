@@ -150,12 +150,6 @@ export const useChatkitSession = ({
           };
 
           const detailMessage = extractDetailMessage(err.detail) ?? err.message;
-          if (import.meta.env.DEV) {
-              "[ChatKit] Échec lors de la récupération du client_secret (%s) : %s",
-              err.status ?? "inconnu",
-              detailMessage,
-            );
-          }
 
           const errorCode =
             typeof err.detail === "object" && err.detail !== null

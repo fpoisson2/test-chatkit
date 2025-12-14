@@ -275,11 +275,6 @@ export const useWorkflowVoiceSession = ({
       }
       const nextTranscripts = extractTranscriptsFromHistory(history);
       setTranscripts(nextTranscripts);
-      if (import.meta.env.DEV) {
-          sessionId,
-          transcriptCount: nextTranscripts.length,
-        });
-      }
       onTranscriptsUpdated?.();
     },
     onAgentStart: (sessionId) => {

@@ -27,7 +27,9 @@ export function useUrlThreadSync({
     prevUrlThreadIdRef.current = urlThreadId;
 
     // Skip if URL hasn't changed
-    if (prevUrlThreadId === urlThreadId) return;
+    if (prevUrlThreadId === urlThreadId) {
+      return;
+    }
 
     const currentUrlThreadId = urlThreadId ?? null;
 

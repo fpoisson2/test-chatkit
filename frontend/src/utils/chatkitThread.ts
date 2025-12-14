@@ -32,11 +32,7 @@ export const loadStoredThreadId = (
       window.localStorage.setItem(key, legacyRaw);
       window.localStorage.removeItem(legacyKey);
     } catch (error) {
-      if (import.meta.env.DEV) {
-          "[ChatKit] Impossible de migrer l'identifiant du fil vers la clé par workflow",
-          error,
-        );
-      }
+      // Migration error ignored
     }
     return legacyRaw;
   }
@@ -63,6 +59,7 @@ export const persistStoredThreadId = (
   try {
     window.localStorage.setItem(key, threadId);
   } catch (error) {
+    // Persist error ignored
   }
 };
 
@@ -70,6 +67,7 @@ export const clearStoredThreadId = (ownerId: string, workflowSlug?: string | nul
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.removeItem(buildThreadKey(ownerId, workflowSlug));
+  const key = buildThreadKey(ownerId, workflowSlug);
+  window.localStorage.removeItem(key);
   window.localStorage.removeItem(buildLegacyThreadKey(ownerId));
 };

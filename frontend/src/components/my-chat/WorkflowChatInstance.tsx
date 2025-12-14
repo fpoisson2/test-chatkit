@@ -30,14 +30,6 @@ export const WorkflowChatInstance = ({
   onRequestRefreshReady,
   autoStartEnabled = true,
 }: WorkflowChatInstanceProps) => {
-  // Debug: log instance state
-    workflowId,
-    isActive,
-    initialThreadId,
-    optionsInitialThread: chatkitOptions.initialThread,
-    hasStartScreen: !!chatkitOptions.startScreen,
-  });
-
   // Use the activeWorkflow prop directly to reflect workflow changes from the builder
   const { control, requestRefresh } = useWorkflowChatSession({
     chatkitOptions,
