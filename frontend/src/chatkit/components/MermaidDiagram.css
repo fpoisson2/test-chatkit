@@ -15,6 +15,7 @@
 .chatkit-mermaid-error {
   margin: 1em 0;
   padding: 1rem;
+  min-height: 200px;
   background: var(--color-surface-secondary);
   border: 1px solid var(--status-error);
   border-radius: var(--radius-lg);
