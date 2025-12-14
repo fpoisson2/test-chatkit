@@ -43,7 +43,10 @@ export function useScrollToBottom(
       // Double rAF ensures we scroll after the browser has painted the new content
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          container.scrollTop = container.scrollHeight;
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'smooth',
+          });
         });
       });
     } else {
