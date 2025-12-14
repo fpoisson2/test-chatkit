@@ -36,40 +36,18 @@ export function useScrollToBottom(
     // Use instant scroll when switching conversations to avoid visual glitches
     // Use smooth scroll only for new messages in the same conversation
     const isConversationSwitch = prevThreadIdRef.current !== threadId;
-
-    // Debug logging
-    console.log('[useScrollToBottom] Effect triggered', {
-      isConversationSwitch,
-      prevThreadId: prevThreadIdRef.current,
-      newThreadId: threadId,
-      itemCount,
-      scrollHeight: container.scrollHeight,
-      clientHeight: container.clientHeight,
-      scrollTop: container.scrollTop,
-      maxScroll: container.scrollHeight - container.clientHeight,
-    });
-
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
-      // DEBUG: Disable scroll entirely to see if this is the cause
-      console.log('[useScrollToBottom] SKIPPING scroll for conversation switch (debug)');
-      return;
-
       // When switching conversations, wait for DOM to settle before scrolling
       // Double rAF ensures we scroll after the browser has painted the new content
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          console.log('[useScrollToBottom] rAF scroll', {
-            scrollHeight: container.scrollHeight,
-            clientHeight: container.clientHeight,
-          });
           container.scrollTop = container.scrollHeight;
         });
       });
     } else {
       // Smooth scroll for new messages in same conversation
-      console.log('[useScrollToBottom] Smooth scroll to bottom');
       container.scrollTo({
         top: container.scrollHeight,
         behavior: 'smooth',
