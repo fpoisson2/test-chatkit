@@ -27,6 +27,7 @@ export function useScrollToBottom(
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const prevThreadIdRef = useRef<string | undefined>(threadId);
+  const isAtBottomRef = useRef(true);
 
   // Auto-scroll to bottom when new messages arrive or conversation changes
   useEffect(() => {
@@ -44,10 +45,12 @@ export function useScrollToBottom(
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           container.scrollTop = container.scrollHeight;
+          isAtBottomRef.current = true;
+          setShowScrollButton(false);
         });
       });
-    } else {
-      // Smooth scroll for new messages in same conversation
+    } else if (isAtBottomRef.current) {
+      // Smooth scroll for new messages in same conversation only when already at bottom
       container.scrollTo({
         top: container.scrollHeight,
         behavior: 'smooth',
@@ -64,6 +67,7 @@ export function useScrollToBottom(
       const { scrollTop, scrollHeight, clientHeight } = container;
       // Consider "at bottom" if within threshold pixels from bottom
       const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold;
+      isAtBottomRef.current = isAtBottom;
       setShowScrollButton(!isAtBottom);
     };
 
