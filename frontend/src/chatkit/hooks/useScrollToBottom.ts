@@ -18,18 +18,26 @@ export interface UseScrollToBottomReturn {
  */
 export function useScrollToBottom(
   itemCount: number,
-  options: UseScrollToBottomOptions = {}
+  options: UseScrollToBottomOptions = {},
+  threadId?: string
 ): UseScrollToBottomReturn {
   const { threshold = 100 } = options;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const prevThreadIdRef = useRef<string | undefined>(threadId);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive or conversation changes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [itemCount]);
+    // Use instant scroll when switching conversations to avoid visual glitches
+    // Use smooth scroll only for new messages in the same conversation
+    const isConversationSwitch = prevThreadIdRef.current !== threadId;
+    const behavior = isConversationSwitch ? 'instant' : 'smooth';
+
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    prevThreadIdRef.current = threadId;
+  }, [itemCount, threadId]);
 
   // Track scroll position to show/hide the "scroll to bottom" button
   useEffect(() => {
