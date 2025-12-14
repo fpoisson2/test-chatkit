@@ -38,6 +38,12 @@
   align-items: center;
   width: 100%;
   padding-bottom: calc(150px + var(--chatkit-keyboard-offset) + max(env(safe-area-inset-bottom), 0px));
+  opacity: 1;
+  transition: opacity 0.1s ease-out;
+}
+
+.chatkit-messages--transitioning {
+  opacity: 0;
 }
 
 .chatkit-messages > * {

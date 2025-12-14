@@ -1,7 +1,7 @@
 /**
  * ChatKit component - Main chat interface with all features
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type {
   ChatKitControl,
   ChatKitOptions,
@@ -68,6 +68,25 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     showScrollButton,
     scrollToBottom,
   } = useScrollToBottom(control.thread?.items.length ?? 0, {}, control.thread?.id);
+
+  // Track conversation transitions to show loading state
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const prevThreadIdRef = useRef<string | undefined>(control.thread?.id);
+
+  useEffect(() => {
+    const currentThreadId = control.thread?.id;
+    const isConversationSwitch = prevThreadIdRef.current !== currentThreadId && prevThreadIdRef.current !== undefined;
+    prevThreadIdRef.current = currentThreadId;
+
+    if (isConversationSwitch) {
+      setIsTransitioning(true);
+      // Clear transition after content has loaded and scrolled
+      const timer = setTimeout(() => {
+        setIsTransitioning(false);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [control.thread?.id]);
 
   // Keyboard offset for mobile virtual keyboards
   const { keyboardOffset } = useKeyboardOffset(messagesContainerRef);
@@ -275,7 +294,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       />
 
       {/* Messages */}
-      <div className="chatkit-messages" ref={messagesContainerRef}>
+      <div className={`chatkit-messages ${isTransitioning ? 'chatkit-messages--transitioning' : ''}`} ref={messagesContainerRef}>
         {showStartScreen && startScreen ? (
           <StartScreen
             greeting={startScreen.greeting}
