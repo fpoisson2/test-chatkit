@@ -69,32 +69,19 @@ export const WorkflowChatInstance = ({
       return;
     }
 
-    // If just became active, wait for content to load
-    const justBecameActive = isActive && !prevIsActiveRef.current;
-    prevIsActiveRef.current = isActive;
+    // Check if content is still loading
+    const isLoading = control.isLoading || control.loadingThreadIds.size > 0;
 
-    if (justBecameActive) {
-      // Check if content is loading
-      const isLoading = control.isLoading || control.loadingThreadIds.size > 0;
-
-      if (isLoading) {
-        // Wait for loading to complete, then add render delay
-        return; // Will re-run when loading state changes
-      }
-
-      // Content is loaded, add delay for Mermaid and other async renders
-      const timer = setTimeout(() => {
-        setIsContentReady(true);
-      }, CONTENT_RENDER_DELAY_MS);
-
-      return () => clearTimeout(timer);
+    // If loading, wait for it to complete (effect will re-run when loading state changes)
+    if (isLoading) {
+      return;
     }
 
-    // If already active and not loading, mark as ready
-    const isLoading = control.isLoading || control.loadingThreadIds.size > 0;
-    if (!isLoading && !isContentReady) {
+    // Content is loaded - if not already ready, add delay for Mermaid and other async renders
+    if (!isContentReady) {
       const timer = setTimeout(() => {
         setIsContentReady(true);
+        prevIsActiveRef.current = true;
       }, CONTENT_RENDER_DELAY_MS);
 
       return () => clearTimeout(timer);
