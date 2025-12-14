@@ -34,8 +34,9 @@ export function useSessionOwnerSync({
 
     previousSessionOwnerRef.current = sessionOwner;
 
-    // Skip loading if not initial mount and in draft mode
-    if (!isInitialMountRef.current && isNewConversationDraftRef.current) {
+    // Skip loading if in draft mode (new conversation requested)
+    // This prevents reloading an old thread when the user clicks "+" to start fresh
+    if (isNewConversationDraftRef.current) {
       return;
     }
 
