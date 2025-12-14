@@ -30,13 +30,24 @@ export function useScrollToBottom(
 
   // Auto-scroll to bottom when new messages arrive or conversation changes
   useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
     // Use instant scroll when switching conversations to avoid visual glitches
     // Use smooth scroll only for new messages in the same conversation
     const isConversationSwitch = prevThreadIdRef.current !== threadId;
-    const behavior = isConversationSwitch ? 'instant' : 'smooth';
-
-    messagesEndRef.current?.scrollIntoView({ behavior });
     prevThreadIdRef.current = threadId;
+
+    if (isConversationSwitch) {
+      // Direct scroll position set - no animation, no visual glitches
+      container.scrollTop = container.scrollHeight;
+    } else {
+      // Smooth scroll for new messages in same conversation
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   }, [itemCount, threadId]);
 
   // Track scroll position to show/hide the "scroll to bottom" button
@@ -60,9 +71,14 @@ export function useScrollToBottom(
     };
   }, [threshold]);
 
-  // Function to scroll to bottom
+  // Function to scroll to bottom (manual trigger, always smooth)
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'smooth',
+    });
   }, []);
 
   return {
