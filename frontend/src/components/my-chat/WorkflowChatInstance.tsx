@@ -1,9 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatKitOptions } from "../../chatkit";
 
 import { ChatKitHost } from "./ChatKitHost";
 import { useWorkflowChatSession } from "../../hooks/useWorkflowChatSession";
 import type { WorkflowSummary } from "../../types/workflows";
+
+// Delay after content loads to allow Mermaid and other async content to render
+const CONTENT_RENDER_DELAY_MS = 150;
 
 type WorkflowChatInstanceProps = {
   workflowId: string;
@@ -43,6 +46,10 @@ export const WorkflowChatInstance = ({
 
   const requestRefreshRef = useRef(requestRefresh);
 
+  // Track if content is ready to be shown (after loading + render delay)
+  const [isContentReady, setIsContentReady] = useState(false);
+  const prevIsActiveRef = useRef(isActive);
+
   useEffect(() => {
     requestRefreshRef.current = requestRefresh;
   }, [requestRefresh]);
@@ -53,9 +60,63 @@ export const WorkflowChatInstance = ({
     }
   }, [isActive, onRequestRefreshReady]);
 
+  // Wait for content to be ready before showing the instance
+  useEffect(() => {
+    // Reset content ready when becoming inactive
+    if (!isActive) {
+      setIsContentReady(false);
+      prevIsActiveRef.current = false;
+      return;
+    }
+
+    // If just became active, wait for content to load
+    const justBecameActive = isActive && !prevIsActiveRef.current;
+    prevIsActiveRef.current = isActive;
+
+    if (justBecameActive) {
+      // Check if content is loading
+      const isLoading = control.isLoading || control.loadingThreadIds.size > 0;
+
+      if (isLoading) {
+        // Wait for loading to complete, then add render delay
+        return; // Will re-run when loading state changes
+      }
+
+      // Content is loaded, add delay for Mermaid and other async renders
+      const timer = setTimeout(() => {
+        setIsContentReady(true);
+      }, CONTENT_RENDER_DELAY_MS);
+
+      return () => clearTimeout(timer);
+    }
+
+    // If already active and not loading, mark as ready
+    const isLoading = control.isLoading || control.loadingThreadIds.size > 0;
+    if (!isLoading && !isContentReady) {
+      const timer = setTimeout(() => {
+        setIsContentReady(true);
+      }, CONTENT_RENDER_DELAY_MS);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, control.isLoading, control.loadingThreadIds.size, isContentReady]);
+
+  // Determine the CSS class based on active state AND content ready state
+  const getInstanceClass = () => {
+    if (!isActive) {
+      return "chat-instance chat-instance--inactive";
+    }
+    // Active but content not ready - keep hidden
+    if (!isContentReady) {
+      return "chat-instance chat-instance--inactive";
+    }
+    // Active and content ready - show
+    return "chat-instance chat-instance--active";
+  };
+
   return (
     <div
-      className={`chat-instance ${isActive ? "chat-instance--active" : "chat-instance--inactive"}`}
+      className={getInstanceClass()}
       style={{
         display: "flex",
         flexDirection: "column",
