@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, RefObject } from 'react';
+import { useState, useRef, useEffect, useCallback, RefObject } from 'react';
 
 export interface UseScrollToBottomOptions {
   /** Distance from bottom (in pixels) to consider "at bottom" */
@@ -27,89 +27,33 @@ export function useScrollToBottom(
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const prevThreadIdRef = useRef<string | undefined>(threadId);
-  const prevItemCountRef = useRef<number>(itemCount);
-  // Track if we're in a conversation transition
-  const isTransitioningRef = useRef<boolean>(false);
 
-  // Hide container immediately on conversation switch (before paint)
-  useLayoutEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    const isConversationSwitch = prevThreadIdRef.current !== threadId;
-
-    if (isConversationSwitch) {
-      isTransitioningRef.current = true;
-      // Hide immediately to prevent flash of wrong content
-      container.style.opacity = '0';
-    }
-  }, [threadId]);
-
-  // Handle conversation switch after content loads
+  // Auto-scroll to bottom when new messages arrive or conversation changes
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
+    // Use instant scroll when switching conversations to avoid visual glitches
+    // Use smooth scroll only for new messages in the same conversation
     const isConversationSwitch = prevThreadIdRef.current !== threadId;
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
-      if (itemCount === 0) {
-        // Content not loaded yet, stay hidden and wait
-        return;
-      }
-
-      // Content is ready, scroll and reveal after async content (like Mermaid) settles
-      // Use multiple rAFs + timeout to wait for async rendering
-      const scrollAndReveal = () => {
-        container.scrollTop = container.scrollHeight;
-        // Additional delay for async content like Mermaid diagrams
-        setTimeout(() => {
-          container.scrollTop = container.scrollHeight;
-          container.style.opacity = '1';
-          isTransitioningRef.current = false;
-        }, 100);
-      };
-
-      // Wait for initial DOM render
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollAndReveal();
-        });
-      });
-    }
-  }, [threadId, itemCount]);
-
-  // Handle content loading after conversation switch (when itemCount changes from 0)
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    const prevCount = prevItemCountRef.current;
-    const itemCountIncreased = itemCount > prevCount;
-    prevItemCountRef.current = itemCount;
-
-    // If we're transitioning and content just loaded
-    if (isTransitioningRef.current && prevCount === 0 && itemCount > 0) {
-      // Content just loaded, scroll and reveal
+      // When switching conversations, wait for DOM to settle before scrolling
+      // Double rAF ensures we scroll after the browser has painted the new content
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           container.scrollTop = container.scrollHeight;
-          setTimeout(() => {
-            container.scrollTop = container.scrollHeight;
-            container.style.opacity = '1';
-            isTransitioningRef.current = false;
-          }, 100);
         });
       });
-    } else if (itemCountIncreased && !isTransitioningRef.current) {
-      // New message in existing conversation - smooth scroll
+    } else {
+      // Smooth scroll for new messages in same conversation
       container.scrollTo({
         top: container.scrollHeight,
         behavior: 'smooth',
       });
     }
-  }, [itemCount]);
+  }, [itemCount, threadId]);
 
   // Track scroll position to show/hide the "scroll to bottom" button
   useEffect(() => {
