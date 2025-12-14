@@ -108,7 +108,6 @@ async function fetchImageAsBlob(
   backendUrl?: string,
 ): Promise<string | null> {
   try {
-    console.log('[ImageWithBlobUrl] Fetching with auth:', { url, hasToken: !!authToken, tokenPreview: authToken?.substring(0, 20) + '...' });
     const requestUrl = resolveAbsoluteUrl(url, apiUrl, backendUrl);
     const response = await fetch(requestUrl, {
       headers: {
@@ -116,13 +115,11 @@ async function fetchImageAsBlob(
       },
     });
     if (!response.ok) {
-      console.warn(`[ImageWithBlobUrl] Failed to fetch image: ${response.status}`);
       return null;
     }
     const blob = await response.blob();
     return URL.createObjectURL(blob);
   } catch (error) {
-    console.warn('[ImageWithBlobUrl] Error fetching image:', error);
     return null;
   }
 }
@@ -149,7 +146,6 @@ export function ImageWithBlobUrl({
     let cancelled = false;
 
     const processSource = async () => {
-      console.log('[ImageWithBlobUrl] Processing source:', { src, hasAuthToken: !!authToken });
 
       if (src.startsWith('data:')) {
         // Convertir l'URL data en blob pour éviter les erreurs 414
@@ -159,7 +155,6 @@ export function ImageWithBlobUrl({
           setBlobUrl(objectUrl);
         }
       } else if (src.startsWith('/api/')) {
-        console.log('[ImageWithBlobUrl] API URL detected, authToken:', !!authToken);
         if (authToken) {
           // URL d'API relative nécessitant authentification
           setLoading(true);
@@ -170,13 +165,11 @@ export function ImageWithBlobUrl({
               setBlobUrl(fetchedUrl);
             } else {
               // Fallback: essayer sans authentification (au cas où)
-              console.warn('[ImageWithBlobUrl] Fetch failed, falling back to direct URL');
               setBlobUrl(resolveAbsoluteUrl(src, apiUrl, backendUrl));
             }
             setLoading(false);
           }
         } else {
-          console.error('[ImageWithBlobUrl] API URL but no authToken provided!');
           setBlobUrl(resolveAbsoluteUrl(src, apiUrl, backendUrl));
         }
       } else if (src.startsWith('http') || src.startsWith('/')) {

@@ -45,15 +45,12 @@ export const useWorkflowComposerModels = ({
   const [workflowDetected, setWorkflowDetected] = useState(false);
 
   useEffect(() => {
-    console.log("[useWorkflowComposerModels] params:", { token: !!token, workflowId, activeVersionId });
-
     // Reset ALL state when params change to avoid stale data during transition
     setWorkflowDetected(false);
     setComposerModels(null);
     setError(null);
 
     if (!token || !workflowId || !activeVersionId) {
-      console.log("[useWorkflowComposerModels] Missing params, skipping");
       setLoading(false);
       return;
     }
@@ -65,14 +62,11 @@ export const useWorkflowComposerModels = ({
       setError(null);
 
       try {
-        console.log("[useWorkflowComposerModels] Fetching version...");
         const version: WorkflowVersionResponse = await workflowsApi.getVersion(
           token,
           workflowId,
           activeVersionId
         );
-
-        console.log("[useWorkflowComposerModels] Version loaded:", version);
 
         if (cancelled) return;
 
@@ -81,7 +75,6 @@ export const useWorkflowComposerModels = ({
         // et les propriétés sont directement sur le nœud (pas dans node.data)
         const versionWithGraph = version as unknown as { graph?: { nodes?: unknown[] } };
         const nodes = versionWithGraph.graph?.nodes;
-        console.log("[useWorkflowComposerModels] Nodes:", nodes);
 
         const agentNode = nodes?.find(
           (node: unknown) => {
@@ -90,10 +83,7 @@ export const useWorkflowComposerModels = ({
           }
         ) as { kind?: string; parameters?: Record<string, unknown> } | undefined;
 
-        console.log("[useWorkflowComposerModels] Agent node:", agentNode);
-
         if (!agentNode?.parameters) {
-          console.log("[useWorkflowComposerModels] No agent parameters found");
           setComposerModels(null);
           setWorkflowDetected(true);
           setLoading(false);
@@ -101,13 +91,10 @@ export const useWorkflowComposerModels = ({
         }
 
         const parameters = agentNode.parameters;
-        console.log("[useWorkflowComposerModels] Parameters:", parameters);
 
         const selectionMode = getAgentModelSelectionMode(parameters);
-        console.log("[useWorkflowComposerModels] Selection mode:", selectionMode);
 
         if (selectionMode !== "user_choice") {
-          console.log("[useWorkflowComposerModels] Not user_choice mode");
           setComposerModels(null);
           setWorkflowDetected(true);
           setLoading(false);
@@ -115,10 +102,8 @@ export const useWorkflowComposerModels = ({
         }
 
         const userModelOptions = getAgentUserModelOptions(parameters);
-        console.log("[useWorkflowComposerModels] User model options:", userModelOptions);
 
         if (userModelOptions.length === 0) {
-          console.log("[useWorkflowComposerModels] No user model options");
           setComposerModels(null);
           setWorkflowDetected(true);
           setLoading(false);
@@ -129,9 +114,8 @@ export const useWorkflowComposerModels = ({
         let availableModels: AvailableModel[] = [];
         try {
           availableModels = await modelRegistryApi.list(token);
-          console.log("[useWorkflowComposerModels] Available models:", availableModels);
-        } catch (err) {
-          console.warn("[useWorkflowComposerModels] Failed to fetch available models:", err);
+        } catch {
+          // Ignore fetch errors for available models
         }
 
         if (cancelled) return;
@@ -160,13 +144,11 @@ export const useWorkflowComposerModels = ({
           }
         );
 
-        console.log("[useWorkflowComposerModels] Setting composer models:", models);
         setComposerModels(models);
         setWorkflowDetected(true);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
-        console.error("[useWorkflowComposerModels] Failed to load:", err);
         setError(err instanceof Error ? err.message : "Unknown error");
         setComposerModels(null);
         setLoading(false);

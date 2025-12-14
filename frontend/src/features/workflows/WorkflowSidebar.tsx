@@ -600,28 +600,21 @@ export const ChatWorkflowSidebar = ({
 
     // Wait for workflows to be loaded before checking
     if (workflows.length === 0) {
-      console.log('[LTI Auto-select] Waiting for workflows to load...');
       return;
     }
-
-    console.log('[LTI Auto-select] Workflows loaded:', workflows.length, workflows.map(w => ({ id: w.id, name: w.display_name })));
 
     // Get the workflow ID from the LTI launch (stored in localStorage)
     const ltiWorkflowId = localStorage.getItem('lti_launch_workflow_id');
     if (!ltiWorkflowId) {
-      console.log('[LTI Auto-select] No workflow ID found in localStorage');
       hasCheckedLtiWorkflow.current = true;
       return;
     }
-
-    console.log('[LTI Auto-select] Found workflow ID in localStorage:', ltiWorkflowId);
 
     // Convert to number and clear from localStorage (one-time use)
     const workflowId = parseInt(ltiWorkflowId, 10);
     localStorage.removeItem('lti_launch_workflow_id');
 
     if (isNaN(workflowId)) {
-      console.error('[LTI Auto-select] Invalid workflow ID:', ltiWorkflowId);
       hasCheckedLtiWorkflow.current = true;
       return;
     }
@@ -630,13 +623,6 @@ export const ChatWorkflowSidebar = ({
     const workflowInList = workflows.find((w) => w.id === workflowId);
 
     if (workflowInList) {
-      console.log('[LTI Auto-select] Auto-selecting workflow:', workflowId, workflowInList.display_name);
-      console.log('[LTI Auto-select] Workflow options:', {
-        lti_enabled: workflowInList.lti_enabled,
-        lti_show_sidebar: workflowInList.lti_show_sidebar,
-        lti_show_header: workflowInList.lti_show_header
-      });
-
       // Update selected workflow ID if different
       if (selectedWorkflowId !== workflowId) {
         setSelectedWorkflowId(workflowId);
@@ -655,9 +641,6 @@ export const ChatWorkflowSidebar = ({
         { kind: "local", workflow: workflowInList },
         { reason: "initial" },
       );
-      console.log('[LTI Auto-select] Workflow activated successfully');
-    } else {
-      console.error('[LTI Auto-select] Workflow not found:', workflowId, 'Available:', workflows.map(w => w.id));
     }
 
     hasCheckedLtiWorkflow.current = true;
@@ -742,11 +725,8 @@ export const ChatWorkflowSidebar = ({
           kind: "local",
           workflow: updated,
         });
-      } catch (err) {
+      } catch {
         // Error handling will be shown by parent component if needed
-        if (import.meta.env.DEV) {
-          console.error("Failed to set workflow:", err);
-        }
       } finally {
         setUpdatingWorkflowId(null);
       }
@@ -873,8 +853,7 @@ export const ChatWorkflowSidebar = ({
         await workflowsApi.deleteHostedWorkflow(token, slug);
         // Refresh hosted workflows list
         void loadWorkflows();
-      } catch (error) {
-        console.error("Failed to delete hosted workflow:", error);
+      } catch {
         alert("Impossible de supprimer le workflow hébergé.");
       }
     },
@@ -953,8 +932,7 @@ export const ChatWorkflowSidebar = ({
         await workflowsApi.updateWorkflow(token, workflow.id, { display_name: displayName });
         // Refresh workflows list
         void loadWorkflows();
-      } catch (error) {
-        console.error("Failed to rename workflow:", error);
+      } catch {
         alert("Impossible de renommer le workflow.");
       }
     },
@@ -974,8 +952,7 @@ export const ChatWorkflowSidebar = ({
         await workflowsApi.deleteWorkflow(token, workflow.id);
         // Refresh workflows list
         void loadWorkflows();
-      } catch (error) {
-        console.error("Failed to delete workflow:", error);
+      } catch {
         alert("Impossible de supprimer le workflow.");
       }
     },
@@ -1013,8 +990,7 @@ export const ChatWorkflowSidebar = ({
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-      } catch (error) {
-        console.error("Failed to export workflow:", error);
+      } catch {
         alert("Impossible d'exporter le workflow.");
       }
     },

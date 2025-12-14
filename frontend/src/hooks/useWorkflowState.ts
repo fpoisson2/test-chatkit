@@ -98,7 +98,7 @@ export function useWorkflowState({
     const workflow = workflows.find((w) => w.id === providerSelectedWorkflowId) ?? null;
     if (workflow) {
       if (isAdmin) {
-        workflowsApi.setChatkitWorkflow(token, providerSelectedWorkflowId).catch(console.error);
+        workflowsApi.setChatkitWorkflow(token, providerSelectedWorkflowId).catch(() => {});
       }
 
       const selection: WorkflowActivation = { kind: "local", workflow };

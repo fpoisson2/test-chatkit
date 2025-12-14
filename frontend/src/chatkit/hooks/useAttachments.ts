@@ -64,7 +64,6 @@ export function useAttachments({
 
         const validation = validateFile(file, attachmentsConfig);
         if (!validation.valid) {
-          console.error(`[ChatKit] File validation failed: ${validation.error}`);
           continue;
         }
 
@@ -142,7 +141,6 @@ export function useAttachments({
               )
             );
           } catch (err) {
-            console.error('[ChatKit] Failed to upload attachment:', err);
             // Parse error message for user-friendly display
             let errorMessage = 'Échec de l\'upload';
             const errString = String(err);

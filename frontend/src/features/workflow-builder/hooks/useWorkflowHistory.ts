@@ -73,7 +73,6 @@ export function useWorkflowHistory({
       try {
         parsed = parseWorkflowImport(snapshot);
       } catch (error) {
-        console.error("Failed to parse workflow history snapshot", error);
         return false;
       }
 

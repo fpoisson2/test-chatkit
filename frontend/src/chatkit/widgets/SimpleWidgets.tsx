@@ -38,8 +38,8 @@ function ImageWithBlobUrl({ src, alt = '', className = '', style = {} }: { src: 
         const blob = new Blob([u8arr], { type: mime });
         objectUrl = URL.createObjectURL(blob);
         setBlobUrl(objectUrl);
-      } catch (err) {
-        console.error('[SimpleWidgets] Failed to convert data URL to blob:', err);
+      } catch (_err) {
+        // Error ignored
       }
     } else {
       setBlobUrl(src);

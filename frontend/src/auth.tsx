@@ -39,8 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       return JSON.parse(raw) as AuthUser;
-    } catch (error) {
-      console.error("Unable to parse stored user", error);
+    } catch (_error) {
       return null;
     }
   });

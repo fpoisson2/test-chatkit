@@ -93,7 +93,7 @@ export const StartInspectorSection = ({
     })
       .then((res) => res.json())
       .then((data) => setSipAccounts(data))
-      .catch((err) => console.error("Failed to load SIP accounts:", err))
+      .catch((err) => )
       .finally(() => setSipAccountsLoading(false));
   }, [token, workflowId]);
 
@@ -106,7 +106,7 @@ export const StartInspectorSection = ({
     })
       .then((res) => res.json())
       .then((data) => setLtiRegistrations(data))
-      .catch((err) => console.error("Failed to load LTI registrations:", err))
+      .catch((err) => )
       .finally(() => setLtiRegistrationsLoading(false));
   }, [token]);
 

@@ -66,7 +66,6 @@ export function useWorkflowCapabilities(
       } catch (error) {
         if (cancelled) return;
 
-        console.error("[useWorkflowCapabilities] Failed to fetch workflow version:", error);
         setCapabilities({
           hasVoiceAgent: false,
           hasOutboundCall: false,

@@ -22,7 +22,6 @@ export async function exportToDocx(markdownContent: string, filename?: string): 
     // Use the library's built-in download function for better compatibility
     downloadDocx(blob, `${name}.docx`);
   } catch (error) {
-    console.error('exportToDocx error:', error);
     throw error;
   }
 }

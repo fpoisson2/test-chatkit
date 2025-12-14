@@ -91,7 +91,6 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
         setError(null);
         mermaidSvgCache.set(cacheKey, { svg: renderedSvg, error: null });
       } catch (err) {
-        console.error('Mermaid rendering error:', err);
         setError(err instanceof Error ? err.message : 'Failed to render diagram');
         setSvg('');
         mermaidSvgCache.set(cacheKey, { svg: '', error: err instanceof Error ? err.message : 'Failed to render diagram' });

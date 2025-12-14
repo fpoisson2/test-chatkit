@@ -155,8 +155,7 @@ export function SSHTerminal({
       }
     };
 
-    ws.onerror = (event) => {
-      console.error("WebSocket error:", event);
+    ws.onerror = () => {
       const errorMsg = "Erreur de connexion WebSocket";
       setConnectionError(errorMsg);
       terminal.writeln(`\r\n\x1b[31m${errorMsg}\x1b[0m`);
@@ -184,12 +183,9 @@ export function SSHTerminal({
     });
 
     // Handle terminal resize
-    const onResize = terminal.onResize(({ cols, rows }) => {
+    const onResize = terminal.onResize(() => {
       // Send resize message to server (optional - server may not support)
-      if (ws.readyState === WebSocket.OPEN) {
-        // Could send a resize control message here if the server supports it
-        console.debug(`Terminal resized to ${cols}x${rows}`);
-      }
+      // Could send a resize control message here if the server supports it
     });
 
     // Cleanup

@@ -72,7 +72,6 @@ const detectInitialLanguage = (): Language => {
       return storedLanguage;
     }
   } catch (error) {
-    console.warn("Unable to access language preference storage", error);
   }
 
   if (typeof navigator !== "undefined") {
@@ -109,7 +108,6 @@ const fetchAvailableLanguages = async () => {
   try {
     const response = await fetch("/api/languages");
     if (!response.ok) {
-      console.warn("Failed to fetch available languages");
       return;
     }
     const data = await response.json();
@@ -117,7 +115,6 @@ const fetchAvailableLanguages = async () => {
       updateAvailableLanguages(data.languages);
     }
   } catch (error) {
-    console.warn("Error fetching available languages:", error);
   }
 };
 
@@ -131,7 +128,6 @@ const fetchLanguageTranslations = async (code: string) => {
   try {
     const response = await fetch(`/api/languages/${code}/translations`);
     if (!response.ok) {
-      console.warn(`Failed to fetch translations for ${code}`);
       return;
     }
     const data = await response.json();
@@ -140,7 +136,6 @@ const fetchLanguageTranslations = async (code: string) => {
       translationsCache.add(code);
     }
   } catch (error) {
-    console.warn(`Error fetching translations for ${code}:`, error);
   }
 };
 
@@ -169,7 +164,6 @@ export const I18nProvider = ({ children }: { children: ReactNode }) => {
     try {
       window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
     } catch (error) {
-      console.warn("Unable to persist language preference", error);
     }
 
     // Charger les traductions si nécessaire

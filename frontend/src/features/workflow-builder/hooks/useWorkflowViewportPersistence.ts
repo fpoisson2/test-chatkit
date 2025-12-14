@@ -142,7 +142,6 @@ export const useWorkflowViewportPersistence = ({
         }
       }
       if (lastError) {
-        console.error(lastError);
       }
     })();
   }, [authHeader, backendUrl, token, viewportMemoryRef]);
@@ -321,7 +320,6 @@ export const useWorkflowViewportPersistence = ({
         }
       }
       if (lastError) {
-        console.error(lastError);
       }
     };
 

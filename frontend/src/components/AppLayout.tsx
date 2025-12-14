@@ -59,7 +59,6 @@ const readStoredSidebarOpen = (): boolean | null => {
     }
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.warn("Unable to read the sidebar open state preference.", error);
     }
   }
 
@@ -75,7 +74,6 @@ const writeStoredSidebarOpen = (isOpen: boolean) => {
     window.localStorage?.setItem(SIDEBAR_OPEN_STORAGE_KEY, isOpen ? "true" : "false");
   } catch (error) {
     if (import.meta.env.DEV) {
-      console.warn("Unable to persist the sidebar open state preference.", error);
     }
   }
 };

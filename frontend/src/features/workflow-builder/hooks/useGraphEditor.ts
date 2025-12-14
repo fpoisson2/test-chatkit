@@ -333,7 +333,6 @@ const useGraphEditor = ({
               node.position = newPos;
             }
           }
-          console.log(`[Workflow Import] Dagre layout: ${(performance.now() - layoutStart).toFixed(1)}ms`);
         }
 
         let minX = Number.POSITIVE_INFINITY;
@@ -378,7 +377,6 @@ const useGraphEditor = ({
             try {
               targetCenter = reactFlowInstanceRef.current.project(clientPoint);
             } catch (error) {
-              console.error(error);
             }
           }
         }
@@ -461,7 +459,6 @@ const useGraphEditor = ({
         const newNodeIds = adjustedNodes.map((node) => node.id);
         const newEdgeIds = edgesToInsert.map((edge) => edge.id);
 
-        console.log(`[Workflow Import] Prepared ${newNodeIds.length} nodes, ${newEdgeIds.length} edges in ${(performance.now() - perfStart).toFixed(1)}ms`);
         const stateStart = performance.now();
         setNodes((current) => [...current, ...adjustedNodes]);
         setEdges((current) => [...current, ...edgesToInsert]);
@@ -473,12 +470,9 @@ const useGraphEditor = ({
           edgeIds: [],
           primaryNodeId: firstNodeId,
         });
-        console.log(`[Workflow Import] State updates queued in ${(performance.now() - stateStart).toFixed(1)}ms`);
-        console.log(`[Workflow Import] Total: ${(performance.now() - perfStart).toFixed(1)}ms`);
 
         return { success: true as const, nodeIds: newNodeIds, edgeIds: newEdgeIds };
       } catch (error) {
-        console.error(error);
         return { success: false as const, reason: "error" as const };
       }
     },
@@ -674,7 +668,6 @@ const useGraphEditor = ({
         setTimeout(() => setSaveState("idle"), 1500);
         return true;
       } catch (error) {
-        console.error(error);
         setSaveState("error");
         setSaveMessage(t("workflowBuilder.clipboard.copyError"));
         setTimeout(() => setSaveState("idle"), 1500);
@@ -705,7 +698,6 @@ const useGraphEditor = ({
         try {
           return await navigator.clipboard.readText();
         } catch (error) {
-          console.error(error);
         }
       }
       if (typeof document === "undefined") {
@@ -730,7 +722,6 @@ const useGraphEditor = ({
           pasted = textarea.value;
         }
       } catch (error) {
-        console.error(error);
       } finally {
         document.body.removeChild(textarea);
       }
@@ -760,7 +751,6 @@ const useGraphEditor = ({
           setSaveState("error");
           setSaveMessage(t("workflowBuilder.clipboard.pasteInvalid"));
         } else {
-          console.error(error);
           setSaveState("error");
           setSaveMessage(t("workflowBuilder.clipboard.pasteError"));
         }
@@ -785,7 +775,6 @@ const useGraphEditor = ({
       setTimeout(() => setSaveState("idle"), 1500);
       return true;
     } catch (error) {
-      console.error(error);
       setSaveState("error");
       setSaveMessage(t("workflowBuilder.clipboard.pasteError"));
       setTimeout(() => setSaveState("idle"), 1500);
@@ -829,7 +818,6 @@ const useGraphEditor = ({
     try {
       parsed = parseWorkflowImport(JSON.stringify({ graph: payload }));
     } catch (error) {
-      console.error(error);
       setSaveState("error");
       setSaveMessage(t("workflowBuilder.duplicate.error"));
       setTimeout(() => setSaveState("idle"), 1500);

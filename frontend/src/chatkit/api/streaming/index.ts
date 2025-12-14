@@ -84,7 +84,6 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
 
         return currentThread;
       } catch (err) {
-        console.error('[ChatKit] Failed to parse JSON response:', err);
         throw new Error(`Failed to parse JSON response: ${err}`);
       }
     }
@@ -143,7 +142,6 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
                 result,
               });
             } catch (err) {
-              console.error('[ChatKit] Client tool call failed:', err);
               onError?.(err instanceof Error ? err : new Error(String(err)));
             }
           }
@@ -151,7 +149,6 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
 
         // Gérer les erreurs
         if (event.type === 'error') {
-          console.error('[ChatKit] Received error event:', event);
           const errorMessage = event.message || 'Unknown error';
           const error = new Error(`[ChatKit] ${errorMessage}`);
           onError?.(error);

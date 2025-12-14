@@ -24,8 +24,6 @@ export const AdminModalMobile = ({
 
   // Debug: Log number of sections
   useEffect(() => {
-    console.log('[AdminModalMobile] Total sections:', ADMIN_SECTIONS.length);
-    console.log('[AdminModalMobile] Sections:', ADMIN_SECTIONS.map(s => ({ key: s.key, label: s.labelKey })));
   }, []);
 
   // Save scroll position when switching tabs

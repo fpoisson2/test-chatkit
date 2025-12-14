@@ -49,12 +49,6 @@ function handleThreadUpdated(
   event: Extract<ThreadStreamEvent, { type: 'thread.updated' }>
 ): Thread {
   const newItems = normalizeThreadItemsWithFallback(event.thread.items, thread.items);
-  console.log('[deltas] handleThreadUpdated:', {
-    threadId: event.thread.id,
-    previousItemCount: thread.items.length,
-    newItemCount: newItems.length,
-    eventItemCount: Array.isArray(event.thread.items) ? event.thread.items.length : 'N/A',
-  });
   return {
     ...event.thread,
     items: newItems,
@@ -70,11 +64,9 @@ function handleItemAdded(
 ): Thread {
   const exists = thread.items.find((i) => i.id === item.id);
   if (exists) {
-    console.log('[deltas] handleItemAdded: item already exists, skipping', { itemId: item.id, type: item.type });
     return thread;
   }
 
-  console.log('[deltas] handleItemAdded: adding new item', { itemId: item.id, type: item.type, currentCount: thread.items.length });
   return {
     ...thread,
     items: [...thread.items, item],
@@ -179,14 +171,12 @@ function handleItemCompleted(
   const existingIndex = thread.items.findIndex((item) => item.id === completedItem.id);
 
   if (existingIndex === -1) {
-    console.log('[deltas] handleItemCompleted: item NOT found, adding new', { itemId: completedItem.id, type: completedItem.type, currentCount: thread.items.length });
     return {
       ...thread,
       items: [...thread.items, completedItem],
     };
   }
 
-  console.log('[deltas] handleItemCompleted: updating existing item', { itemId: completedItem.id, type: completedItem.type, existingIndex });
   const items = thread.items.map((item, idx) => {
     if (idx !== existingIndex) {
       return item;
@@ -228,14 +218,12 @@ function handleItemDone(
   const existingIndex = thread.items.findIndex((item) => item.id === doneItem.id);
 
   if (existingIndex === -1) {
-    console.log('[deltas] handleItemDone: item NOT found, adding new', { itemId: doneItem.id, type: doneItem.type, currentCount: thread.items.length });
     return {
       ...thread,
       items: [...thread.items, completedItem],
     };
   }
 
-  console.log('[deltas] handleItemDone: updating existing item', { itemId: doneItem.id, type: doneItem.type, existingIndex });
   return {
     ...thread,
     items: thread.items.map((item) => (item.id === doneItem.id ? completedItem : item)),
@@ -278,16 +266,6 @@ function handleWorkflowTaskUpdated(
   taskIndex: number,
   task: any
 ): Thread {
-  // Debug logging
-  if (task.type === 'computer_use') {
-    console.log('[deltas] workflow.task.updated for computer_use:', {
-      itemId,
-      taskIndex,
-      hasDebugToken: !!task.debug_url_token,
-      status: task.status_indicator,
-    });
-  }
-
   const items = thread.items.map((item) => {
     if (item.id === itemId && item.type === 'workflow') {
       const tasks = [...item.workflow.tasks];

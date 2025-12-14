@@ -223,12 +223,11 @@ function AssistantMessageContent({
     try {
       const content = getTextContent();
       if (!content || content.trim().length === 0) {
-        console.warn('No text content to export');
         return;
       }
       await exportToDocx(content);
-    } catch (error) {
-      console.error('Failed to export to DOCX:', error);
+    } catch (_error) {
+      // Error ignored
     } finally {
       setExportingFormat(null);
     }
@@ -521,16 +520,6 @@ function WorkflowContent({
       {(() => {
         const computerUseTasks = item.workflow.tasks.filter((task: any) => task.type === 'computer_use');
 
-        // Debug logging
-        if (computerUseTasks.length > 0) {
-          console.log('[MessageRenderer] Computer use tasks:', computerUseTasks.map(t => ({
-            status: t.status_indicator,
-            hasDebugToken: !!t.debug_url_token,
-            hasSshToken: !!t.ssh_token,
-            hasVncToken: !!t.vnc_token,
-          })));
-        }
-
         let computerUseTask = computerUseTasks.find(
           (task: any) => task.status_indicator === 'loading' && (task.debug_url_token || task.ssh_token || task.vnc_token)
         );
@@ -561,14 +550,6 @@ function WorkflowContent({
             (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
           const sshToken = computerUseTask.ssh_token;
           const vncToken = computerUseTask.vnc_token;
-
-          console.log('[MessageRenderer] Rendering computer use task:', {
-            itemId: item.id,
-            debugUrlToken: debugUrlToken?.substring(0, 8),
-            sshToken: sshToken?.substring(0, 8),
-            vncToken: vncToken?.substring(0, 8),
-            activeScreencastItemId: activeScreencast?.itemId,
-          });
 
           const isActiveScreencast = activeScreencast?.itemId === item.id && !!debugUrlToken;
           // Do not show the browser screencast when SSH/VNC sessions are available
@@ -650,11 +631,11 @@ function WorkflowContent({
                     <SSHTerminal
                       sshToken={sshToken}
                       authToken={authToken}
-                      onConnectionError={(error) => {
-                        console.error('SSH connection error:', error);
+                      onConnectionError={() => {
+                        // Error ignored
                       }}
                       onClose={() => {
-                        console.log('SSH session closed');
+                        // Session closed
                       }}
                     />
                     <div className="chatkit-computer-use-actions">
@@ -675,7 +656,7 @@ function WorkflowContent({
                       authToken={authToken}
                       enableInput
                       onConnectionError={() => {
-                        console.error('VNC connection error');
+                        // Error ignored
                       }}
                       onLastFrame={onScreencastLastFrame(item.id)}
                     />

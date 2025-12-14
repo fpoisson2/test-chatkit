@@ -399,7 +399,6 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
             return null;
           }
           if (import.meta.env.DEV) {
-            console.warn("Impossible de charger le workflow hébergé.", err);
           }
           return null;
         });

@@ -70,7 +70,7 @@ export function useSidebarActions({
           targetSlug = resolvePersistenceSlug(mode, { kind: "local", workflow: targetWorkflow });
 
           if (isAdmin && token) {
-            await workflowsApi.setChatkitWorkflow(token, threadWorkflowId).catch(console.error);
+            await workflowsApi.setChatkitWorkflow(token, threadWorkflowId).catch(() => {});
           }
 
           setSelectedWorkflowId(threadWorkflowId);
@@ -157,7 +157,7 @@ export function useSidebarActions({
         setManagedWorkflowSelection({ kind: "local", workflow: targetWorkflow });
 
         if (isAdmin && token) {
-          await workflowsApi.setChatkitWorkflow(token, workflowId).catch(console.error);
+          await workflowsApi.setChatkitWorkflow(token, workflowId).catch(() => {});
         }
 
         clearStoredThreadId(sessionOwner, persistenceSlug);

@@ -47,8 +47,7 @@ type UseMobileDoubleTapReturn = {
  * ```typescript
  * const { handleTap, resetTap } = useMobileDoubleTap({
  *   onDoubleTap: () => {
- *     console.log('Double tap detected!');
- *     openPropertiesPanel();
+ *      *     openPropertiesPanel();
  *   },
  *   timeout: 300
  * });
@@ -140,8 +139,7 @@ export function useMobileDoubleTap(options: UseMobileDoubleTapOptions): UseMobil
  * ```typescript
  * const { handleTap } = useMobileDoubleTapWithElement({
  *   onDoubleTap: (elementId) => {
- *     console.log('Double tap on', elementId);
- *   },
+ *      *   },
  *   timeout: 300
  * });
  *

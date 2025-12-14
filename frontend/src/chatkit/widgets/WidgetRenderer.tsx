@@ -181,7 +181,6 @@ export function WidgetRenderer({ widget, context = {} }: WidgetRendererProps): J
   const contextValue = useMemo(() => context, [context]);
 
   if (!normalized) {
-    console.warn('[WidgetRenderer] Invalid widget:', widget);
     return null;
   }
 

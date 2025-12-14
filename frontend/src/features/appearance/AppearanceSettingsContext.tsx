@@ -408,7 +408,6 @@ export const AppearanceSettingsProvider = ({
       }
     } catch (error) {
       if (import.meta.env.DEV) {
-        console.warn("Failed to load appearance settings", error);
       }
       if (requestIdRef.current === requestId) {
         setSettings(DEFAULT_APPEARANCE_SETTINGS);

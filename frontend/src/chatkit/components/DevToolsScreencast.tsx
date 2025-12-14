@@ -80,18 +80,16 @@ export function DevToolsScreencast({
     // Check if this token has already had a fatal error
     // If so, just return without calling onConnectionError (it was already called when we added it to the Set)
     if (fatalErrorTokens.has(debugUrlToken)) {
-      console.log('[DevToolsScreencast] Token has fatal error, not attempting connection:', debugUrlToken.substring(0, 8));
       return;
     }
 
     // Close any existing connection for this token before creating a new one
     const existingConnection = activeConnections.get(debugUrlToken);
     if (existingConnection) {
-      console.log('[DevToolsScreencast] Closing existing connection for token:', debugUrlToken.substring(0, 8));
       try {
         existingConnection.close();
-      } catch (err) {
-        console.error('[DevToolsScreencast] Error closing existing connection:', err);
+      } catch (_err) {
+        // Error ignored
       }
       activeConnections.delete(debugUrlToken);
     }
@@ -103,8 +101,6 @@ export function DevToolsScreencast({
       }
       try {
         // Fetch Chrome DevTools targets via our backend proxy
-        console.log('[DevToolsScreencast] Fetching targets via proxy...');
-
         const jsonUrl = `/api/computer/cdp/json?token=${encodeURIComponent(debugUrlToken)}`;
         const headers: HeadersInit = {
           'Content-Type': 'application/json',
@@ -129,7 +125,6 @@ export function DevToolsScreencast({
         }
 
         const targets = await response.json();
-        console.log('[DevToolsScreencast] Available targets:', targets);
 
         // Find the first page target
         const pageTarget = Array.isArray(targets)
@@ -137,7 +132,6 @@ export function DevToolsScreencast({
           : null;
 
         if (!pageTarget || !pageTarget.webSocketDebuggerUrl) {
-          console.log('[DevToolsScreencast] No page target found, marking token as fatal:', debugUrlToken.substring(0, 8));
           setError('No page target with WebSocket URL found');
           // Mark this token as having a fatal error to prevent reconnection loops
           fatalErrorTokens.add(debugUrlToken);
@@ -165,7 +159,6 @@ export function DevToolsScreencast({
           wsUrl = `${wsUrl}${separator}auth_token=${encodeURIComponent(authToken)}`;
         }
 
-        console.log('[DevToolsScreencast] Connecting to proxy WebSocket:', wsUrl);
         ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
@@ -174,7 +167,6 @@ export function DevToolsScreencast({
 
         ws.onopen = () => {
           if (!mounted) return;
-          console.log('[DevToolsScreencast] WebSocket connected');
           setIsConnected(true);
           setError(null);
 
@@ -205,7 +197,6 @@ export function DevToolsScreencast({
             },
           };
           ws?.send(JSON.stringify(startScreencastCommand));
-          console.log('[DevToolsScreencast] Sent Page.startScreencast');
 
           if (enableInput) {
             shouldAutoFocusRef.current = true;
@@ -300,18 +291,16 @@ export function DevToolsScreencast({
                 }
               }
             }
-          } catch (err) {
-            console.error('[DevToolsScreencast] Error processing message:', err);
+          } catch (_err) {
+            // Error ignored
           }
         };
 
-        ws.onerror = (event) => {
-          console.error('[DevToolsScreencast] WebSocket error:', event);
+        ws.onerror = () => {
           setError('Connection error');
         };
 
         ws.onclose = () => {
-          console.log('[DevToolsScreencast] WebSocket closed, mounted:', mounted);
           setIsConnected(false);
           wsRef.current = null;
 
@@ -322,37 +311,31 @@ export function DevToolsScreencast({
 
           // Don't do anything if component is unmounted
           if (!mounted) {
-            console.log('[DevToolsScreencast] Component unmounted, not reconnecting');
             return;
           }
 
           // Don't attempt reconnection if this token has a fatal error (like 403)
           if (fatalErrorTokens.has(debugUrlToken)) {
-            console.log('[DevToolsScreencast] Not reconnecting due to fatal error');
             return;
           }
 
           // Don't reconnect if there's already a newer connection for this token
           if (activeConnections.has(debugUrlToken)) {
-            console.log('[DevToolsScreencast] Newer connection exists, not reconnecting');
             return;
           }
 
           // Attempt reconnection after 2 seconds
           reconnectTimeoutRef.current = setTimeout(() => {
             if (!mounted) return;
-            console.log('[DevToolsScreencast] Attempting reconnection...');
             connect();
           }, 2000);
         };
       } catch (err) {
-        console.error('[DevToolsScreencast] Connection error:', err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         setError(`Failed to connect: ${errorMessage}`);
 
         // Don't retry if it's a 403 (Forbidden) - token is likely invalid/expired
         if (errorMessage.includes('403')) {
-          console.log('[DevToolsScreencast] Got 403 Forbidden - token invalid/expired, marking token as fatal and not retrying');
           fatalErrorTokens.add(debugUrlToken); // Mark this token as having a fatal error
           if (onConnectionError) {
             onConnectionError();
@@ -366,7 +349,6 @@ export function DevToolsScreencast({
         // Retry on other errors
         if (mounted) {
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log('[DevToolsScreencast] Retrying connection...');
             connect();
           }, 3000);
         }
@@ -377,7 +359,6 @@ export function DevToolsScreencast({
 
     return () => {
       mounted = false;
-      console.log('[DevToolsScreencast] Cleanup: unmounting component for token:', debugUrlToken.substring(0, 8));
 
       // Clear reconnection timeout first to prevent any pending reconnects
       if (reconnectTimeoutRef.current) {
@@ -390,9 +371,8 @@ export function DevToolsScreencast({
         try {
           const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9);
           onLastFrameRef.current(dataUrl);
-          console.log('[DevToolsScreencast] Captured last frame before closing');
-        } catch (err) {
-          console.error('[DevToolsScreencast] Error capturing last frame:', err);
+        } catch (_err) {
+          // Error ignored
         }
       }
 
@@ -404,8 +384,8 @@ export function DevToolsScreencast({
             method: 'Page.stopScreencast',
           };
           ws.send(JSON.stringify(stopScreencastCommand));
-        } catch (err) {
-          console.error('[DevToolsScreencast] Error stopping screencast:', err);
+        } catch (_err) {
+          // Error ignored
         }
       }
 

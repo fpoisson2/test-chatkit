@@ -43,7 +43,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
   const customAction = useCallback(
     async (itemId: string | null, action: Action) => {
       if (!thread) {
-        console.warn('[ChatKit] Cannot send custom action: no thread available');
         return;
       }
 
@@ -74,7 +73,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
             onThreadChange?.({ thread: updated });
           },
           onError: (err) => {
-            console.error('[ChatKit] Custom action stream error:', err);
             onError?.({ error: err });
           },
         });
@@ -86,7 +84,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
           threadCacheRef.current.set(updatedThread.id, updatedThread);
         }
       } catch (err) {
-        console.error('[ChatKit] Failed to send custom action:', err);
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.({ error });
       }
@@ -97,7 +94,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
   const retryAfterItem = useCallback(
     async (itemId: string) => {
       if (!thread) {
-        console.warn('[ChatKit] Cannot retry: no thread available');
         return;
       }
 
@@ -112,7 +108,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
 
         await fetchUpdates();
       } catch (err) {
-        console.error('[ChatKit] Failed to retry after item:', err);
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.({ error });
       }
@@ -123,7 +118,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
   const submitFeedback = useCallback(
     async (itemIds: string[], kind: FeedbackKind) => {
       if (!thread) {
-        console.warn('[ChatKit] Cannot submit feedback: no thread available');
         return;
       }
 
@@ -137,7 +131,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
         });
         onLog?.({ name: 'feedback.submitted', data: { itemIds, kind } });
       } catch (err) {
-        console.error('[ChatKit] Failed to submit feedback:', err);
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.({ error });
       }
@@ -148,7 +141,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
   const updateThreadMetadata = useCallback(
     async (metadata: Record<string, unknown>) => {
       if (!thread) {
-        console.warn('[ChatKit] Cannot update metadata: no thread available');
         return;
       }
 
@@ -163,7 +155,6 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
 
         await fetchUpdates();
       } catch (err) {
-        console.error('[ChatKit] Failed to update thread metadata:', err);
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.({ error });
       }

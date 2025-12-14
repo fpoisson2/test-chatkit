@@ -68,7 +68,6 @@ export const useNodeOperations = ({
           duration: 200,
         });
       } catch (error) {
-        console.error(error);
       }
 
       const scheduleUpdate = (shouldPersist: boolean) => {

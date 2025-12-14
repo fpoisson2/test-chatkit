@@ -37,7 +37,6 @@ export const loadComposerModelsConfig = (): NonNullable<ChatKitOptions["composer
 
     return null;
   } catch (error) {
-    console.warn("[ChatKit] Impossible de parser chatkit:composer-models depuis le localStorage.", error);
     return null;
   }
 };

@@ -54,9 +54,8 @@ export function VNCScreencast({
       try {
         const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
         onLastFrameRef.current(dataUrl);
-        console.log('[VNCScreencast] Captured last frame before closing');
-      } catch (err) {
-        console.error('[VNCScreencast] Error capturing last frame:', err);
+      } catch (_err) {
+        // Error ignored
       }
     }
   }, []);
@@ -66,14 +65,11 @@ export function VNCScreencast({
     let mounted = true;
 
     if (fatalErrorTokens.has(vncToken)) {
-      console.log('[VNCScreencast] Token has fatal error, not attempting connection:', vncToken.substring(0, 8));
       return;
     }
 
     const fetchVncInfo = async () => {
       try {
-        console.log('[VNCScreencast] Fetching VNC info...');
-
         const infoUrl = `/api/computer/vnc/info/${encodeURIComponent(vncToken)}`;
         const headers: HeadersInit = {
           'Content-Type': 'application/json',
@@ -101,7 +97,6 @@ export function VNCScreencast({
         }
 
         const info = await response.json();
-        console.log('[VNCScreencast] VNC info:', info);
 
         if (!mounted) return;
 
@@ -111,11 +106,9 @@ export function VNCScreencast({
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         const url = `${protocol}//${host}${info.websocket_path}`;
-        console.log('[VNCScreencast] WebSocket URL:', url);
         setWsUrl(url);
 
       } catch (err) {
-        console.error('[VNCScreencast] Error fetching VNC info:', err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         setError(`Echec de connexion: ${errorMessage}`);
         if (onConnectionError) {
@@ -153,13 +146,11 @@ export function VNCScreencast({
 
   // Connection handlers
   const handleConnect = useCallback(() => {
-    console.log('[VNCScreencast] Connected');
     setIsConnected(true);
     setError(null);
   }, []);
 
   const handleDisconnect = useCallback((e?: { detail: { clean: boolean } }) => {
-    console.log('[VNCScreencast] Disconnected:', e?.detail);
     setIsConnected(false);
 
     if (e?.detail?.clean === false) {
@@ -168,7 +159,6 @@ export function VNCScreencast({
   }, []);
 
   const handleSecurityFailure = useCallback((e?: { detail: { reason?: string } }) => {
-    console.error('[VNCScreencast] Security failure:', e?.detail);
     const errorMsg = `Echec d'authentification VNC: ${e?.detail?.reason || 'Unknown'}`;
     setError(errorMsg);
     fatalErrorTokens.add(vncToken);
@@ -178,7 +168,6 @@ export function VNCScreencast({
   }, [vncToken, onConnectionError]);
 
   const handleCredentialsRequired = useCallback(() => {
-    console.log('[VNCScreencast] Credentials required');
     setError('Authentification VNC requise');
   }, []);
 

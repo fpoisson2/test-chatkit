@@ -1362,7 +1362,6 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
           store: parsed.store,
         });
       } catch (error) {
-        console.error('Unable to parse model selection', error);
       }
     },
     [agentProviderId, agentProviderSlug, nodeId, onAgentModelChange],

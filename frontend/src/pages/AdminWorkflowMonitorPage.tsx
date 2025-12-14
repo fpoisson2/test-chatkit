@@ -205,11 +205,8 @@ export const AdminWorkflowMonitorPage = () => {
   }, []);
 
   const handleCopyThreadId = useCallback((threadId: string) => {
-    navigator.clipboard.writeText(threadId).then(() => {
-      // Afficher une notification de succès (optionnel)
-      console.log("Thread ID copié:", threadId);
-    }).catch((err) => {
-      console.error("Erreur lors de la copie:", err);
+    navigator.clipboard.writeText(threadId).catch(() => {
+      // Copy failed
     });
   }, []);
 
@@ -229,8 +226,6 @@ Historique:
 ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("\n")}
     `.trim();
 
-    // Afficher dans la console pour le moment (pourrait être un modal plus tard)
-    console.log("Détails de la session:", details);
     alert(details);
   }, []);
 

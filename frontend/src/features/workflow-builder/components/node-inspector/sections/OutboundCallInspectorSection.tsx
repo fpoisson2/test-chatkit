@@ -44,7 +44,7 @@ export const OutboundCallInspectorSection = ({
           setWorkflows(data);
         }
       })
-      .catch((err) => console.error("Failed to load workflows:", err))
+      .catch((err) => )
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -61,7 +61,7 @@ export const OutboundCallInspectorSection = ({
           setSipAccounts(data.filter((acc) => acc.is_active));
         }
       })
-      .catch((err) => console.error("Failed to load SIP accounts:", err));
+      .catch((err) => );
   }, [token]);
 
   const toNumber = (parameters.to_number as string) || "";

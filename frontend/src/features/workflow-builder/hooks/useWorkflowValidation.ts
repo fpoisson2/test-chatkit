@@ -88,8 +88,7 @@ type UseWorkflowValidationReturn = {
  * });
  *
  * if (disableSave) {
- *   console.log('Cannot save:', validationMessage);
- * }
+ *    * }
  * ```
  */
 export function useWorkflowValidation(options: UseWorkflowValidationOptions): UseWorkflowValidationReturn {

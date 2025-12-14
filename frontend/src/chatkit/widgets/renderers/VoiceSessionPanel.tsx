@@ -41,7 +41,6 @@ export const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWid
     try {
       await voice.startVoiceSession();
     } catch (error) {
-      console.error('[VoiceSessionWidget] Error starting voice session', error);
     } finally {
       setIsStarting(false);
     }

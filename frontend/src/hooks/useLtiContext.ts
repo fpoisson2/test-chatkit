@@ -65,7 +65,6 @@ export function useLtiContext({
 
     // Safety timeout: force ready after 3 seconds to prevent indefinite loading on mobile
     const safetyTimer = setTimeout(() => {
-      console.log('[useLtiContext] Safety timeout reached, forcing LTI ready state');
       setLtiReady(true);
     }, 3000);
 
@@ -74,11 +73,9 @@ export function useLtiContext({
       return () => clearTimeout(safetyTimer);
     }
 
-    console.log('[useLtiContext] LTI workflow selected, waiting for ChatKit to render...');
 
     // Give ChatKit time to initialize and render (covers all app.init phases)
     const timer = setTimeout(() => {
-      console.log('[useLtiContext] LTI initialization complete');
       setLtiReady(true);
     }, 500);
 
