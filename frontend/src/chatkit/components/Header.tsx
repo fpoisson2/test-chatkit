@@ -31,8 +31,12 @@ export function Header({
   showHistoryButton = true,
   onNewThread,
 }: HeaderProps): JSX.Element | null {
+  // Debug: log header config
+  console.log('[Header] config:', { config, title, workflowName, showNewThreadButton });
+
   // Don't render if header is disabled
   if (config === false || config?.enabled === false) {
+    console.log('[Header] header disabled, returning null');
     return null;
   }
 

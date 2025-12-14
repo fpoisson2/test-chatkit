@@ -212,7 +212,11 @@ RUN pip install --force-reinstall --no-deps /tmp/chatkit-python && rm -rf /tmp/c
 COPY backend/ .
 
 # Healthcheck pour docker-compose
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health')" || exit 1
+# start-period=90s: donne au backend le temps de démarrer (Playwright warmup, DB connection, etc.)
+# interval=30s: vérifie toutes les 30 secondes après le start-period
+# timeout=15s: timeout de 15 secondes pour chaque vérification
+# retries=3: 3 échecs consécutifs avant de marquer unhealthy
+HEALTHCHECK --interval=30s --timeout=15s --start-period=90s --retries=3 \
+    CMD python -c "import httpx; httpx.get('http://localhost:8000/health/', timeout=10)" || exit 1
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

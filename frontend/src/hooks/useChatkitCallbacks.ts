@@ -10,10 +10,11 @@ export type UseChatkitCallbacksOptions = {
   persistenceSlug: string | null;
   reportError: (message: string, error?: Error) => void;
   resetError: () => void;
+  workflowsCount?: number;
 };
 
 export type ChatkitCallbacks = {
-  onThreadChange: (params: { threadId: string | null }) => void;
+  onThreadChange: (params: { threadId?: string | null; thread?: Record<string, unknown> }) => void;
   onResponseStart: (params: { threadId: string | null }) => void;
   onResponseEnd: (params: { threadId: string | null; finalThreadId: string | null }) => void;
   onLog: (entry: { name: string; data?: Record<string, unknown> }) => void;
@@ -27,6 +28,7 @@ export function useChatkitCallbacks({
   persistenceSlug,
   reportError,
   resetError,
+  workflowsCount = 0,
 }: UseChatkitCallbacksOptions): ChatkitCallbacks {
   // Get refs and setters from context
   const { setters, refs } = useChatContext();
@@ -35,6 +37,8 @@ export function useChatkitCallbacks({
     setStreamingThreadIds,
     setIsNewConversationStreaming,
     setInitialThreadId,
+    setChatInstanceKey,
+    setWorkflowSelection,
   } = setters;
   const {
     lastThreadSnapshotRef,
@@ -44,23 +48,39 @@ export function useChatkitCallbacks({
   } = refs;
 
   const onThreadChange = useCallback(
-    ({ threadId }: { threadId: string | null }) => {
-      console.debug("[ChatKit] thread change", { threadId });
-      if (threadId === null) {
+    ({ threadId, thread }: { threadId?: string | null; thread?: Record<string, unknown> }) => {
+      // Use threadId if provided, otherwise extract from thread object
+      const resolvedThreadId = threadId ?? (thread?.id as string | undefined) ?? null;
+      console.debug("[ChatKit] thread change", { threadId, resolvedThreadId, hasThread: !!thread, workflowsCount });
+      // Check for null, undefined, or empty string
+      if (!resolvedThreadId) {
         clearStoredThreadId(sessionOwner, persistenceSlug);
         setInitialThreadId(null);
+        // Reset workflow selection when creating new conversation with multiple workflows
+        // This forces the user to choose a workflow before auto-start can trigger
+        if (workflowsCount > 1) {
+          setWorkflowSelection({ kind: "local", workflow: null });
+          setChatInstanceKey((v) => v + 1);
+        }
       } else {
         isNewConversationDraftRef.current = false;
-        persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
-        setInitialThreadId((current) => (current === threadId ? current : threadId));
+        persistStoredThreadId(sessionOwner, resolvedThreadId, persistenceSlug);
+        setInitialThreadId((current) => (current === resolvedThreadId ? current : resolvedThreadId));
 
         if (wasNewConversationStreamingRef.current) {
-          setStreamingThreadIds((prev) => new Set(prev).add(threadId));
+          setStreamingThreadIds((prev) => new Set(prev).add(resolvedThreadId));
           setIsNewConversationStreaming(false);
+        }
+
+        // Update URL without triggering React Router remount
+        const currentPath = window.location.pathname;
+        const newPath = `/c/${resolvedThreadId}`;
+        if (currentPath !== newPath && !currentPath.includes(`/c/${resolvedThreadId}`)) {
+          window.history.replaceState(null, "", newPath);
         }
       }
     },
-    [sessionOwner, persistenceSlug, setInitialThreadId, setStreamingThreadIds, setIsNewConversationStreaming, isNewConversationDraftRef, wasNewConversationStreamingRef],
+    [sessionOwner, persistenceSlug, workflowsCount, setInitialThreadId, setStreamingThreadIds, setIsNewConversationStreaming, setWorkflowSelection, setChatInstanceKey, isNewConversationDraftRef, wasNewConversationStreamingRef],
   );
 
   const onResponseStart = useCallback(

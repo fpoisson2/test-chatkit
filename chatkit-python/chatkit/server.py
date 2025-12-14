@@ -681,10 +681,11 @@ class ChatKitServer(ABC, Generic[TContext]):
                                 deep=True
                             )
                             # Persist immediately so subsequent updates can find the item.
-                            # Use add_thread_item which is typically an insert.
-                            await self.store.add_thread_item(
-                                thread.id, event.item, context=context
-                            )
+                            # Skip temporary IDs (like __fake_id__) - they'll be persisted when replaced
+                            if not event.item.id.startswith("__"):
+                                await self.store.add_thread_item(
+                                    thread.id, event.item, context=context
+                                )
 
                         case ThreadItemUpdated():
                             if event.item_id in active_items:
@@ -703,15 +704,17 @@ class ChatKitServer(ABC, Generic[TContext]):
                                         if hasattr(content, "text"):
                                             content.text += delta
 
-                                    now = time.time()
-                                    if (
-                                        now - last_save_time.get(event.item_id, 0)
-                                        > SAVE_INTERVAL
-                                    ):
-                                        await self.store.save_item(
-                                            thread.id, item, context=context
-                                        )
-                                        last_save_time[event.item_id] = now
+                                    # Skip saving items with temporary IDs during streaming
+                                    if not event.item_id.startswith("__"):
+                                        now = time.time()
+                                        if (
+                                            now - last_save_time.get(event.item_id, 0)
+                                            > SAVE_INTERVAL
+                                        ):
+                                            await self.store.save_item(
+                                                thread.id, item, context=context
+                                            )
+                                            last_save_time[event.item_id] = now
 
                         case ThreadItemDoneEvent():
                             # Replace temporary IDs (e.g., __fake_id__) with real unique IDs

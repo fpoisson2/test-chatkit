@@ -662,18 +662,24 @@ def register_startup_events(app: FastAPI) -> None:
             logger.warning("Unable to import HostedBrowser for warm-up: %s", exc)
             return
 
-        browser = HostedBrowser(width=1280, height=720, environment="browser")
-        try:
-            await browser._get_driver()
-            debug_url = browser.debug_url
-            logger.info(
-                "Playwright warm-up complete%s",
-                f", debug URL: {debug_url}" if debug_url else "",
-            )
-        except Exception as exc:
-            logger.warning("Playwright warm-up failed: %s", exc)
-        finally:
+        async def _warmup_browser() -> None:
+            """Run browser warm-up in background without blocking server startup."""
+            browser = HostedBrowser(width=1280, height=720, environment="browser")
             try:
-                await browser.close()
-            except Exception as close_exc:  # pragma: no cover - best effort cleanup
-                logger.debug("Failed to close warm-up browser: %s", close_exc)
+                await browser._get_driver()
+                debug_url = browser.debug_url
+                logger.info(
+                    "Playwright warm-up complete%s",
+                    f", debug URL: {debug_url}" if debug_url else "",
+                )
+            except Exception as exc:
+                logger.warning("Playwright warm-up failed: %s", exc)
+            finally:
+                try:
+                    await browser.close()
+                except Exception as close_exc:  # pragma: no cover - best effort cleanup
+                    logger.debug("Failed to close warm-up browser: %s", close_exc)
+
+        # Run warm-up in background - don't block server startup
+        logger.info("Starting Playwright warm-up in background...")
+        asyncio.create_task(_warmup_browser())

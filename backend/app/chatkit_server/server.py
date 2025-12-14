@@ -232,7 +232,8 @@ class StreamProcessor:
                         self.active_items[event.item.id] = event.item
 
                     # Always persist new items to ensure they exist in DB (upsert)
-                    if self._context:
+                    # Skip temporary IDs (like __fake_id__) - they shouldn't be persisted
+                    if self._context and not event.item.id.startswith("__"):
                         try:
                             logger.debug("Persistence: Adding item %s", event.item.id)
                             await self.store.add_thread_item(
@@ -290,6 +291,10 @@ class StreamProcessor:
                                         tasks[event.update.task_index] = event.update.task
 
                         # Persist updates periodically (ALWAYS)
+                        # Skip temporary IDs (like __fake_id__) - they shouldn't be persisted
+                        if event.item_id.startswith("__"):
+                            continue
+
                         now = time.time()
                         if (
                             now - last_save_time.get(event.item_id, 0)
@@ -311,15 +316,13 @@ class StreamProcessor:
                 elif isinstance(event, ThreadItemDoneEvent):
                     self.active_items.pop(event.item.id, None)
                     last_save_time.pop(event.item.id, None)
-                    # Always persist final state
-                    if self._context:
+                    # Always persist final state (except temporary IDs)
+                    item = event.item
+                    if item.id.startswith("__"):
+                        # Skip temporary IDs - they shouldn't be persisted
+                        logger.debug("Skipping persistence for temporary item %s", item.id)
+                    elif self._context:
                         try:
-                            # Replace temporary IDs before final save
-                            item = event.item
-                            if item.id.startswith("__"):
-                                # This logic duplicates server.py _process_events but is needed here
-                                pass
-
                             logger.debug("Persistence: Final save for item %s", item.id)
                             await self.store.add_thread_item(
                                 self.thread.id, item, context=self._context
@@ -884,6 +887,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     )
 
             logger.info("Démarrage automatique du workflow pour le fil %s", thread.id)
+
+            # Set initial title for auto-start workflows (no user message to generate title from)
+            if not thread.title:
+                thread_metadata = thread.metadata if isinstance(thread.metadata, Mapping) else {}
+                workflow_meta = thread_metadata.get("workflow", {})
+                workflow_display_name = workflow_meta.get("display_name") or workflow_meta.get("slug")
+                if workflow_display_name:
+                    thread.title = workflow_display_name
+                    await self.store.save_thread(thread, context=context)
+                    logger.info("🔤 Auto-start: Set thread %s title to %r", thread.id, thread.title)
+
             user_text = _normalize_user_text(config.user_message)
             assistant_stream_text = (
                 "" if user_text else _normalize_user_text(config.assistant_message)

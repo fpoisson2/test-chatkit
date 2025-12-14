@@ -14,15 +14,34 @@ from ..config import get_settings
 logger = logging.getLogger("chatkit.server")
 settings = get_settings()
 
-engine: Engine = create_engine(settings.database_url, future=True, pool_pre_ping=True)
+engine: Engine = create_engine(
+    settings.database_url,
+    future=True,
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=30,
+    pool_timeout=60,
+)
 SessionLocal = sessionmaker(
     bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
 )
 
 
 def get_session() -> Iterator[Session]:
-    with SessionLocal() as session:
+    """Provide a transactional database session with proper cleanup.
+
+    Ensures transactions are committed or rolled back, and connections
+    are properly returned to the pool to prevent connection leaks.
+    """
+    session = SessionLocal()
+    try:
         yield session
+        session.commit()  # Commit if no exception occurred
+    except Exception:
+        session.rollback()  # Rollback on exception
+        raise
+    finally:
+        session.close()  # Always close the session and return connection to pool
 
 
 def wait_for_database() -> None:

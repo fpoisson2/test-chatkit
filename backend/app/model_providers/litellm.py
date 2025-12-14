@@ -34,6 +34,12 @@ def configure_litellm_client(settings: Settings) -> None:
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     set_default_openai_client(client)
 
+    # Activer drop_params pour ignorer automatiquement les paramètres non supportés
+    # par certains fournisseurs (ex: reasoning_effort sur Groq)
+    if litellm is not None:
+        litellm.drop_params = True
+        logger.debug("LiteLLM drop_params activé")
+
     if settings.litellm_log_level is not None:
         # Configure les loggers Python standard pour LiteLLM
         litellm_logger = logging.getLogger("litellm")

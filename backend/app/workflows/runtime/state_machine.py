@@ -63,7 +63,9 @@ async def _update_workflow_metadata(
     ]
 
     # AJOUT: Mettre à jour le summary du workflow affiché dans le chat via agent_context
-    if agent_context is not None and title:
+    # Ne pas mettre à jour pour les widgets - ils ne doivent pas créer de bloc reasoning
+    is_widget_step = slug.startswith("widget")
+    if agent_context is not None and title and not is_widget_step:
         try:
             from chatkit.types import CustomSummary
 

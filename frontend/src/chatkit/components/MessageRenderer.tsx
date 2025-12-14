@@ -36,6 +36,8 @@ export interface MessageRendererProps {
   onContinueWorkflow: () => void;
   // Admin props for cost tracking
   isAdmin?: boolean;
+  /** Si true, c'est le dernier workflow du thread (potentiellement actif/en streaming) */
+  isLastWorkflowItem?: boolean;
 }
 
 /**
@@ -742,6 +744,7 @@ export function MessageRenderer({
   onDismissScreencast,
   onContinueWorkflow,
   isAdmin,
+  isLastWorkflowItem = false,
 }: MessageRendererProps): JSX.Element | null {
   // Don't render end_of_turn
   if (item.type === 'end_of_turn') {

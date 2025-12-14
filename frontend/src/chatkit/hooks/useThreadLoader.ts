@@ -46,7 +46,9 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
 
   // Reset thread when initialThread becomes null
   useEffect(() => {
+    console.log('[useThreadLoader] effect triggered, initialThread:', initialThread);
     if (initialThread === null) {
+      console.log('[useThreadLoader] resetting thread to null');
       const tempId = generateTempThreadId();
       setThread(null);
       activeThreadIdRef.current = tempId;

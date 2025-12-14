@@ -10,9 +10,11 @@ interface WorkflowRendererProps {
   authToken?: string;
   apiUrl?: string;
   backendUrl?: string;
+  /** Si true, ce workflow est considéré comme actif (en cours de streaming) */
+  isActive?: boolean;
 }
 
-export function WorkflowRenderer({ workflow, className = '', theme = 'light', authToken, apiUrl, backendUrl }: WorkflowRendererProps): JSX.Element {
+export function WorkflowRenderer({ workflow, className = '', theme = 'light', authToken, apiUrl, backendUrl, isActive = false }: WorkflowRendererProps): JSX.Element {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
   const [displayedTaskIndex, setDisplayedTaskIndex] = useState<number | null>(null);
@@ -39,14 +41,15 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   }, [workflow.expanded]);
 
   const isReasoning = workflow.type === 'reasoning';
-  // Pour l'animation: on se base uniquement sur workflow.completed (pas sur summary)
-  // car le summary est défini dès le début avec le titre de l'étape
-  const isAnimationComplete = workflow.completed === true;
-  // Pour les autres logiques (affichage), on garde l'ancienne définition
-  const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
-  console.log(`[WORKFLOW_STATE] isAnimationComplete=${isAnimationComplete}, workflowCompleted=${workflow.completed}, hasSummary=${workflow.summary !== undefined}, summaryTitle=${workflow.summary?.title}, taskCount=${currentTaskCount}`);
+  // Pour l'animation:
+  // L'animation est active seulement si isActive=true ET le workflow n'est pas complété
+  // Si isActive=false (workflow inactif/ancien), pas d'animation même si completed=undefined
+  const isAnimationComplete = workflow.completed === true || !isActive;
+
+  // Pour les autres logiques (affichage)
+  const isCompleted = workflow.completed === true || workflow.summary !== undefined;
 
   // Stop animation when step has produced content (has tasks)
   const hasStepContent = currentTaskCount > 0;
@@ -111,16 +114,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   };
 
   const currentTaskTitle = getCurrentTaskTitle();
-
-  // DEBUG: Log what title will be displayed
-  console.log('[WORKFLOW_DEBUG] WorkflowRenderer render:', {
-    summaryTitle: workflow.summary?.title,
-    currentTaskTitle,
-    tasksCount: workflow.tasks.length,
-    displayedTask: displayedTask?.title,
-    lastTask: workflow.tasks[workflow.tasks.length - 1]?.title,
-    willShowSummary: workflow.summary && workflow.summary.title && workflow.summary.title !== 'Workflow'
-  });
 
   // Détecter si une image est en cours de génération
   const hasImageGenerating = workflow.tasks.some(
@@ -242,7 +235,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
           {(() => {
             const willShowSummary = workflow.summary && workflow.summary.title && workflow.summary.title !== 'Workflow';
             const displayedTitle = willShowSummary ? workflow.summary.title : (currentTaskTitle || workflow.summary?.title || t('chatkit.workflow.workflow'));
-            console.log('[WORKFLOW_DEBUG] Displaying title:', displayedTitle, { willShowSummary, currentTaskTitle, summaryTitle: workflow.summary?.title, isCompleted, hasStepContent });
             return willShowSummary ? (
               <SummaryRenderer summary={workflow.summary} />
             ) : (

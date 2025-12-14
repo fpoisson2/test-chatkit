@@ -410,12 +410,12 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
       hasLoadedWorkflowsRef.current = true;
 
       const storedSelection = readStoredWorkflowSelection();
-      const defaultLocal =
-        items.find((workflow) => workflow.is_chatkit_default && workflow.active_version_id !== null) ??
-        items.find((workflow) => workflow.active_version_id !== null) ??
-        null;
 
-      let resolvedLocalWorkflow: WorkflowSummary | null = defaultLocal;
+      // Only auto-select a workflow if there's exactly one available
+      const activeWorkflows = items.filter((workflow) => workflow.active_version_id !== null);
+      const autoSelectLocal = activeWorkflows.length === 1 ? activeWorkflows[0] : null;
+
+      let resolvedLocalWorkflow: WorkflowSummary | null = autoSelectLocal;
       if (storedSelection?.localWorkflowId != null) {
         const matchingLocal = items.find((workflow) => workflow.id === storedSelection.localWorkflowId);
         if (matchingLocal && matchingLocal.active_version_id !== null) {
@@ -451,7 +451,7 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
       }
 
       if (resolvedMode === "local" && !resolvedLocalWorkflow) {
-        resolvedLocalWorkflow = defaultLocal;
+        resolvedLocalWorkflow = autoSelectLocal;
       }
 
       const resolvedLocalId = resolvedLocalWorkflow?.id ?? null;

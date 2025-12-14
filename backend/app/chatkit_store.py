@@ -138,6 +138,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         Les données originales restent en base de données et sont servies
         via l'endpoint /api/chatkit/thread-images/{thread_id}/{item_id}/{image_id}
+
+        Marque également les workflows comme terminés (completed: true) car
+        les items chargés depuis la base de données sont forcément terminés.
         """
         # Traiter les items de type workflow qui contiennent des ImageTask
         if payload.get("type") != "workflow":
@@ -247,13 +250,13 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
             new_tasks.append(task)
 
-        if not modified:
-            return payload
-
-        # Créer une copie du payload avec les tâches modifiées
+        # Toujours marquer le workflow comme terminé car les items chargés
+        # depuis la base de données sont forcément terminés
         result = dict(payload)
         result["workflow"] = dict(workflow)
-        result["workflow"]["tasks"] = new_tasks
+        result["workflow"]["completed"] = True
+        if modified:
+            result["workflow"]["tasks"] = new_tasks
         return result
 
     async def get_thread_image_data(
@@ -827,7 +830,12 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 record.payload = payload
                 session.add(record)
                 session.commit()
-            return self._thread_item_adapter.validate_python(payload)
+            # Transformer les données d'image volumineuses en URLs de référence
+            # et marquer les workflows comme terminés
+            response_payload = self._strip_image_data_for_response(
+                payload, thread_id, record.id
+            )
+            return self._thread_item_adapter.validate_python(response_payload)
 
         return await self._run(_load)
 

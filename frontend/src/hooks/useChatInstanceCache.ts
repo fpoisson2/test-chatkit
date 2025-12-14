@@ -39,7 +39,7 @@ export function useChatInstanceCache({
   chatkitOptions,
   chatInstanceKey,
 }: UseChatInstanceCacheOptions): ChatInstanceCacheReturn {
-  const [activeInstances, setActiveInstances] = useState<Map<string, WorkflowInstanceData>>(
+  const [cachedInstances, setCachedInstances] = useState<Map<string, WorkflowInstanceData>>(
     new Map(),
   );
 
@@ -50,8 +50,40 @@ export function useChatInstanceCache({
     return `local::${activeWorkflowId ?? "__default__"}`;
   }, [mode, hostedWorkflowSlug, activeWorkflowId]);
 
+  // Ensure current instance always exists by computing activeInstances synchronously
+  const activeInstances = useMemo(() => {
+    const result = new Map(cachedInstances);
+
+    // Always ensure the current workflow instance exists
+    if (!result.has(currentWorkflowId)) {
+      result.set(currentWorkflowId, {
+        workflowId: currentWorkflowId,
+        mode,
+        workflow: activeWorkflow,
+        initialThreadId,
+        chatkitOptions,
+        createdAt: Date.now(),
+        instanceKey: chatInstanceKey,
+      });
+    }
+
+    return result;
+  }, [cachedInstances, currentWorkflowId, mode, activeWorkflow, initialThreadId, chatkitOptions, chatInstanceKey]);
+
+  // Debug: log current workflow state
+  console.log('[useChatInstanceCache] state:', {
+    currentWorkflowId,
+    mode,
+    activeWorkflowId,
+    initialThreadId,
+    chatInstanceKey,
+    instancesCount: activeInstances.size,
+    instanceIds: Array.from(activeInstances.keys()),
+  });
+
+  // Update cached instances asynchronously (for persistence across workflow switches)
   useEffect(() => {
-    setActiveInstances((prev) => {
+    setCachedInstances((prev) => {
       const existing = prev.get(currentWorkflowId);
 
       if (existing) {

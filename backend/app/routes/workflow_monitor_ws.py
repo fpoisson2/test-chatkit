@@ -234,14 +234,19 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
 @router.websocket("/api/admin/workflows/monitor")
 async def workflow_monitor_websocket(
     websocket: WebSocket,
-    db: Session = Depends(get_session),
 ):
     """
     WebSocket endpoint pour le monitoring en temps réel des workflows.
 
     Requires admin authentication via ?token=JWT query parameter.
     Envoie périodiquement les mises à jour des sessions actives.
+
+    NOTE: We DON'T use Depends(get_session) here because WebSocket endpoints
+    run indefinitely. Using Depends would hold a DB connection for the entire
+    WebSocket lifetime, causing connection pool exhaustion.
     """
+    from ..database import SessionLocal
+
     # Vérifier l'authentification via token
     token = websocket.query_params.get("token")
     if not token:
@@ -262,11 +267,19 @@ async def workflow_monitor_websocket(
         await websocket.close(code=4003, reason="Admin privileges required")
         return
 
+    def _fetch_sessions() -> list[dict[str, Any]]:
+        """Fetch active sessions with a fresh DB session."""
+        session = SessionLocal()
+        try:
+            return get_active_sessions(session)
+        finally:
+            session.close()
+
     try:
         await manager.connect(websocket)
 
         # Envoyer les données initiales
-        sessions = get_active_sessions(db)
+        sessions = _fetch_sessions()
         await websocket.send_json({
             "type": "initial",
             "data": {
@@ -281,8 +294,8 @@ async def workflow_monitor_websocket(
             try:
                 await asyncio.sleep(update_interval)
 
-                # Récupérer les sessions mises à jour
-                sessions = get_active_sessions(db)
+                # Récupérer les sessions mises à jour (fresh session each time)
+                sessions = _fetch_sessions()
 
                 # Envoyer les mises à jour
                 await websocket.send_json({

@@ -14,6 +14,13 @@ from typing import Any
 from agents import Agent, ModelSettings, ShellTool, WebSearchTool
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServer
+
+# Configurer litellm pour ignorer les paramètres non supportés par certains providers
+try:
+    import litellm
+    litellm.drop_params = True
+except ImportError:
+    pass
 from agents.models.interface import ModelProvider
 from agents.models.openai_provider import OpenAIProvider
 from agents.tool import ComputerTool

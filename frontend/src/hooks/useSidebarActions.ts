@@ -126,11 +126,18 @@ export function useSidebarActions({
     isNewConversationDraftRef.current = true;
     setInitialThreadId(null);
     setChatInstanceKey((v) => v + 1);
+    // Reset workflow selection when starting a new conversation with multiple workflows
+    // This forces the user to choose a workflow before auto-start can trigger
+    if (workflows.length > 1) {
+      setManagedWorkflowSelection({ kind: "local", workflow: null });
+      setSelectedWorkflowId(null);
+    }
     navigate("/", { replace: true });
   }, [
     sessionOwner,
     persistenceSlug,
     navigate,
+    workflows.length,
     lastThreadSnapshotRef,
     wasNewConversationStreamingRef,
     isNewConversationDraftRef,
@@ -138,6 +145,8 @@ export function useSidebarActions({
     setIsNewConversationStreaming,
     setInitialThreadId,
     setChatInstanceKey,
+    setManagedWorkflowSelection,
+    setSelectedWorkflowId,
   ]);
 
   const handleWorkflowSelectorChange = useCallback(

@@ -79,14 +79,18 @@ export function MyChatContent() {
 
   // Initialize initialThreadId from URL or storage on mount
   useEffect(() => {
-    if (isInitialMountRef.current) {
-      const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
-      if (storedId && storedId !== initialThreadId) {
-        // Initial mount - update immediately, don't defer
-        setInitialThreadId(storedId);
-      }
+    // Skip if not initial mount or if we're intentionally in draft mode (new conversation)
+    if (!isInitialMountRef.current || isNewConversationDraftRef.current) {
+      return;
     }
-  }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef]);
+    const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
+    if (storedId && storedId !== initialThreadId) {
+      // Initial mount - update immediately, don't defer
+      setInitialThreadId(storedId);
+      // Mark as no longer initial mount only when we actually load a thread
+      isInitialMountRef.current = false;
+    }
+  }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef, isNewConversationDraftRef]);
 
   // Reset chat state hook (uses context internally)
   const { resetChatState } = useResetChatState({
@@ -191,7 +195,7 @@ export function MyChatContent() {
 
   // ChatKit callbacks (uses context internally)
   const chatkitCallbacks = useChatkitCallbacks({
-    sessionOwner, persistenceSlug, reportError, resetError,
+    sessionOwner, persistenceSlug, reportError, resetError, workflowsCount: workflows.length,
   });
 
   // Widgets config
@@ -280,7 +284,7 @@ export function MyChatContent() {
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
             <WorkflowChatInstance key={instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
               token={token} activeWorkflow={instance.workflow} initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
-              reportError={reportError} mode={instance.mode} isActive={instanceId === currentWorkflowId} autoStartEnabled={!hasVoiceAgent}
+              reportError={reportError} mode={instance.mode} isActive={instanceId === currentWorkflowId} autoStartEnabled={!hasVoiceAgent && (initialThreadId !== null || workflows.length <= 1 || activeWorkflow !== null)}
               onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined} />
           ))}
         </div>

@@ -1162,6 +1162,7 @@ def _ensure_widget_output_model(
     variable_ids = list(config.variables.keys())
     definition = _load_widget_definition(config.slug, context="configuration")
     example_definition: Any | None = config.example
+    bindings: dict[str, _WidgetBinding] = {}
     if definition is None:
         logger.warning(
             "Widget %s introuvable lors de la préparation du schéma de sortie",

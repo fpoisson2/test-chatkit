@@ -19,11 +19,38 @@ MAX_TOKEN_FIELD_NAMES = {
 UNSUPPORTED_REASONING_FIELDS = {
     # L'API attend la verbosité dans l'objet « text », pas sous « reasoning ».
     "verbosity",
+    # Groq et certains providers ne supportent pas summary dans reasoning
+    "summary",
+    "generate_summary",
 }
+
+# Valeurs valides pour reasoning.effort (compatibles avec Groq et autres providers)
+VALID_REASONING_EFFORT_VALUES = {"none", "default", "low", "medium", "high"}
 
 # Mapping pour normaliser les valeurs de reasoning.effort invalides
 REASONING_EFFORT_MAPPING = {
     "minimal": "low",  # Valeur legacy à normaliser
+    "extended": "high",  # Valeur OpenAI à normaliser
+    "max": "high",
+    "maximum": "high",
+    "min": "low",
+    "minimum": "low",
+    "normal": "medium",
+    "standard": "medium",
+    "auto": "default",
+    # Valeurs françaises
+    "équilibrée": "medium",
+    "equilibree": "medium",
+    "balanced": "medium",
+    "élevée": "high",
+    "elevee": "high",
+    "élevé": "high",
+    "eleve": "high",
+    "faible": "low",
+    "basse": "low",
+    "bas": "low",
+    "aucun": "none",
+    "aucune": "none",
 }
 
 
@@ -83,12 +110,19 @@ def strip_unsupported_reasoning_fields(
                         continue
                     # Normaliser les valeurs de reasoning.effort
                     if field == "effort" and isinstance(field_value, str):
-                        normalized_effort = REASONING_EFFORT_MAPPING.get(
-                            field_value.strip().lower(), field_value
-                        )
-                        if normalized_effort != field_value:
+                        effort_lower = field_value.strip().lower()
+                        # Vérifier si la valeur est déjà valide
+                        if effort_lower in VALID_REASONING_EFFORT_VALUES:
+                            sanitized_reasoning[field] = effort_lower
+                            continue
+                        # Essayer de mapper vers une valeur valide
+                        normalized_effort = REASONING_EFFORT_MAPPING.get(effort_lower)
+                        if normalized_effort:
                             removed_reasoning = True
-                        sanitized_reasoning[field] = normalized_effort
+                            sanitized_reasoning[field] = normalized_effort
+                        else:
+                            # Valeur non reconnue - supprimer le champ effort
+                            removed_reasoning = True
                         continue
                     sanitized_value, removed_nested = (
                         strip_unsupported_reasoning_fields(

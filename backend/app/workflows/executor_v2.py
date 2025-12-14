@@ -1135,6 +1135,8 @@ async def run_workflow_v2(
             if agent_context.workflow_item is not None and on_stream_event is not None:
                 workflow_item = WorkflowItem(
                     id=agent_context.workflow_item.id,
+                    thread_id=agent_context.workflow_item.thread_id,
+                    created_at=agent_context.workflow_item.created_at,
                     type="workflow",
                     workflow=agent_context.workflow_item.workflow,
                 )
