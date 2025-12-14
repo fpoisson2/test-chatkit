@@ -29,6 +29,14 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
     const renderDiagram = async () => {
       if (!containerRef.current) return;
 
+      console.log('[MermaidDiagram] Starting render', { cacheKey, hasCached: !!cached.svg });
+
+      // Skip rendering if already cached (state was initialized from cache)
+      if (cached.svg) {
+        console.log('[MermaidDiagram] Using cached SVG, skipping render');
+        return;
+      }
+
       // Configure mermaid with theme
       mermaid.initialize({
         startOnLoad: false,
@@ -82,6 +90,7 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
 
         // Render the diagram
         const { svg: renderedSvg } = await mermaid.render(idRef, chart);
+        console.log('[MermaidDiagram] SVG rendered, setting state');
         setSvg(renderedSvg);
         setError(null);
         mermaidSvgCache.set(cacheKey, { svg: renderedSvg, error: null });
