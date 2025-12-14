@@ -26,9 +26,24 @@ export function useScrollToBottom(
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
+  // Track previous item count to decide scroll behavior
+  const prevItemCountRef = useRef(itemCount);
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const prevItemCount = prevItemCountRef.current;
+    const isNewMessage = itemCount === prevItemCount + 1;
+
+    // Update ref for next render
+    prevItemCountRef.current = itemCount;
+
+    // Only scroll if we have items
+    if (itemCount > 0) {
+      // Use smooth scroll only for single new messages (streaming/chat)
+      // Use auto (instant) scroll for initial load, thread switching, or bulk updates
+      const behavior = isNewMessage ? 'smooth' : 'auto';
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    }
   }, [itemCount]);
 
   // Track scroll position to show/hide the "scroll to bottom" button
