@@ -27,8 +27,6 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
 
   useEffect(() => {
     const renderDiagram = async () => {
-      if (!containerRef.current) return;
-
       // Skip rendering if already cached (state was initialized from cache)
       if (cached.svg) {
         return;

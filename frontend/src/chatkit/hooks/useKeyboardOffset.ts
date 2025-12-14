@@ -18,13 +18,21 @@ export function useKeyboardOffset(
   useEffect(() => {
     if (typeof window === 'undefined' || !window.visualViewport) return;
 
+    // Only apply keyboard offset on touch devices (mobile/tablet)
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!isTouchDevice) {
+      setKeyboardOffset(0);
+      return;
+    }
+
     const viewport = window.visualViewport;
 
     const updateKeyboardOffset = () => {
       const heightDiff = window.innerHeight - viewport.height;
       const offsetTop = viewport.offsetTop ?? 0;
       const offset = Math.max(0, heightDiff - offsetTop);
-      setKeyboardOffset(offset);
+      // Only consider it a keyboard if the difference is significant (> 100px)
+      setKeyboardOffset(offset > 100 ? offset : 0);
     };
 
     updateKeyboardOffset();

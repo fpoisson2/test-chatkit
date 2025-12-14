@@ -60,6 +60,15 @@
   margin-bottom: 16px;
 }
 
+/* Scroll anchor - invisible element used for scroll-to-bottom */
+.chatkit-scroll-anchor {
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 0;
+  width: 0;
+  visibility: hidden;
+}
+
 .chatkit-empty-state {
   display: flex;
   align-items: center;

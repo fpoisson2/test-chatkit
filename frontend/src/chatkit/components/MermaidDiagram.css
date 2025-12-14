@@ -1,3 +1,23 @@
+/* Hide Mermaid temporary render elements that appear in body */
+[id^="mermaid-"]:not(.chatkit-mermaid-container [id^="mermaid-"]) {
+  position: absolute !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Also hide the dmermaid temporary container */
+#dmermaid,
+.mermaid-temp,
+svg[id^="mermaid-"]:not(.chatkit-mermaid-container svg) {
+  position: absolute !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* Mermaid Diagram Container */
 .chatkit-mermaid-container {
   width: 100%;
@@ -81,6 +101,25 @@
 .chatkit-mermaid-container .cluster rect {
   rx: 8px;
   ry: 8px;
+}
+
+/* Compact loading state - minimal height to avoid layout shift */
+.chatkit-mermaid-loading-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.chatkit-mermaid-loading-spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 /* Mermaid Loading State */

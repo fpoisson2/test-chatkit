@@ -315,7 +315,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           loadingThreadIds={control.loadingThreadIds}
         />
 
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} className="chatkit-scroll-anchor" />
       </div>
 
       {/* Scroll to bottom button */}
