@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, RefObject } from 'react';
+import { useState, useRef, useEffect, useCallback, RefObject } from 'react';
 
 export interface UseScrollToBottomOptions {
   /** Distance from bottom (in pixels) to consider "at bottom" */
@@ -27,12 +27,9 @@ export function useScrollToBottom(
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const prevThreadIdRef = useRef<string | undefined>(threadId);
-  const prevItemCountRef = useRef<number>(itemCount);
-  const isTransitioningRef = useRef<boolean>(false);
 
-  // Handle conversation switch: hide content, scroll, then show
-  // This prevents the flash of content higher up during transition
-  useLayoutEffect(() => {
+  // Auto-scroll to bottom when new messages arrive or conversation changes
+  useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
@@ -40,41 +37,22 @@ export function useScrollToBottom(
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
-      isTransitioningRef.current = true;
-      // Hide content immediately to prevent flash
-      container.style.visibility = 'hidden';
-
-      // Wait for content to render, then scroll and show
+      // Instant scroll for conversation switch
+      container.scrollTop = container.scrollHeight;
+      // Follow-up scroll after content settles (double rAF)
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           container.scrollTop = container.scrollHeight;
-          container.style.visibility = 'visible';
-          isTransitioningRef.current = false;
         });
       });
-    }
-  }, [threadId]);
-
-  // Smooth scroll for new messages in the same conversation
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    // Skip if we're in a conversation transition (handled by useLayoutEffect above)
-    if (isTransitioningRef.current) {
-      prevItemCountRef.current = itemCount;
-      return;
-    }
-
-    // Only scroll if item count actually increased
-    if (itemCount > prevItemCountRef.current) {
+    } else {
+      // Smooth scroll for new messages in same conversation
       container.scrollTo({
         top: container.scrollHeight,
         behavior: 'smooth',
       });
     }
-    prevItemCountRef.current = itemCount;
-  }, [itemCount]);
+  }, [itemCount, threadId]);
 
   // Track scroll position to show/hide the "scroll to bottom" button
   useEffect(() => {
