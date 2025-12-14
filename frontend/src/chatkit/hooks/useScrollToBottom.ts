@@ -39,8 +39,13 @@ export function useScrollToBottom(
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
-      // Direct scroll position set - no animation, no visual glitches
-      container.scrollTop = container.scrollHeight;
+      // When switching conversations, wait for DOM to settle before scrolling
+      // Double rAF ensures we scroll after the browser has painted the new content
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+        });
+      });
     } else {
       // Smooth scroll for new messages in same conversation
       container.scrollTo({
