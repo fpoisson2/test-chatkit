@@ -38,11 +38,16 @@ export function useScrollToBottom(
     prevItemCountRef.current = itemCount;
 
     // Only scroll if we have items
-    if (itemCount > 0) {
+    if (itemCount > 0 && messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+
       // Use smooth scroll only for single new messages (streaming/chat)
-      // Use auto (instant) scroll for initial load, thread switching, or bulk updates
-      const behavior = isNewMessage ? 'smooth' : 'auto';
-      messagesEndRef.current?.scrollIntoView({ behavior });
+      // Use instant scroll for initial load, thread switching, or bulk updates
+      if (isNewMessage) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
     }
   }, [itemCount]);
 
@@ -69,7 +74,10 @@ export function useScrollToBottom(
 
   // Function to scroll to bottom
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesContainerRef.current?.scrollTo({
+      top: messagesContainerRef.current.scrollHeight,
+      behavior: 'smooth'
+    });
   }, []);
 
   return {
