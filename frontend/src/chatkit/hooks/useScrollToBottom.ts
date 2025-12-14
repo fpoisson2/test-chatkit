@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, RefObject } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, RefObject } from 'react';
 
 export interface UseScrollToBottomOptions {
   /** Distance from bottom (in pixels) to consider "at bottom" */
@@ -28,57 +28,81 @@ export function useScrollToBottom(
   const [showScrollButton, setShowScrollButton] = useState(false);
   const prevThreadIdRef = useRef<string | undefined>(threadId);
   const prevItemCountRef = useRef<number>(itemCount);
-  // Track if we're waiting for content to load after a conversation switch
-  const waitingForContentRef = useRef<boolean>(false);
+  // Track if we're in a conversation transition
+  const isTransitioningRef = useRef<boolean>(false);
 
-  // Handle conversation switch
+  // Hide container immediately on conversation switch (before paint)
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const isConversationSwitch = prevThreadIdRef.current !== threadId;
+
+    if (isConversationSwitch) {
+      isTransitioningRef.current = true;
+      // Hide immediately to prevent flash of wrong content
+      container.style.opacity = '0';
+    }
+  }, [threadId]);
+
+  // Handle conversation switch after content loads
   useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
     const isConversationSwitch = prevThreadIdRef.current !== threadId;
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
       if (itemCount === 0) {
-        // Content not loaded yet, wait for it
-        waitingForContentRef.current = true;
-      } else {
-        // Content already available (cached), scroll now
-        waitingForContentRef.current = false;
-        const container = messagesContainerRef.current;
-        if (container) {
-          container.scrollTop = container.scrollHeight;
-          // Follow-up scroll after content settles
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              container.scrollTop = container.scrollHeight;
-            });
-          });
-        }
+        // Content not loaded yet, stay hidden and wait
+        return;
       }
+
+      // Content is ready, scroll and reveal after async content (like Mermaid) settles
+      // Use multiple rAFs + timeout to wait for async rendering
+      const scrollAndReveal = () => {
+        container.scrollTop = container.scrollHeight;
+        // Additional delay for async content like Mermaid diagrams
+        setTimeout(() => {
+          container.scrollTop = container.scrollHeight;
+          container.style.opacity = '1';
+          isTransitioningRef.current = false;
+        }, 100);
+      };
+
+      // Wait for initial DOM render
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollAndReveal();
+        });
+      });
     }
   }, [threadId, itemCount]);
 
-  // Handle content loading after conversation switch, or new messages
+  // Handle content loading after conversation switch (when itemCount changes from 0)
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
-    const itemCountChanged = itemCount !== prevItemCountRef.current;
-    const itemCountIncreased = itemCount > prevItemCountRef.current;
+    const prevCount = prevItemCountRef.current;
+    const itemCountIncreased = itemCount > prevCount;
     prevItemCountRef.current = itemCount;
 
-    if (!itemCountChanged) return;
-
-    if (waitingForContentRef.current && itemCount > 0) {
-      // Content just loaded after conversation switch - instant scroll
-      waitingForContentRef.current = false;
-      container.scrollTop = container.scrollHeight;
-      // Follow-up scroll after content settles
+    // If we're transitioning and content just loaded
+    if (isTransitioningRef.current && prevCount === 0 && itemCount > 0) {
+      // Content just loaded, scroll and reveal
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           container.scrollTop = container.scrollHeight;
+          setTimeout(() => {
+            container.scrollTop = container.scrollHeight;
+            container.style.opacity = '1';
+            isTransitioningRef.current = false;
+          }, 100);
         });
       });
-    } else if (itemCountIncreased && !waitingForContentRef.current) {
+    } else if (itemCountIncreased && !isTransitioningRef.current) {
       // New message in existing conversation - smooth scroll
       container.scrollTo({
         top: container.scrollHeight,
