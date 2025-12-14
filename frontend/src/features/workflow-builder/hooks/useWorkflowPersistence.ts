@@ -236,9 +236,6 @@ const useWorkflowPersistence = ({
       try {
         for (const url of candidates) {
           if (draftVersionIdRef.current) {
-              workflowId: selectedWorkflowId,
-              draftId: draftVersionIdRef.current,
-            });
             return;
           }
           try {

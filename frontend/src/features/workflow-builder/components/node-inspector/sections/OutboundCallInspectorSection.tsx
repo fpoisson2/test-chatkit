@@ -44,7 +44,7 @@ export const OutboundCallInspectorSection = ({
           setWorkflows(data);
         }
       })
-      .catch((err) => )
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -61,7 +61,7 @@ export const OutboundCallInspectorSection = ({
           setSipAccounts(data.filter((acc) => acc.is_active));
         }
       })
-      .catch((err) => );
+      .catch(() => {});
   }, [token]);
 
   const toNumber = (parameters.to_number as string) || "";

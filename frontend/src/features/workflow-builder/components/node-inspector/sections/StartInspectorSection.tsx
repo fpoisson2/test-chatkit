@@ -93,7 +93,7 @@ export const StartInspectorSection = ({
     })
       .then((res) => res.json())
       .then((data) => setSipAccounts(data))
-      .catch((err) => )
+      .catch(() => {})
       .finally(() => setSipAccountsLoading(false));
   }, [token, workflowId]);
 
@@ -106,7 +106,7 @@ export const StartInspectorSection = ({
     })
       .then((res) => res.json())
       .then((data) => setLtiRegistrations(data))
-      .catch((err) => )
+      .catch(() => {})
       .finally(() => setLtiRegistrationsLoading(false));
   }, [token]);
 

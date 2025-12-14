@@ -14,18 +14,16 @@ const normalizeDefinition = (definition: Record<string, unknown>): WidgetRoot | 
 };
 
 const previewContext = {
-  onAction: (action: ActionConfig) => {
+  onAction: (_action: ActionConfig) => {
     // Log actions triggered from the preview to help debugging without wiring real callbacks.
   },
-  onFormData: (data: FormData) => {
-    // eslint-disable-next-line no-console
-  },
+  onFormData: (_data: FormData) => {},
   voiceSession: {
     status: "idle",
     isListening: false,
     transcripts: [],
-    startVoiceSession: async () => ,
-    stopVoiceSession: () => ,
+    startVoiceSession: async () => {},
+    stopVoiceSession: () => {},
   },
 };
 
