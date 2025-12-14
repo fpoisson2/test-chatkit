@@ -205,19 +205,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     options.initialThread !== control.thread?.id;
   const showStartScreen = !isLoadingAnyThread && !control.thread && !isTransitioningToNewThread;
 
-  // Debug: log start screen conditions
-  console.log('[ChatKit] showStartScreen conditions:', {
-    showStartScreen,
-    isLoadingAnyThread,
-    hasThread: !!control.thread,
-    threadId: control.thread?.id,
-    isTransitioningToNewThread,
-    optionsInitialThread: options.initialThread,
-    hasStartScreen: !!startScreen,
-    hasGreeting: !!startScreen?.greeting,
-    hasPrompts: !!(startScreen?.prompts?.length),
-  });
-
   // Check if thread is closed or locked
   const threadStatus = control.thread?.status;
   const isThreadClosed = threadStatus?.type === 'closed';
