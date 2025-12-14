@@ -160,7 +160,16 @@ export function useSidebarActions({
           await workflowsApi.setChatkitWorkflow(token, workflowId).catch(console.error);
         }
 
+        // Clear stored thread for the OLD workflow (persistenceSlug is based on current selection)
         clearStoredThreadId(sessionOwner, persistenceSlug);
+
+        // Also clear stored thread for the NEW workflow to ensure a fresh conversation
+        // This fixes a bug where switching workflows after "new conversation" would load an old thread
+        const newPersistenceSlug = resolvePersistenceSlug(mode, { kind: "local", workflow: targetWorkflow });
+        if (newPersistenceSlug !== persistenceSlug) {
+          clearStoredThreadId(sessionOwner, newPersistenceSlug);
+        }
+
         setInitialThreadId(null);
         setChatInstanceKey((v) => v + 1);
       }
@@ -169,6 +178,7 @@ export function useSidebarActions({
       workflows,
       sessionOwner,
       persistenceSlug,
+      mode,
       token,
       isAdmin,
       setSelectedWorkflowId,
