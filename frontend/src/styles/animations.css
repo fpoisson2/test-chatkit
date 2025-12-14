@@ -274,22 +274,34 @@ html {
    Chat Instance Transitions
    ========================================== */
 
-/* Workflow/conversation switching fade transition */
+/* Workflow/conversation switching - instant hide, fade-in show */
 .chat-instance {
-  transition: opacity 250ms ease-out, visibility 250ms ease-out;
+  /* No transition on base - each state controls its own */
 }
 
 .chat-instance--active {
   opacity: 1;
   visibility: visible;
-  z-index: 1;
+  z-index: 10;
+  /* Only animate opacity for smooth fade-in */
+  animation: chatInstanceFadeIn 150ms ease-out;
 }
 
 .chat-instance--inactive {
+  /* Immediately hidden - no transition to prevent flash */
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   z-index: 0;
+}
+
+@keyframes chatInstanceFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ==========================================
