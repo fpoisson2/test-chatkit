@@ -35,6 +35,8 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
+  scroll-behavior: auto;
+  overflow-anchor: none;
   padding-bottom: calc(150px + var(--chatkit-keyboard-offset) + max(env(safe-area-inset-bottom), 0px));
 }
 
