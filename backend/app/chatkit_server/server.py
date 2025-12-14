@@ -1010,12 +1010,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 await processor.remove_listener(queue)
 
         try:
-            # Consume queue via _process_events to ensure persistence
-            async for event in self._process_events(
-                thread,
-                context,
-                _stream_source,
-            ):
+            # Yield events directly from stream source
+            # NOTE: Do NOT wrap with _process_events here - it's already called by
+            # the parent class in _process_new_thread_item_respond
+            async for event in _stream_source():
                 yield event
 
             # Wait for title generation to complete and emit update event if title changed
@@ -1776,17 +1774,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
         set_current_thread_id(thread.id)
 
-        # Generate thread title if needed (for new threads in workflows)
-        if input_user_message is not None:
-            title_task = asyncio.create_task(
-                self._maybe_update_thread_title(
-                    thread,
-                    input_user_message,
-                    agent_context.request_context,
-                    converter=thread_item_converter,
-                )
-            )
-            title_task.add_done_callback(_log_async_exception)
+        # NOTE: Title generation is handled in stream_events, not here
+        # to avoid duplicate calls
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)

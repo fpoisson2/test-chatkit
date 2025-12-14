@@ -791,18 +791,26 @@ class ChatKitServer(ABC, Generic[TContext]):
                     if not should_swallow_event:
                         yield event
 
-                    # in case user updated the thread while streaming
-                    if thread != last_thread:
+                    # If the inner stream emitted a ThreadUpdatedEvent, update last_thread
+                    # to avoid emitting a duplicate from the check below
+                    if isinstance(event, ThreadUpdatedEvent):
+                        logger.info(
+                            "🔵 [_process_events] Forwarding ThreadUpdatedEvent from inner stream for thread %s",
+                            thread.id,
+                        )
+                        last_thread = thread.model_copy(deep=True)
+
+                    # in case user updated the thread while streaming (but no ThreadUpdatedEvent was emitted)
+                    elif thread != last_thread:
+                        logger.info(
+                            "🟢 [_process_events] Thread changed, emitting ThreadUpdatedEvent for thread %s",
+                            thread.id,
+                        )
                         last_thread = thread.model_copy(deep=True)
                         await self.store.save_thread(thread, context=context)
                         yield ThreadUpdatedEvent(
                             thread=self._to_thread_response(thread)
                         )
-                # in case user updated the thread while streaming
-                if thread != last_thread:
-                    last_thread = thread.model_copy(deep=True)
-                    await self.store.save_thread(thread, context=context)
-                    yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
         except CustomStreamError as e:
             yield ErrorEvent(
                 code="custom",
@@ -820,11 +828,6 @@ class ChatKitServer(ABC, Generic[TContext]):
                 allow_retry=True,
             )
             logger.exception(e)
-
-        if thread != last_thread:
-            # in case user updated the thread at the end of the stream
-            await self.store.save_thread(thread, context=context)
-            yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
 
     async def _build_user_message_item(
         self, input: UserMessageInput, thread: ThreadMetadata, context: TContext
