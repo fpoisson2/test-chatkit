@@ -10,7 +10,6 @@ import {
   getActionMenuStyle,
   getActionMenuItemStyle,
 } from "./WorkflowActionMenu";
-import { TruncatedText } from "../../components/TruncatedText";
 import { AnimatedTitle } from "../../components/AnimatedTitle";
 import "./ConversationsSidebarSection.css";
 
@@ -587,9 +586,9 @@ export function ConversationsSidebarSection({
                       {isStreaming && (
                         <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
                       )}
-                      <TruncatedText className="conversations-sidebar-section__thread-title">
+                      <span className="conversations-sidebar-section__thread-title" title={threadTitle}>
                         <AnimatedTitle stableId={thread.id} disabled={disableTitleAnimation}>{threadTitle}</AnimatedTitle>
-                      </TruncatedText>
+                      </span>
                     </span>
                   </button>
                   <button

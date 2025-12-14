@@ -154,12 +154,6 @@
   display: block;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: clip;
-}
-
-/* Text fade gradient effect - only applied when text overflows */
-.conversations-sidebar-section__thread-title--truncated {
-  /* Use an ellipsis instead of a mask to avoid repaint flicker when the title is truncated */
   text-overflow: ellipsis;
 }
 
