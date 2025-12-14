@@ -28,11 +28,10 @@ export function useScrollToBottom(
   const [showScrollButton, setShowScrollButton] = useState(false);
   const prevThreadIdRef = useRef<string | undefined>(threadId);
   const prevItemCountRef = useRef<number>(itemCount);
-  // Track if we recently switched conversations (within last few renders)
-  // to use instant scroll instead of smooth scroll for initial content load
-  const recentSwitchCountRef = useRef<number>(0);
+  const isTransitioningRef = useRef<boolean>(false);
 
-  // Instant scroll on conversation switch - runs BEFORE browser paint to prevent flash
+  // Handle conversation switch: hide content, scroll, then show
+  // This prevents the flash of content higher up during transition
   useLayoutEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -41,35 +40,40 @@ export function useScrollToBottom(
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
-      // Mark that we recently switched - allow a few renders for async data to load
-      recentSwitchCountRef.current = 3;
-      // Synchronous scroll before paint prevents the flash of content higher up
-      container.scrollTop = container.scrollHeight;
+      isTransitioningRef.current = true;
+      // Hide content immediately to prevent flash
+      container.style.visibility = 'hidden';
+
+      // Wait for content to render, then scroll and show
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+          container.style.visibility = 'visible';
+          isTransitioningRef.current = false;
+        });
+      });
     }
   }, [threadId]);
 
-  // Scroll when items change - instant after switch, smooth for new messages
-  useLayoutEffect(() => {
+  // Smooth scroll for new messages in the same conversation
+  useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
-    const itemCountChanged = itemCount !== prevItemCountRef.current;
-    prevItemCountRef.current = itemCount;
+    // Skip if we're in a conversation transition (handled by useLayoutEffect above)
+    if (isTransitioningRef.current) {
+      prevItemCountRef.current = itemCount;
+      return;
+    }
 
-    if (!itemCountChanged) return;
-
-    // If we recently switched conversations, use instant scroll to prevent flash
-    // This handles async data loading after the initial switch
-    if (recentSwitchCountRef.current > 0) {
-      recentSwitchCountRef.current--;
-      container.scrollTop = container.scrollHeight;
-    } else {
-      // Normal new message in existing conversation - smooth scroll
+    // Only scroll if item count actually increased
+    if (itemCount > prevItemCountRef.current) {
       container.scrollTo({
         top: container.scrollHeight,
         behavior: 'smooth',
       });
     }
+    prevItemCountRef.current = itemCount;
   }, [itemCount]);
 
   // Track scroll position to show/hide the "scroll to bottom" button
