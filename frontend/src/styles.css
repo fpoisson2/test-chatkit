@@ -263,7 +263,8 @@ button {
   min-height: 0;
   flex: 1 1 auto;
   width: 100%;
-  background: var(--main-background);
+  /* Match .chatkit-layout__main background to prevent grey flash during layout shifts */
+  background: var(--color-surface, #fff);
   overflow: hidden;
 }
 
@@ -272,14 +273,17 @@ button {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 100%;
   height: 100%;
   width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   z-index: 0;
   -webkit-tap-highlight-color: transparent;
-  background: var(--main-background);
+  background: var(--color-surface, #fff);
   border-left: 1px solid rgba(15, 23, 42, 0.08);
+  /* Prevent layout shifts from propagating during re-renders */
+  contain: layout style;
 }
 
 .chatkit-layout__scrim {
@@ -312,11 +316,13 @@ button {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  background: transparent;
+  background: var(--color-surface, #fff);
   border-radius: 0;
   border: none;
   box-shadow: none;
   overflow: hidden;
+  /* Prevent layout shifts from propagating during re-renders */
+  contain: layout style;
   min-height: 0;
   width: 100%;
   margin: 0;

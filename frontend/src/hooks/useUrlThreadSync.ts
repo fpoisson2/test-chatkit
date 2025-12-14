@@ -19,7 +19,7 @@ export function useUrlThreadSync({
 }: UseUrlThreadSyncOptions): void {
   const { state, setters, refs } = useChatContext();
   const { initialThreadId } = state;
-  const { setInitialThreadId, setChatInstanceKey } = setters;
+  const { setInitialThreadId } = setters;
   const { isNewConversationDraftRef, prevUrlThreadIdRef } = refs;
 
   useEffect(() => {
@@ -32,25 +32,28 @@ export function useUrlThreadSync({
     const currentUrlThreadId = urlThreadId ?? null;
 
     // Navigate to specific thread
+    // Note: We don't call setChatInstanceKey here because ChatKit can handle
+    // thread changes via initialThreadId prop without needing a full remount.
+    // This prevents unnecessary layout shifts when switching between threads.
     if (currentUrlThreadId !== null && currentUrlThreadId !== initialThreadId) {
       isNewConversationDraftRef.current = false;
       persistStoredThreadId(sessionOwner, currentUrlThreadId, persistenceSlug);
-      // Defer state updates to avoid updating parent during render
+      // Defer state update to avoid updating parent during render
       const timeoutId = setTimeout(() => {
         setInitialThreadId(currentUrlThreadId);
-        setChatInstanceKey((v) => v + 1);
       }, 0);
       return () => clearTimeout(timeoutId);
     }
 
     // Navigate to new conversation (URL cleared)
+    // Note: We don't call setChatInstanceKey here because handleNewConversation
+    // already handles the key increment. This prevents duplicate remounts.
     if (currentUrlThreadId === null && prevUrlThreadId !== undefined) {
       clearStoredThreadId(sessionOwner, persistenceSlug);
       isNewConversationDraftRef.current = true;
-      // Defer state updates to avoid updating parent during render
+      // Defer state update to avoid updating parent during render
       const timeoutId = setTimeout(() => {
         setInitialThreadId(null);
-        setChatInstanceKey((v) => v + 1);
       }, 0);
       return () => clearTimeout(timeoutId);
     }
@@ -60,7 +63,6 @@ export function useUrlThreadSync({
     sessionOwner,
     persistenceSlug,
     setInitialThreadId,
-    setChatInstanceKey,
     isNewConversationDraftRef,
     prevUrlThreadIdRef,
   ]);

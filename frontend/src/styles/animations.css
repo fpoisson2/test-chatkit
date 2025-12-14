@@ -228,7 +228,8 @@ select:focus-visible {
    ========================================== */
 
 html {
-  scroll-behavior: smooth;
+  /* Disabled - causes layout shifts when combined with instant scrollIntoView */
+  /* scroll-behavior: smooth; */
 }
 
 /* ==========================================
@@ -277,6 +278,8 @@ html {
 /* Workflow/conversation switching fade transition */
 .chat-instance {
   transition: opacity 250ms ease-out, visibility 250ms ease-out;
+  /* Prevent layout shifts from propagating during re-renders */
+  contain: layout style;
 }
 
 .chat-instance--active {

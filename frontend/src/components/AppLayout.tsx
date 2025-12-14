@@ -357,6 +357,76 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [closeSidebar, isDesktopLayout],
   );
 
+  // Ref to the main content area for scroll reset on route change
+  const mainContentRef = useRef<HTMLDivElement>(null);
+
+  // Debug: Log scroll and layout info on route change
+  useEffect(() => {
+    const main = mainContentRef.current;
+    if (main) {
+      console.log('[AppLayout] Route change:', location.pathname);
+      console.log('[AppLayout] Before reset - scrollTop:', main.scrollTop, 'scrollHeight:', main.scrollHeight, 'clientHeight:', main.clientHeight);
+      console.log('[AppLayout] Body scrollTop:', document.body.scrollTop, 'window.scrollY:', window.scrollY);
+      console.log('[AppLayout] documentElement scrollTop:', document.documentElement.scrollTop);
+
+      // Reset main content scroll
+      main.scrollTop = 0;
+
+      // Also reset body and documentElement scroll just in case
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+      window.scrollTo(0, 0);
+
+      console.log('[AppLayout] After reset - scrollTop:', main.scrollTop);
+    }
+  }, [location.pathname]);
+
+  // Debug: Monitor ALL scroll and size changes
+  useEffect(() => {
+    const main = mainContentRef.current;
+    if (!main) return;
+
+    // Log any scroll event on the page
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement;
+      console.log('[AppLayout] SCROLL EVENT:', {
+        target: target.className || target.tagName,
+        scrollTop: target.scrollTop,
+        scrollHeight: target.scrollHeight,
+        clientHeight: target.clientHeight,
+      });
+    };
+
+    // Listen for scroll on capture phase to catch all scroll events
+    document.addEventListener('scroll', handleScroll, true);
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        console.log('[AppLayout] ResizeObserver:', {
+          target: (entry.target as HTMLElement).className || entry.target.tagName,
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+          scrollHeight: (entry.target as HTMLElement).scrollHeight,
+        });
+      }
+    });
+
+    resizeObserver.observe(main);
+    resizeObserver.observe(document.body);
+    resizeObserver.observe(document.documentElement);
+
+    // Also observe the chatkit-messages if it exists
+    const chatkitMessages = document.querySelector('.chatkit-messages');
+    if (chatkitMessages) {
+      resizeObserver.observe(chatkitMessages);
+    }
+
+    return () => {
+      document.removeEventListener('scroll', handleScroll, true);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   const layoutClassName = useMemo(
     () =>
       [
@@ -594,7 +664,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             }}
             tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
           />
-          <div className="chatkit-layout__main" {...mainInteractionHandlers}>
+          <div ref={mainContentRef} className="chatkit-layout__main" {...mainInteractionHandlers}>
             {children ?? <Outlet />}
           </div>
           {isAdmin && (

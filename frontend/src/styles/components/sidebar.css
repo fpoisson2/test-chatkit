@@ -77,6 +77,8 @@
   overflow: hidden;
   transition: margin-left var(--chatkit-sidebar-open-duration) var(--cubic-move);
   pointer-events: none;
+  /* Prevent layout shifts from propagating during re-renders */
+  contain: layout style;
 }
 
 .chatkit-sidebar__scroll-area {
@@ -1712,6 +1714,9 @@
   bottom: 0;
   z-index: 2;
   background: var(--sidebar-background);
+  /* Force GPU compositing to prevent layout shift during re-renders */
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .chatkit-sidebar__footer-link {

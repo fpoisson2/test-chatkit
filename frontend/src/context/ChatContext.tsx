@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WorkflowActivation } from "../features/workflows/WorkflowSidebar";
 
 export type ChatState = {
@@ -70,24 +70,35 @@ export function ChatProvider({ children, initialThreadId: propsInitialThreadId =
   const missingDomainKeyWarningShownRef = useRef(false);
   const prevUrlThreadIdRef = useRef<string | undefined>(urlThreadId);
 
-  const value: ChatContextValue = {
-    state: {
+  // Memoize state object to prevent unnecessary re-renders of context consumers
+  const state = useMemo<ChatState>(
+    () => ({
       currentThread,
       initialThreadId,
       streamingThreadIds,
       isNewConversationStreaming,
       chatInstanceKey,
       workflowSelection,
-    },
-    setters: {
+    }),
+    [currentThread, initialThreadId, streamingThreadIds, isNewConversationStreaming, chatInstanceKey, workflowSelection]
+  );
+
+  // Memoize setters - these never change
+  const setters = useMemo<ChatStateSetters>(
+    () => ({
       setCurrentThread,
       setInitialThreadId,
       setStreamingThreadIds,
       setIsNewConversationStreaming,
       setChatInstanceKey,
       setWorkflowSelection,
-    },
-    refs: {
+    }),
+    [] // Setters from useState are stable
+  );
+
+  // Memoize refs - these never change
+  const refs = useMemo<ChatStateRefs>(
+    () => ({
       lastThreadSnapshotRef,
       wasNewConversationStreamingRef,
       isNewConversationDraftRef,
@@ -97,8 +108,15 @@ export function ChatProvider({ children, initialThreadId: propsInitialThreadId =
       previousSessionOwnerRef,
       missingDomainKeyWarningShownRef,
       prevUrlThreadIdRef,
-    },
-  };
+    }),
+    [] // Refs are stable
+  );
+
+  // Memoize the entire context value
+  const value = useMemo<ChatContextValue>(
+    () => ({ state, setters, refs }),
+    [state, setters, refs]
+  );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

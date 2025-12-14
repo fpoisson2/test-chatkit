@@ -8,6 +8,8 @@
   flex-direction: column;
   gap: calc(var(--spacing) * 3);
   padding: 0;
+  /* Isolate layout recalculations to prevent propagation */
+  contain: layout style;
 }
 
 /* Header styles now use chatkit-sidebar__section-* classes from sidebar.css for consistency */
@@ -77,6 +79,8 @@
   display: flex;
   flex-direction: column;
   gap: calc(var(--spacing) * 1);
+  /* Isolate layout recalculations */
+  contain: layout style;
 }
 
 .conversations-sidebar-section__item {
@@ -100,7 +104,8 @@
   border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
-  transition: all var(--transition-duration-basic);
+  /* Only transition visual properties, not layout properties */
+  transition: background-color var(--transition-duration-basic), color var(--transition-duration-basic);
    margin-inline-start: 0;
    margin-inline-end: -6px;
    margin-block: calc(var(--spacing) * 0.5);
@@ -114,7 +119,6 @@
 
 .conversations-sidebar-section__thread-button--active {
   background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-  margin-inline-end: -6px;
 }
 
 .conversations-sidebar-section__thread-button--active:hover,
@@ -148,23 +152,18 @@
   line-height: var(--leading-tight);
   flex: 1;
   min-width: 0;
-  /* Text fade gradient effect */
   max-width: 100%;
   position: relative;
   display: block;
   white-space: nowrap;
   overflow: hidden;
-}
-
-/* Text fade gradient effect - only applied when text overflows */
-.conversations-sidebar-section__thread-title--truncated {
-  mask-image: linear-gradient(to right, black calc(100% - 6rem), transparent calc(100% - 2rem));
-  -webkit-mask-image: linear-gradient(to right, black calc(100% - 6rem), transparent calc(100% - 2rem));
+  text-overflow: ellipsis;
 }
 
 .conversations-sidebar-section__thread-button--active .conversations-sidebar-section__thread-title {
   color: var(--primary-color);
-  font-weight: var(--font-weight-semibold);
+  /* Keep same font-weight to prevent layout shift */
+  font-weight: var(--font-weight-medium);
 }
 
 .conversations-sidebar-section__thread-date {
