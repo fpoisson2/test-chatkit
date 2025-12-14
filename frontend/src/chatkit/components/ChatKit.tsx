@@ -67,7 +67,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     messagesContainerRef,
     showScrollButton,
     scrollToBottom,
-  } = useScrollToBottom(control.thread?.items.length ?? 0);
+  } = useScrollToBottom(control.thread?.items.length ?? 0, {}, control.thread?.id);
 
   // Keyboard offset for mobile virtual keyboards
   const { keyboardOffset } = useKeyboardOffset(messagesContainerRef);
