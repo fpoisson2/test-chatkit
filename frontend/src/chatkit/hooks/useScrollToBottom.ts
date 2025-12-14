@@ -27,32 +27,65 @@ export function useScrollToBottom(
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const prevThreadIdRef = useRef<string | undefined>(threadId);
+  const prevItemCountRef = useRef<number>(itemCount);
+  // Track if we're waiting for content to load after a conversation switch
+  const waitingForContentRef = useRef<boolean>(false);
 
-  // Auto-scroll to bottom when new messages arrive or conversation changes
+  // Handle conversation switch
   useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
     const isConversationSwitch = prevThreadIdRef.current !== threadId;
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
-      // Instant scroll for conversation switch
+      if (itemCount === 0) {
+        // Content not loaded yet, wait for it
+        waitingForContentRef.current = true;
+      } else {
+        // Content already available (cached), scroll now
+        waitingForContentRef.current = false;
+        const container = messagesContainerRef.current;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+          // Follow-up scroll after content settles
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              container.scrollTop = container.scrollHeight;
+            });
+          });
+        }
+      }
+    }
+  }, [threadId, itemCount]);
+
+  // Handle content loading after conversation switch, or new messages
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const itemCountChanged = itemCount !== prevItemCountRef.current;
+    const itemCountIncreased = itemCount > prevItemCountRef.current;
+    prevItemCountRef.current = itemCount;
+
+    if (!itemCountChanged) return;
+
+    if (waitingForContentRef.current && itemCount > 0) {
+      // Content just loaded after conversation switch - instant scroll
+      waitingForContentRef.current = false;
       container.scrollTop = container.scrollHeight;
-      // Follow-up scroll after content settles (double rAF)
+      // Follow-up scroll after content settles
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           container.scrollTop = container.scrollHeight;
         });
       });
-    } else {
-      // Smooth scroll for new messages in same conversation
+    } else if (itemCountIncreased && !waitingForContentRef.current) {
+      // New message in existing conversation - smooth scroll
       container.scrollTo({
         top: container.scrollHeight,
         behavior: 'smooth',
       });
     }
-  }, [itemCount, threadId]);
+  }, [itemCount]);
 
   // Track scroll position to show/hide the "scroll to bottom" button
   useEffect(() => {
