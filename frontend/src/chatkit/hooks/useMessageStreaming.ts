@@ -14,6 +14,7 @@ export interface UseMessageStreamingOptions {
   abortControllersRef: React.MutableRefObject<Map<string, AbortController>>;
   setThread: React.Dispatch<React.SetStateAction<Thread | null>>;
   setThreadLoading: (threadId: string | null | undefined, value: boolean) => void;
+  setThreadStreaming: (threadId: string | null | undefined, value: boolean) => void;
   getThreadKey: (threadId: string | null | undefined) => string;
   isTempThreadId: (threadId: string | null | undefined) => boolean;
   onResponseStart?: (event: { threadId: string | null }) => void;
@@ -41,6 +42,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
     abortControllersRef,
     setThread,
     setThreadLoading,
+    setThreadStreaming,
     getThreadKey,
     isTempThreadId,
     onResponseStart,
@@ -62,6 +64,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
     ) => {
       const threadKey = getThreadKey(targetThreadId);
       setThreadLoading(targetThreadId, true);
+      setThreadStreaming(targetThreadId, true);
       setError(null);
       onResponseStart?.({ threadId: targetThreadId });
 
@@ -90,6 +93,8 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
               abortControllersRef.current.set(getThreadKey(newThread.id), controller);
               setThreadLoading(targetThreadId, false);
               setThreadLoading(newThread.id, true);
+              setThreadStreaming(targetThreadId, false);
+              setThreadStreaming(newThread.id, true);
               streamThreadKeyRef.current = getThreadKey(newThread.id);
             }
 
@@ -136,8 +141,10 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
         }
       } finally {
         setThreadLoading(targetThreadId, false);
+        setThreadStreaming(targetThreadId, false);
         if (updatedThread?.id && updatedThread.id !== targetThreadId) {
           setThreadLoading(updatedThread.id, false);
+          setThreadStreaming(updatedThread.id, false);
         }
         abortControllersRef.current.delete(getThreadKey(targetThreadId));
         if (updatedThread?.id) {
@@ -156,6 +163,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
       onClientTool,
       getThreadKey,
       setThreadLoading,
+      setThreadStreaming,
       activeThreadIdRef,
       visibleThreadIdRef,
       threadCacheRef,

@@ -51,6 +51,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     setThreadLoading,
     isLoading: isLoadingFn,
     getLoadingThreadIds,
+    streamingByThread,
+    setThreadStreaming,
+    getStreamingThreadIds,
   } = useThreadLoading(getThreadKey, initialThread);
 
   // Abort controllers management
@@ -85,6 +88,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     abortControllersRef,
     setThread,
     setThreadLoading,
+    setThreadStreaming,
     getThreadKey,
     isTempThreadId,
     onResponseStart,
@@ -145,6 +149,11 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     [getLoadingThreadIds, loadingByThread]
   );
 
+  const streamingThreadIds = useMemo(
+    () => getStreamingThreadIds(),
+    [getStreamingThreadIds, streamingByThread]
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, [setError]);
@@ -155,6 +164,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     isLoading,
     error,
     loadingThreadIds,
+    streamingThreadIds,
     sendMessage: sendUserMessage,
     resumeStream,
     refresh: fetchUpdates,

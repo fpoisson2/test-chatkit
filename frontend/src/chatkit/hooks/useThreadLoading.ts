@@ -9,6 +9,9 @@ export interface UseThreadLoadingReturn {
   isLoading: (currentThreadId: string | null | undefined, getThreadKey: (id: string | null | undefined) => string) => boolean;
   getLoadingThreadIds: () => Set<string>;
   clearAllLoading: () => void;
+  streamingByThread: Record<string, boolean>;
+  setThreadStreaming: (threadId: string | null | undefined, value: boolean) => void;
+  getStreamingThreadIds: () => Set<string>;
 }
 
 export function useThreadLoading(
@@ -23,6 +26,9 @@ export function useThreadLoading(
     }
     return {};
   });
+
+  // Streaming state - only set when actively streaming a response (not just loading a thread)
+  const [streamingByThread, setStreamingByThread] = useState<Record<string, boolean>>({});
 
   const setThreadLoading = useCallback((threadId: string | null | undefined, value: boolean) => {
     const key = getThreadKey(threadId);
@@ -60,11 +66,39 @@ export function useThreadLoading(
     setLoadingByThread({});
   }, []);
 
+  const setThreadStreaming = useCallback((threadId: string | null | undefined, value: boolean) => {
+    const key = getThreadKey(threadId);
+    setStreamingByThread((prev) => {
+      const next = { ...prev };
+
+      if (!value) {
+        delete next[key];
+      } else {
+        next[key] = true;
+      }
+
+      return next;
+    });
+  }, [getThreadKey]);
+
+  const getStreamingThreadIds = useCallback(() => {
+    const ids = new Set<string>();
+    for (const [key, streaming] of Object.entries(streamingByThread)) {
+      if (streaming && key !== '__new_thread__' && !key.startsWith('__temp_thread_')) {
+        ids.add(key);
+      }
+    }
+    return ids;
+  }, [streamingByThread]);
+
   return {
     loadingByThread,
     setThreadLoading,
     isLoading,
     getLoadingThreadIds,
     clearAllLoading,
+    streamingByThread,
+    setThreadStreaming,
+    getStreamingThreadIds,
   };
 }

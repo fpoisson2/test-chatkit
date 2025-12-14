@@ -312,7 +312,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         {/* Loading indicator */}
         <LoadingIndicator
           thread={control.thread}
-          loadingThreadIds={control.loadingThreadIds}
+          streamingThreadIds={control.streamingThreadIds}
         />
 
         <div ref={messagesEndRef} className="chatkit-scroll-anchor" />
@@ -538,29 +538,15 @@ function MessageList({
 
 interface LoadingIndicatorProps {
   thread: { id: string; items: ThreadItem[] } | null;
-  loadingThreadIds: Set<string>;
+  streamingThreadIds: Set<string>;
 }
 
-function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): JSX.Element | null {
-  const items = thread?.items || [];
-  const lastItem = items[items.length - 1];
-
+function LoadingIndicator({ thread, streamingThreadIds }: LoadingIndicatorProps): JSX.Element | null {
   // Only show typing indicator if we're STREAMING a response (not just loading a thread)
-  // - Must be loading exactly ONE thread (the current one)
-  // - That thread must have at least one message
-  // - The last message must be from the user
-  // This prevents showing the indicator when finishing loading a thread (race condition)
-  const hasMessages = items.length > 0;
-  const isOnlyLoadingCurrentThread =
-    thread &&
-    loadingThreadIds.size === 1 &&
-    loadingThreadIds.has(thread.id);
-  const isWaitingForAssistant =
-    isOnlyLoadingCurrentThread &&
-    hasMessages &&
-    (!lastItem || lastItem.type === 'user_message');
+  // streamingThreadIds only contains threads that are actively streaming, not loading
+  const isStreamingCurrentThread = thread && streamingThreadIds.has(thread.id);
 
-  if (!isWaitingForAssistant) {
+  if (!isStreamingCurrentThread) {
     return null;
   }
 
