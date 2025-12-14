@@ -45,12 +45,17 @@ export function useScrollToBottom(
       itemCount,
       scrollHeight: container.scrollHeight,
       clientHeight: container.clientHeight,
-      currentScrollTop: container.scrollTop,
+      scrollTop: container.scrollTop,
+      maxScroll: container.scrollHeight - container.clientHeight,
     });
 
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
+      // DEBUG: Disable scroll entirely to see if this is the cause
+      console.log('[useScrollToBottom] SKIPPING scroll for conversation switch (debug)');
+      return;
+
       // When switching conversations, wait for DOM to settle before scrolling
       // Double rAF ensures we scroll after the browser has painted the new content
       requestAnimationFrame(() => {
