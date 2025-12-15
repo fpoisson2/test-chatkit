@@ -77,6 +77,15 @@ export function useChatkitCallbacks({
           setChatInstanceKey((v) => v + 1);
         }
       } else {
+        // IMPORTANT: If we're in "new conversation draft" mode AND this is NOT a newly created thread,
+        // ignore stale thread callbacks. This prevents ChatKit from restoring an old thread after clicking "+".
+        // However, if wasNewConversationStreamingRef is true, this is a NEW thread being created,
+        // so we should accept it.
+        if (isNewConversationDraftRef.current && !wasNewConversationStreamingRef.current) {
+          console.log("[DEBUG-CONV] onThreadChange: IGNORED (new conversation draft mode, not a new thread)", { resolvedThreadId });
+          return;
+        }
+
         console.log("[DEBUG-CONV] onThreadChange: Setting thread", { resolvedThreadId });
         isNewConversationDraftRef.current = false;
         persistStoredThreadId(sessionOwner, resolvedThreadId, persistenceSlug);
