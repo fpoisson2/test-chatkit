@@ -254,6 +254,27 @@ export function ConversationsSidebarSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api?.url]);
 
+  // Listen for bulk conversation deletion events (from admin cleanup)
+  useEffect(() => {
+    const handleBulkDelete = () => {
+      // Clear module-level cache
+      cachedThreads = [];
+      cachedHasMore = true;
+      cachedLastStreamingSnapshot = null;
+      // Reset local state and reload
+      setThreads([]);
+      setHasMore(true);
+      setAfter(undefined);
+      setLastStreamingSnapshot(null);
+      if (api) {
+        loadThreads(true, false);
+      }
+    };
+
+    window.addEventListener("conversations-deleted", handleBulkDelete);
+    return () => window.removeEventListener("conversations-deleted", handleBulkDelete);
+  }, [api, loadThreads, setLastStreamingSnapshot]);
+
   // Keep a ref to the latest snapshot for use after loadThreads completes
   const latestSnapshotRef = useRef<Thread | null>(null);
   latestSnapshotRef.current = activeThreadSnapshot ?? null;
