@@ -26,7 +26,7 @@ export default function WorkflowGenerationModal() {
   } = useModalContext();
 
   const { selectedWorkflowId } = useWorkflowContext();
-  const { setNodes, setEdges, addHistoryEntry, nodes: currentNodes, edges: currentEdges } = useGraphContext();
+  const { setNodes, setEdges } = useGraphContext();
 
   const [userMessage, setUserMessage] = useState("");
   const [selectedPromptId, setSelectedPromptId] = useState<number | null>(null);
@@ -84,12 +84,6 @@ export default function WorkflowGenerationModal() {
     if (!taskStatus) return;
 
     if (taskStatus.status === "completed" && taskStatus.result_json) {
-      // Store previous state for undo
-      addHistoryEntry({
-        nodes: currentNodes,
-        edges: currentEdges,
-      });
-
       // Transform nodes and edges from API format to flow format
       const { nodes: newNodes, edges: newEdges } = taskStatus.result_json as {
         nodes: ApiWorkflowNode[];
@@ -144,7 +138,7 @@ export default function WorkflowGenerationModal() {
       setIsGenerating(false);
       setGenerationTaskId(null);
     }
-  }, [taskStatus, setNodes, setEdges, addHistoryEntry, currentNodes, currentEdges, setIsGenerating, setGenerationTaskId, setGenerationError, closeGenerationModal]);
+  }, [taskStatus, setNodes, setEdges, setIsGenerating, setGenerationTaskId, setGenerationError, closeGenerationModal]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
