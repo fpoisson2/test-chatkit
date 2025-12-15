@@ -169,6 +169,7 @@ export type {
   ProgressUpdateEvent,
   NoticeEvent,
   ErrorEvent,
+  AwaitingActionEvent,
   ThreadItemCreatedEvent,
   ThreadItemDeltaEvent,
   ThreadItemCompletedEvent,

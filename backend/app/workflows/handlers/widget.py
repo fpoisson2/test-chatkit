@@ -68,6 +68,11 @@ class WidgetNodeHandler(BaseNodeHandler):
             if on_widget_step is not None and _should_wait_for_widget_action(
                 node.kind, widget_config
             ):
+                # Emit awaiting_action event to signal the frontend that we're waiting for user input
+                if emit_stream_event is not None:
+                    from chatkit.types import AwaitingActionEvent
+                    await emit_stream_event(AwaitingActionEvent(reason="widget"))
+
                 result = await on_widget_step(node, widget_config)
                 if result is not None:
                     action_payload = dict(result)

@@ -358,6 +358,14 @@ class NoticeEvent(BaseModel):
     title: str | None = None
 
 
+class AwaitingActionEvent(BaseModel):
+    """Event indicating the workflow is waiting for user action (e.g., widget input)."""
+
+    type: Literal["awaiting_action"] = "awaiting_action"
+    reason: Literal["widget"] = "widget"
+    """The reason for waiting - currently only 'widget' is supported."""
+
+
 ThreadStreamEvent = Annotated[
     ThreadCreatedEvent
     | ThreadUpdatedEvent
@@ -368,7 +376,8 @@ ThreadStreamEvent = Annotated[
     | ThreadItemReplacedEvent
     | ProgressUpdateEvent
     | ErrorEvent
-    | NoticeEvent,
+    | NoticeEvent
+    | AwaitingActionEvent,
     Field(discriminator="type"),
 ]
 """Union of all streaming events emitted to clients."""
