@@ -3,26 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth";
 import { Modal } from "../components/Modal";
 import { FeedbackMessages, FormField, FormSection } from "../components";
-import { chatkitApi } from "../utils/backend";
+import {
+  workflowGenerationPromptsApi,
+  type WorkflowGenerationPrompt,
+} from "../utils/backend";
 import { useI18n } from "../i18n";
 
 import styles from "./AdminModelProvidersPage.module.css";
-
-interface WorkflowGenerationPrompt {
-  id: number;
-  name: string;
-  description: string | null;
-  model: string;
-  provider_id: string | null;
-  provider_slug: string | null;
-  developer_message: string;
-  reasoning_effort: string;
-  verbosity: string;
-  is_default: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
 
 interface PromptFormData {
   name: string;
@@ -51,7 +38,7 @@ const defaultFormData: PromptFormData = {
 };
 
 export const AdminWorkflowGenerationPage = () => {
-  const { token, logout } = useAuth();
+  const { token } = useAuth();
   const { t } = useI18n();
   const queryClient = useQueryClient();
 
@@ -63,33 +50,25 @@ export const AdminWorkflowGenerationPage = () => {
   // Fetch prompts
   const { data: prompts = [], isLoading } = useQuery({
     queryKey: ["workflow-generation-prompts-admin"],
-    queryFn: async () => {
-      const response = await chatkitApi.get<WorkflowGenerationPrompt[]>(
-        "/api/admin/workflow-generation-prompts"
-      );
-      return response;
-    },
+    queryFn: () => workflowGenerationPromptsApi.list(token),
     enabled: Boolean(token),
   });
 
   // Create mutation
   const createMutation = useMutation({
     mutationFn: async (data: PromptFormData) => {
-      return chatkitApi.post<WorkflowGenerationPrompt>(
-        "/api/admin/workflow-generation-prompts",
-        {
-          name: data.name,
-          description: data.description || null,
-          model: data.model,
-          provider_id: data.provider_id || null,
-          provider_slug: data.provider_slug || null,
-          developer_message: data.developer_message,
-          reasoning_effort: data.reasoning_effort,
-          verbosity: data.verbosity,
-          is_default: data.is_default,
-          is_active: data.is_active,
-        }
-      );
+      return workflowGenerationPromptsApi.create(token, {
+        name: data.name,
+        description: data.description || null,
+        model: data.model,
+        provider_id: data.provider_id || null,
+        provider_slug: data.provider_slug || null,
+        developer_message: data.developer_message,
+        reasoning_effort: data.reasoning_effort,
+        verbosity: data.verbosity,
+        is_default: data.is_default,
+        is_active: data.is_active,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workflow-generation-prompts-admin"] });
@@ -105,21 +84,18 @@ export const AdminWorkflowGenerationPage = () => {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: PromptFormData }) => {
-      return chatkitApi.patch<WorkflowGenerationPrompt>(
-        `/api/admin/workflow-generation-prompts/${id}`,
-        {
-          name: data.name,
-          description: data.description || null,
-          model: data.model,
-          provider_id: data.provider_id || null,
-          provider_slug: data.provider_slug || null,
-          developer_message: data.developer_message,
-          reasoning_effort: data.reasoning_effort,
-          verbosity: data.verbosity,
-          is_default: data.is_default,
-          is_active: data.is_active,
-        }
-      );
+      return workflowGenerationPromptsApi.update(token, id, {
+        name: data.name,
+        description: data.description || null,
+        model: data.model,
+        provider_id: data.provider_id || null,
+        provider_slug: data.provider_slug || null,
+        developer_message: data.developer_message,
+        reasoning_effort: data.reasoning_effort,
+        verbosity: data.verbosity,
+        is_default: data.is_default,
+        is_active: data.is_active,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workflow-generation-prompts-admin"] });
@@ -135,7 +111,7 @@ export const AdminWorkflowGenerationPage = () => {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await chatkitApi.delete(`/api/admin/workflow-generation-prompts/${id}`);
+      await workflowGenerationPromptsApi.delete(token, id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workflow-generation-prompts-admin"] });

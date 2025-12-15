@@ -2075,3 +2075,79 @@ export const cleanupApi = {
     return response.json();
   },
 };
+
+// ============================================================================
+// Workflow Generation Prompts API
+// ============================================================================
+
+export type WorkflowGenerationPrompt = {
+  id: number;
+  name: string;
+  description: string | null;
+  model: string;
+  provider_id: string | null;
+  provider_slug: string | null;
+  developer_message: string;
+  reasoning_effort: string;
+  verbosity: string;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowGenerationPromptPayload = {
+  name: string;
+  description?: string | null;
+  model: string;
+  provider_id?: string | null;
+  provider_slug?: string | null;
+  developer_message: string;
+  reasoning_effort?: string;
+  verbosity?: string;
+  is_default?: boolean;
+  is_active?: boolean;
+};
+
+export type WorkflowGenerationPromptUpdatePayload = Partial<WorkflowGenerationPromptPayload>;
+
+export const workflowGenerationPromptsApi = {
+  async list(token: string | null): Promise<WorkflowGenerationPrompt[]> {
+    const response = await requestWithFallback("/api/admin/workflow-generation-prompts", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async create(
+    token: string | null,
+    payload: WorkflowGenerationPromptPayload,
+  ): Promise<WorkflowGenerationPrompt> {
+    const response = await requestWithFallback("/api/admin/workflow-generation-prompts", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    id: number,
+    payload: WorkflowGenerationPromptUpdatePayload,
+  ): Promise<WorkflowGenerationPrompt> {
+    const response = await requestWithFallback(`/api/admin/workflow-generation-prompts/${id}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, id: number): Promise<void> {
+    await requestWithFallback(`/api/admin/workflow-generation-prompts/${id}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+};
