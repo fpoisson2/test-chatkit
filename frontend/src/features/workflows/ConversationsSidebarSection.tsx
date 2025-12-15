@@ -210,8 +210,9 @@ export function ConversationsSidebarSection({
         let updatedThreads = (isInitial || isRefresh) ? newThreads : [...currentThreads, ...newThreads];
 
         // Apply latest snapshot if available (to preserve title updates that arrived during load)
+        // But skip if we just did a bulk delete - the snapshot thread no longer exists
         const snapshot = latestSnapshotRef.current;
-        if (snapshot?.id) {
+        if (snapshot?.id && !postBulkDeleteRef.current) {
           const snapshotIndex = updatedThreads.findIndex((t) => t.id === snapshot.id);
           if (snapshotIndex !== -1) {
             // Update existing thread with snapshot data
