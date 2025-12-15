@@ -180,6 +180,13 @@ export interface ErrorEvent extends ThreadStreamEventBase {
   allow_retry?: boolean;
 }
 
+// ===== Événement d'attente d'action =====
+
+export interface AwaitingActionEvent extends ThreadStreamEventBase {
+  type: 'awaiting_action';
+  reason: 'widget';
+}
+
 // ===== LEGACY: événements conservés pour compatibilité mais deprecated =====
 
 export interface ThreadItemCreatedEvent extends ThreadStreamEventBase {
@@ -221,6 +228,7 @@ export type ThreadStreamEvent =
   | ProgressUpdateEvent
   | ErrorEvent
   | NoticeEvent
+  | AwaitingActionEvent
   // Legacy events (conservés pour compatibilité)
   | ThreadItemCreatedEvent
   | ThreadItemDeltaEvent

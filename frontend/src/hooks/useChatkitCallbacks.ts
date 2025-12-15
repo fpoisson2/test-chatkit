@@ -152,9 +152,24 @@ export function useChatkitCallbacks({
           const metadata = thread.metadata as Record<string, unknown> | undefined;
           setCurrentThread(thread);
         }
+        // Handle awaiting_action event to stop spinner when waiting for widget input
+        if ("event" in data && data.event) {
+          const event = data.event as Record<string, unknown>;
+          if (event.type === "awaiting_action") {
+            // Get the thread ID from the last snapshot or current thread
+            const threadId = (lastThreadSnapshotRef.current?.id as string | undefined);
+            if (threadId) {
+              setStreamingThreadIds((prev) => {
+                const next = new Set(prev);
+                next.delete(threadId);
+                return next;
+              });
+            }
+          }
+        }
       }
     },
-    [lastThreadSnapshotRef, setCurrentThread],
+    [lastThreadSnapshotRef, setCurrentThread, setStreamingThreadIds],
   );
 
   const onError = useCallback(
