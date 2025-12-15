@@ -180,6 +180,10 @@
   border-radius: 50%;
   animation: conversations-spin 0.8s linear infinite;
   flex-shrink: 0;
+  position: absolute;
+  top: 50%;
+  right: 32px;
+  transform: translateY(-50%);
 }
 
 
