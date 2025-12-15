@@ -23,6 +23,7 @@ interface WorkflowBuilderHeaderProps {
   onTriggerImport: () => void;
   onExportWorkflow: () => void | Promise<void>;
   onOpenDeployModal: () => void;
+  onOpenGenerationModal: () => void;
 
   // Render props pour description et publication reminder
   renderWorkflowDescription: (className?: string) => React.ReactNode;
@@ -54,6 +55,7 @@ export default function WorkflowBuilderHeader({
   onTriggerImport,
   onExportWorkflow,
   onOpenDeployModal,
+  onOpenGenerationModal,
   renderWorkflowDescription,
   renderWorkflowPublicationReminder,
   isMobileActionsOpen,
@@ -78,6 +80,7 @@ export default function WorkflowBuilderHeader({
 
   const {
     isDeploying,
+    isGenerating,
   } = useModalContext();
 
   // selectedWorkflowId vient de selectedWorkflow
@@ -89,6 +92,8 @@ export default function WorkflowBuilderHeader({
     loading || !selectedWorkflowId || !selectedVersionId || isExporting;
   const deployDisabled =
     loading || !selectedWorkflowId || versions.length === 0 || isDeploying;
+  const generateDisabled =
+    loading || !selectedWorkflowId || !selectedVersionId || isGenerating;
 
   // Labels dynamiques
   const importLabel = isImporting
@@ -123,6 +128,7 @@ export default function WorkflowBuilderHeader({
       importDisabled={importDisabled}
       exportDisabled={exportDisabled}
       deployDisabled={deployDisabled}
+      generateDisabled={generateDisabled}
       importLabel={importLabel}
       exportLabel={exportLabel}
       onVersionChange={onVersionChange}
@@ -131,6 +137,7 @@ export default function WorkflowBuilderHeader({
       onTriggerImport={onTriggerImport}
       onExportWorkflow={onExportWorkflow}
       onOpenDeployModal={onOpenDeployModal}
+      onOpenGenerationModal={onOpenGenerationModal}
       mobileActionsTriggerRef={mobileActionsTriggerRef}
       mobileActionsMenuRef={mobileActionsMenuRef}
       isMobileActionsOpen={isMobileActionsOpen}

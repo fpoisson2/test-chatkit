@@ -296,6 +296,15 @@ const WorkflowBuilderPage = () => {
     closeDeployModal: handleCloseDeployModal,
     isAppearanceModalOpen,
     closeAppearanceModal: handleCloseAppearanceModal,
+    isGenerationModalOpen,
+    openGenerationModal,
+    closeGenerationModal: handleCloseGenerationModal,
+    isGenerating,
+    setIsGenerating,
+    setGenerationTaskId,
+    setGenerationError,
+    generationTaskId,
+    generationError,
   } = useModalContext();
 
   const {
@@ -841,6 +850,7 @@ const WorkflowBuilderPage = () => {
         onTriggerImport={handleTriggerImport}
         onExportWorkflow={handleExportWorkflow}
         onOpenDeployModal={handleOpenDeployModalWithSetup}
+        onOpenGenerationModal={openGenerationModal}
         renderWorkflowDescription={renderWorkflowDescription}
         renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
         isMobileActionsOpen={isMobileActionsOpen}

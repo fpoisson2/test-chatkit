@@ -2103,3 +2103,340 @@ async def factory_reset(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Factory reset failed",
         ) from exc
+
+
+# ============================================================================
+# Workflow Generation Prompts Endpoints
+# ============================================================================
+
+
+class WorkflowGenerationPromptResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    model: str
+    provider_id: str | None
+    provider_slug: str | None
+    developer_message: str
+    reasoning_effort: str
+    verbosity: str
+    is_default: bool
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+class WorkflowGenerationPromptCreateRequest(BaseModel):
+    name: str
+    description: str | None = None
+    model: str
+    provider_id: str | None = None
+    provider_slug: str | None = None
+    developer_message: str
+    reasoning_effort: str = "medium"
+    verbosity: str = "medium"
+    is_default: bool = False
+    is_active: bool = True
+
+
+class WorkflowGenerationPromptUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    model: str | None = None
+    provider_id: str | None = None
+    provider_slug: str | None = None
+    developer_message: str | None = None
+    reasoning_effort: str | None = None
+    verbosity: str | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
+
+
+class WorkflowGenerationTaskResponse(BaseModel):
+    task_id: str
+    workflow_id: int
+    version_id: int | None
+    prompt_id: int | None
+    user_message: str
+    status: str
+    progress: int
+    error_message: str | None
+    result_json: dict | None
+    created_at: str
+    completed_at: str | None
+
+
+class WorkflowGenerateRequest(BaseModel):
+    prompt_id: int | None = None
+    user_message: str
+
+
+@router.get(
+    "/api/admin/workflow-generation-prompts",
+    response_model=list[WorkflowGenerationPromptResponse],
+)
+async def list_workflow_generation_prompts(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Liste tous les prompts de génération de workflows."""
+    from ..models import WorkflowGenerationPrompt
+
+    prompts = session.scalars(
+        select(WorkflowGenerationPrompt).order_by(
+            WorkflowGenerationPrompt.is_default.desc(),
+            WorkflowGenerationPrompt.name.asc(),
+        )
+    ).all()
+
+    return [
+        WorkflowGenerationPromptResponse(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            model=p.model,
+            provider_id=p.provider_id,
+            provider_slug=p.provider_slug,
+            developer_message=p.developer_message,
+            reasoning_effort=p.reasoning_effort,
+            verbosity=p.verbosity,
+            is_default=p.is_default,
+            is_active=p.is_active,
+            created_at=p.created_at.isoformat(),
+            updated_at=p.updated_at.isoformat(),
+        )
+        for p in prompts
+    ]
+
+
+@router.post(
+    "/api/admin/workflow-generation-prompts",
+    response_model=WorkflowGenerationPromptResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_workflow_generation_prompt(
+    payload: WorkflowGenerationPromptCreateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Crée un nouveau prompt de génération de workflows."""
+    from ..models import WorkflowGenerationPrompt
+
+    # Vérifier l'unicité du nom
+    existing = session.scalar(
+        select(WorkflowGenerationPrompt).where(
+            WorkflowGenerationPrompt.name == payload.name
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un prompt avec ce nom existe déjà",
+        )
+
+    # Si is_default est True, désactiver les autres prompts par défaut
+    if payload.is_default:
+        existing_defaults = session.scalars(
+            select(WorkflowGenerationPrompt).where(
+                WorkflowGenerationPrompt.is_default
+            )
+        ).all()
+        for prompt in existing_defaults:
+            prompt.is_default = False
+            session.add(prompt)
+
+    prompt = WorkflowGenerationPrompt(
+        name=payload.name,
+        description=payload.description,
+        model=payload.model,
+        provider_id=payload.provider_id,
+        provider_slug=payload.provider_slug,
+        developer_message=payload.developer_message,
+        reasoning_effort=payload.reasoning_effort,
+        verbosity=payload.verbosity,
+        is_default=payload.is_default,
+        is_active=payload.is_active,
+    )
+    session.add(prompt)
+    session.commit()
+    session.refresh(prompt)
+
+    return WorkflowGenerationPromptResponse(
+        id=prompt.id,
+        name=prompt.name,
+        description=prompt.description,
+        model=prompt.model,
+        provider_id=prompt.provider_id,
+        provider_slug=prompt.provider_slug,
+        developer_message=prompt.developer_message,
+        reasoning_effort=prompt.reasoning_effort,
+        verbosity=prompt.verbosity,
+        is_default=prompt.is_default,
+        is_active=prompt.is_active,
+        created_at=prompt.created_at.isoformat(),
+        updated_at=prompt.updated_at.isoformat(),
+    )
+
+
+@router.get(
+    "/api/admin/workflow-generation-prompts/{prompt_id}",
+    response_model=WorkflowGenerationPromptResponse,
+)
+async def get_workflow_generation_prompt(
+    prompt_id: int,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Récupère un prompt de génération de workflows."""
+    from ..models import WorkflowGenerationPrompt
+
+    prompt = session.get(WorkflowGenerationPrompt, prompt_id)
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt introuvable",
+        )
+
+    return WorkflowGenerationPromptResponse(
+        id=prompt.id,
+        name=prompt.name,
+        description=prompt.description,
+        model=prompt.model,
+        provider_id=prompt.provider_id,
+        provider_slug=prompt.provider_slug,
+        developer_message=prompt.developer_message,
+        reasoning_effort=prompt.reasoning_effort,
+        verbosity=prompt.verbosity,
+        is_default=prompt.is_default,
+        is_active=prompt.is_active,
+        created_at=prompt.created_at.isoformat(),
+        updated_at=prompt.updated_at.isoformat(),
+    )
+
+
+@router.patch(
+    "/api/admin/workflow-generation-prompts/{prompt_id}",
+    response_model=WorkflowGenerationPromptResponse,
+)
+async def update_workflow_generation_prompt(
+    prompt_id: int,
+    payload: WorkflowGenerationPromptUpdateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Met à jour un prompt de génération de workflows."""
+    from ..models import WorkflowGenerationPrompt
+
+    prompt = session.get(WorkflowGenerationPrompt, prompt_id)
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt introuvable",
+        )
+
+    updated = False
+
+    if payload.name is not None and payload.name != prompt.name:
+        # Vérifier l'unicité du nouveau nom
+        existing = session.scalar(
+            select(WorkflowGenerationPrompt).where(
+                WorkflowGenerationPrompt.name == payload.name,
+                WorkflowGenerationPrompt.id != prompt_id,
+            )
+        )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Un prompt avec ce nom existe déjà",
+            )
+        prompt.name = payload.name
+        updated = True
+
+    if payload.description is not None:
+        prompt.description = payload.description
+        updated = True
+    if payload.model is not None:
+        prompt.model = payload.model
+        updated = True
+    if payload.provider_id is not None:
+        prompt.provider_id = payload.provider_id
+        updated = True
+    if payload.provider_slug is not None:
+        prompt.provider_slug = payload.provider_slug
+        updated = True
+    if payload.developer_message is not None:
+        prompt.developer_message = payload.developer_message
+        updated = True
+    if payload.reasoning_effort is not None:
+        prompt.reasoning_effort = payload.reasoning_effort
+        updated = True
+    if payload.verbosity is not None:
+        prompt.verbosity = payload.verbosity
+        updated = True
+    if payload.is_active is not None:
+        prompt.is_active = payload.is_active
+        updated = True
+
+    # Gérer is_default spécialement
+    if payload.is_default is True and not prompt.is_default:
+        existing_defaults = session.scalars(
+            select(WorkflowGenerationPrompt).where(
+                WorkflowGenerationPrompt.is_default,
+                WorkflowGenerationPrompt.id != prompt_id,
+            )
+        ).all()
+        for other in existing_defaults:
+            other.is_default = False
+            session.add(other)
+        prompt.is_default = True
+        updated = True
+    elif payload.is_default is False:
+        prompt.is_default = False
+        updated = True
+
+    if updated:
+        prompt.updated_at = datetime.datetime.now(datetime.UTC)
+        session.add(prompt)
+        session.commit()
+        session.refresh(prompt)
+
+    return WorkflowGenerationPromptResponse(
+        id=prompt.id,
+        name=prompt.name,
+        description=prompt.description,
+        model=prompt.model,
+        provider_id=prompt.provider_id,
+        provider_slug=prompt.provider_slug,
+        developer_message=prompt.developer_message,
+        reasoning_effort=prompt.reasoning_effort,
+        verbosity=prompt.verbosity,
+        is_default=prompt.is_default,
+        is_active=prompt.is_active,
+        created_at=prompt.created_at.isoformat(),
+        updated_at=prompt.updated_at.isoformat(),
+    )
+
+
+@router.delete(
+    "/api/admin/workflow-generation-prompts/{prompt_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_workflow_generation_prompt(
+    prompt_id: int,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Supprime un prompt de génération de workflows."""
+    from ..models import WorkflowGenerationPrompt
+
+    prompt = session.get(WorkflowGenerationPrompt, prompt_id)
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt introuvable",
+        )
+
+    session.delete(prompt)
+    session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

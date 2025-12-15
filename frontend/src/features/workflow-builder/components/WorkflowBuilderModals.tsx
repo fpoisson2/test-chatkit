@@ -4,6 +4,7 @@ import { useI18n } from "../../../i18n";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import DeployWorkflowModal from "./DeployWorkflowModal";
 import WorkflowAppearanceModal from "../../workflows/WorkflowAppearanceModal";
+import WorkflowGenerationModal from "./WorkflowGenerationModal";
 
 /**
  * Props for modals that require external handlers
@@ -112,6 +113,8 @@ export default function WorkflowBuilderModals({
         primaryActionLabel={deployModalPrimaryLabel}
         isPrimaryActionDisabled={isPrimaryActionDisabled}
       />
+
+      <WorkflowGenerationModal />
     </>
   );
 }

@@ -23,6 +23,7 @@ type WorkflowBuilderHeaderControlsProps = {
   importDisabled: boolean;
   exportDisabled: boolean;
   deployDisabled: boolean;
+  generateDisabled: boolean;
   importLabel: string;
   exportLabel: string;
   onVersionChange: (event: ChangeEvent<HTMLSelectElement>) => void;
@@ -31,6 +32,7 @@ type WorkflowBuilderHeaderControlsProps = {
   onTriggerImport: () => void;
   onExportWorkflow: () => void | Promise<void>;
   onOpenDeployModal: () => void;
+  onOpenGenerationModal: () => void;
   mobileActionsTriggerRef: MutableRefObject<HTMLButtonElement | null>;
   mobileActionsMenuRef: MutableRefObject<HTMLDivElement | null>;
   isMobileActionsOpen: boolean;
@@ -58,6 +60,7 @@ const WorkflowBuilderHeaderControls = ({
   importDisabled,
   exportDisabled,
   deployDisabled,
+  generateDisabled,
   importLabel,
   exportLabel,
   onVersionChange,
@@ -66,6 +69,7 @@ const WorkflowBuilderHeaderControls = ({
   onTriggerImport,
   onExportWorkflow,
   onOpenDeployModal,
+  onOpenGenerationModal,
   mobileActionsTriggerRef,
   mobileActionsMenuRef,
   isMobileActionsOpen,
@@ -209,6 +213,18 @@ const WorkflowBuilderHeaderControls = ({
                     type="button"
                     role="menuitem"
                     onClick={() => {
+                      onOpenGenerationModal();
+                      closeMobileActions();
+                    }}
+                    disabled={generateDisabled}
+                    style={getMobileActionButtonStyle({ disabled: generateDisabled })}
+                  >
+                    ✨ Générer
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
                       onTriggerImport();
                       closeMobileActions();
                     }}
@@ -257,6 +273,22 @@ const WorkflowBuilderHeaderControls = ({
     <>
       {versionSelect}
       <div style={getHeaderActionAreaStyle(false)}>
+        <button
+          type="button"
+          onClick={onOpenGenerationModal}
+          disabled={generateDisabled}
+          title="Générer un workflow avec l'IA"
+          style={{
+            ...getDeployButtonStyle(false, {
+              disabled: generateDisabled,
+            }),
+            fontSize: "1.125rem",
+            minWidth: "2.5rem",
+            padding: "0.5rem 0.75rem",
+          }}
+        >
+          ✨
+        </button>
         <button
           type="button"
           onClick={onTriggerImport}
