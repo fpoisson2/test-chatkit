@@ -863,3 +863,180 @@ async def update_share_permission(
     return WorkflowSharedUserResponse(
         id=target_user.id, email=target_user.email, permission=payload.permission
     )
+
+
+# ============================================================================
+# Workflow Generation Endpoints
+# ============================================================================
+
+
+from pydantic import BaseModel as PydanticBaseModel
+
+
+class WorkflowGenerateRequest(PydanticBaseModel):
+    prompt_id: int | None = None
+    user_message: str
+
+
+class WorkflowGenerationTaskResponse(PydanticBaseModel):
+    task_id: str
+    workflow_id: int
+    version_id: int | None
+    prompt_id: int | None
+    user_message: str
+    status: str
+    progress: int
+    error_message: str | None
+    result_json: dict | None
+    created_at: str
+    completed_at: str | None
+
+
+class WorkflowGenerationStartResponse(PydanticBaseModel):
+    task_id: str
+    status: str
+    message: str
+
+
+class WorkflowGenerationPromptSummary(PydanticBaseModel):
+    id: int
+    name: str
+    description: str | None
+    is_default: bool
+
+
+@router.get(
+    "/api/workflows/generation/prompts",
+    response_model=list[WorkflowGenerationPromptSummary],
+)
+async def list_active_generation_prompts(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> list[WorkflowGenerationPromptSummary]:
+    """Liste les prompts de génération actifs pour le sélecteur."""
+    from sqlalchemy import select
+    from ..models import WorkflowGenerationPrompt
+
+    _ensure_admin(current_user)
+
+    prompts = session.scalars(
+        select(WorkflowGenerationPrompt)
+        .where(WorkflowGenerationPrompt.is_active)
+        .order_by(
+            WorkflowGenerationPrompt.is_default.desc(),
+            WorkflowGenerationPrompt.name.asc(),
+        )
+    ).all()
+
+    return [
+        WorkflowGenerationPromptSummary(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            is_default=p.is_default,
+        )
+        for p in prompts
+    ]
+
+
+@router.post(
+    "/api/workflows/{workflow_id}/generate",
+    response_model=WorkflowGenerationStartResponse,
+)
+async def generate_workflow(
+    workflow_id: int,
+    payload: WorkflowGenerateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowGenerationStartResponse:
+    """Lance la génération d'un workflow via Celery."""
+    import uuid
+    from sqlalchemy import select
+    from ..models import Workflow, WorkflowGenerationTask
+    from ..tasks.workflow_generation import generate_workflow_task
+
+    _ensure_admin(current_user)
+
+    # Vérifier que le workflow existe
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow non trouvé",
+        )
+
+    # Déterminer la version cible
+    version_id = None
+    if workflow.versions:
+        # Utiliser la première version (brouillon) si elle existe
+        version_id = workflow.versions[0].id if workflow.versions else None
+
+    # Créer la tâche en BD
+    task_id = str(uuid.uuid4())
+    task = WorkflowGenerationTask(
+        task_id=task_id,
+        workflow_id=workflow_id,
+        version_id=version_id,
+        prompt_id=payload.prompt_id,
+        user_message=payload.user_message,
+        status="pending",
+        progress=0,
+    )
+    session.add(task)
+    session.commit()
+
+    # Lancer la tâche Celery
+    generate_workflow_task.delay(
+        task_id=task_id,
+        prompt_id=payload.prompt_id,
+        user_message=payload.user_message,
+        workflow_id=workflow_id,
+        version_id=version_id,
+    )
+
+    return WorkflowGenerationStartResponse(
+        task_id=task_id,
+        status="pending",
+        message="Génération du workflow lancée",
+    )
+
+
+@router.get(
+    "/api/workflows/generation/tasks/{task_id}",
+    response_model=WorkflowGenerationTaskResponse,
+)
+async def get_generation_task_status(
+    task_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowGenerationTaskResponse:
+    """Récupère le statut d'une tâche de génération."""
+    from sqlalchemy import select
+    from ..models import WorkflowGenerationTask
+
+    _ensure_admin(current_user)
+
+    task = session.scalar(
+        select(WorkflowGenerationTask).where(
+            WorkflowGenerationTask.task_id == task_id
+        )
+    )
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tâche non trouvée",
+        )
+
+    return WorkflowGenerationTaskResponse(
+        task_id=task.task_id,
+        workflow_id=task.workflow_id,
+        version_id=task.version_id,
+        prompt_id=task.prompt_id,
+        user_message=task.user_message,
+        status=task.status,
+        progress=task.progress,
+        error_message=task.error_message,
+        result_json=task.result_json,
+        created_at=task.created_at.isoformat(),
+        completed_at=task.completed_at.isoformat() if task.completed_at else None,
+    )

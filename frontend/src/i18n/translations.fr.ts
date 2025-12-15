@@ -29,6 +29,7 @@ export const fr: TranslationDictionary = {
   "admin.tabs.mcpServers": "Serveurs MCP",
   "admin.tabs.telephony": "Téléphonie",
   "admin.tabs.workflowMonitor": "Workflows en cours",
+  "admin.tabs.workflowGeneration": "Génération de workflows",
   "admin.tabs.browserTest": "Test navigateur",
   "admin.tabs.settings": "Paramètres généraux",
   "admin.tabs.appearance": "Apparence et thème",

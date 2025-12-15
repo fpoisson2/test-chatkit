@@ -1238,6 +1238,97 @@ class LanguageGenerationTask(Base):
     language: Mapped[Language | None] = relationship("Language")
 
 
+class WorkflowGenerationPrompt(Base):
+    """Configuration de prompt pour la génération de workflows.
+
+    Stocke les prompts système configurables par l'administrateur pour
+    la génération automatique de workflows via l'API OpenAI.
+    """
+
+    __tablename__ = "workflow_generation_prompts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    provider_slug: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    developer_message: Mapped[str] = mapped_column(Text, nullable=False)
+    reasoning_effort: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="medium"
+    )  # low, medium, high
+    verbosity: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="medium"
+    )  # low, medium, high
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
+class WorkflowGenerationTask(Base):
+    """Tâches de génération de workflows en background."""
+
+    __tablename__ = "workflow_generation_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_id: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    workflow_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    version_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("workflow_definitions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    prompt_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("workflow_generation_prompts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user_message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True
+    )  # pending, running, completed, failed
+    progress: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )  # 0-100
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_json: Mapped[dict[str, Any] | None] = mapped_column(
+        PortableJSONB(), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relations
+    workflow: Mapped[Workflow] = relationship("Workflow")
+    version: Mapped[WorkflowDefinition | None] = relationship("WorkflowDefinition")
+    prompt: Mapped[WorkflowGenerationPrompt | None] = relationship(
+        "WorkflowGenerationPrompt"
+    )
+
+
 Index("ix_json_documents_metadata", JsonDocument.metadata_json, postgresql_using="gin")
 Index("ix_json_chunks_metadata", JsonChunk.metadata_json, postgresql_using="gin")
 Index(
