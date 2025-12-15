@@ -135,6 +135,9 @@ def generate_workflow_task(
                     if provider_binding.credentials.api_key:
                         client_kwargs["api_key"] = provider_binding.credentials.api_key
 
+                logger.info(
+                    f"Task {task_id}: Creating OpenAI client with base_url={client_kwargs.get('base_url', 'default')}"
+                )
                 client = OpenAI(**client_kwargs)
 
                 # Étape 3: Appeler l'API
