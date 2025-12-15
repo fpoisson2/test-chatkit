@@ -115,7 +115,9 @@ export function ConversationsSidebarSection({
   const [newlyCreatedThreadIds, setNewlyCreatedThreadIds] = useState<Set<string>>(new Set());
 
   // Track if we just did a bulk delete (to ignore stale snapshots)
+  // Use both state (for re-render) and ref (for synchronous checks in effects)
   const [postBulkDelete, setPostBulkDelete] = useState(false);
+  const postBulkDeleteRef = useRef(false);
 
   // Track thread IDs that should show spinner (with delay to avoid flash)
   const [visibleSpinnerIds, setVisibleSpinnerIds] = useState<Set<string>>(new Set());
@@ -270,6 +272,8 @@ export function ConversationsSidebarSection({
       setAfter(undefined);
       setLastStreamingSnapshot(null);
       // Ignore stale snapshots from parent until a new conversation is created
+      // Set ref immediately (synchronous) for checks in other effects
+      postBulkDeleteRef.current = true;
       setPostBulkDelete(true);
       if (api) {
         loadThreads(true, false);
@@ -303,6 +307,7 @@ export function ConversationsSidebarSection({
   // This indicates a new conversation is being created after the bulk delete
   useEffect(() => {
     if (postBulkDelete && activeThreadSnapshot?.id && streamingThreadIds?.has(activeThreadSnapshot.id)) {
+      postBulkDeleteRef.current = false;
       setPostBulkDelete(false);
     }
   }, [postBulkDelete, activeThreadSnapshot?.id, streamingThreadIds]);
@@ -314,7 +319,8 @@ export function ConversationsSidebarSection({
     }
 
     // Don't sync stale snapshot after bulk delete - it no longer exists in backend
-    if (postBulkDelete) {
+    // Use ref for synchronous check (state may not be updated yet)
+    if (postBulkDeleteRef.current) {
       return;
     }
 
@@ -338,7 +344,8 @@ export function ConversationsSidebarSection({
       cachedThreads = nextThreads;
       return nextThreads;
     });
-  }, [activeThreadSnapshot, postBulkDelete]);
+    // Note: we use postBulkDeleteRef instead of postBulkDelete state for synchronous check
+  }, [activeThreadSnapshot]);
 
   // Auto-refresh when currentThreadId changes to a thread not in the list
   // This handles the case when a new conversation is created via ChatKit
