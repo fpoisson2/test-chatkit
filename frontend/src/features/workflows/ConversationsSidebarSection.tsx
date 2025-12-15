@@ -276,6 +276,9 @@ export function ConversationsSidebarSection({
       // Set ref immediately (synchronous) for checks in other effects
       postBulkDeleteRef.current = true;
       setPostBulkDelete(true);
+      // Use onNewConversation to fully reset state (clears workflow selection, prevents auto-start)
+      // This is better than onThreadDeleted which only clears the thread ID
+      onNewConversation?.();
       if (api) {
         loadThreads(true, false);
       }
@@ -283,7 +286,7 @@ export function ConversationsSidebarSection({
 
     window.addEventListener("conversations-deleted", handleBulkDelete);
     return () => window.removeEventListener("conversations-deleted", handleBulkDelete);
-  }, [api, loadThreads, setLastStreamingSnapshot]);
+  }, [api, loadThreads, setLastStreamingSnapshot, onNewConversation]);
 
   // Keep a ref to the latest snapshot for use after loadThreads completes
   const latestSnapshotRef = useRef<Thread | null>(null);
