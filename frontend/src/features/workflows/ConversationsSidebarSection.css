@@ -110,6 +110,9 @@
 .conversations-sidebar-section__thread-button:focus-visible {
   background: color-mix(in srgb, var(--color-text) 6%, transparent);
   outline: none;
+  /* Override global button hover animation that causes spinner bounce */
+  transform: none;
+  box-shadow: none;
 }
 
 .conversations-sidebar-section__thread-button--active {
@@ -178,12 +181,24 @@
   border: 2px solid var(--color-border);
   border-top-color: var(--primary-color);
   border-radius: 50%;
-  animation: conversations-spin 0.8s linear infinite;
+  animation: csss-thread-rotate 0.8s linear infinite !important;
   flex-shrink: 0;
   position: absolute;
   top: 50%;
   right: 32px;
-  transform: translateY(-50%);
+  margin-top: -7px;
+  /* Prevent any inherited transforms or transitions */
+  transform: none;
+  transition: none !important;
+}
+
+@keyframes csss-thread-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 
