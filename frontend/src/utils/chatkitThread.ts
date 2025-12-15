@@ -21,13 +21,24 @@ export const loadStoredThreadId = (
 
   const key = buildThreadKey(ownerId, workflowSlug);
   const raw = window.localStorage.getItem(key);
+
+  console.log("[DEBUG-CONV] loadStoredThreadId", {
+    ownerId,
+    workflowSlug,
+    key,
+    rawValue: raw,
+    timestamp: new Date().toISOString(),
+  });
+
   if (raw && raw.trim()) {
+    console.log("[DEBUG-CONV] loadStoredThreadId returning", { threadId: raw });
     return raw;
   }
 
   const legacyKey = buildLegacyThreadKey(ownerId);
   const legacyRaw = window.localStorage.getItem(legacyKey);
   if (legacyRaw && legacyRaw.trim()) {
+    console.log("[DEBUG-CONV] loadStoredThreadId returning legacy", { threadId: legacyRaw });
     try {
       window.localStorage.setItem(key, legacyRaw);
       window.localStorage.removeItem(legacyKey);
@@ -37,6 +48,7 @@ export const loadStoredThreadId = (
     return legacyRaw;
   }
 
+  console.log("[DEBUG-CONV] loadStoredThreadId returning null (no stored thread)");
   return null;
 };
 
@@ -50,7 +62,17 @@ export const persistStoredThreadId = (
   }
 
   const key = buildThreadKey(ownerId, workflowSlug);
+
+  console.log("[DEBUG-CONV] persistStoredThreadId", {
+    ownerId,
+    threadId,
+    workflowSlug,
+    key,
+    timestamp: new Date().toISOString(),
+  });
+
   if (!threadId) {
+    console.log("[DEBUG-CONV] persistStoredThreadId: removing (null threadId)");
     window.localStorage.removeItem(key);
     window.localStorage.removeItem(buildLegacyThreadKey(ownerId));
     return;
@@ -58,7 +80,9 @@ export const persistStoredThreadId = (
 
   try {
     window.localStorage.setItem(key, threadId);
+    console.log("[DEBUG-CONV] persistStoredThreadId: saved", { key, threadId });
   } catch (error) {
+    console.log("[DEBUG-CONV] persistStoredThreadId: error", { error });
     // Persist error ignored
   }
 };
@@ -68,6 +92,16 @@ export const clearStoredThreadId = (ownerId: string, workflowSlug?: string | nul
     return;
   }
   const key = buildThreadKey(ownerId, workflowSlug);
+
+  console.log("[DEBUG-CONV] clearStoredThreadId", {
+    ownerId,
+    workflowSlug,
+    key,
+    previousValue: window.localStorage.getItem(key),
+    timestamp: new Date().toISOString(),
+  });
+
   window.localStorage.removeItem(key);
   window.localStorage.removeItem(buildLegacyThreadKey(ownerId));
+  console.log("[DEBUG-CONV] clearStoredThreadId: completed");
 };

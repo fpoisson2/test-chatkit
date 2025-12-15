@@ -51,8 +51,23 @@ export function useChatkitCallbacks({
     ({ threadId, thread }: { threadId?: string | null; thread?: Record<string, unknown> }) => {
       // Use threadId if provided, otherwise extract from thread object
       const resolvedThreadId = threadId ?? (thread?.id as string | undefined) ?? null;
+
+      console.log("[DEBUG-CONV] onThreadChange called", {
+        threadId,
+        threadObjectId: thread?.id,
+        resolvedThreadId,
+        sessionOwner,
+        persistenceSlug,
+        workflowsCount,
+        isNewConversationDraftRef: isNewConversationDraftRef.current,
+        wasNewConversationStreamingRef: wasNewConversationStreamingRef.current,
+        timestamp: new Date().toISOString(),
+        stack: new Error().stack?.split("\n").slice(1, 5).join("\n"),
+      });
+
       // Check for null, undefined, or empty string
       if (!resolvedThreadId) {
+        console.log("[DEBUG-CONV] onThreadChange: No resolvedThreadId, clearing storage");
         clearStoredThreadId(sessionOwner, persistenceSlug);
         setInitialThreadId(null);
         // Reset workflow selection when creating new conversation with multiple workflows
@@ -62,9 +77,13 @@ export function useChatkitCallbacks({
           setChatInstanceKey((v) => v + 1);
         }
       } else {
+        console.log("[DEBUG-CONV] onThreadChange: Setting thread", { resolvedThreadId });
         isNewConversationDraftRef.current = false;
         persistStoredThreadId(sessionOwner, resolvedThreadId, persistenceSlug);
-        setInitialThreadId((current) => (current === resolvedThreadId ? current : resolvedThreadId));
+        setInitialThreadId((current) => {
+          console.log("[DEBUG-CONV] setInitialThreadId callback", { current, resolvedThreadId });
+          return current === resolvedThreadId ? current : resolvedThreadId;
+        });
 
         if (wasNewConversationStreamingRef.current) {
           setStreamingThreadIds((prev) => new Set(prev).add(resolvedThreadId));
@@ -75,6 +94,7 @@ export function useChatkitCallbacks({
         const currentPath = window.location.pathname;
         const newPath = `/c/${resolvedThreadId}`;
         if (currentPath !== newPath && !currentPath.includes(`/c/${resolvedThreadId}`)) {
+          console.log("[DEBUG-CONV] onThreadChange: Updating URL", { currentPath, newPath });
           window.history.replaceState(null, "", newPath);
         }
       }

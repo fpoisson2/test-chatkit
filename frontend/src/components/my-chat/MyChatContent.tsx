@@ -79,12 +79,31 @@ export function MyChatContent() {
 
   // Initialize initialThreadId from URL or storage on mount
   useEffect(() => {
+    console.log("[DEBUG-CONV] MyChatContent initialThreadId effect running", {
+      urlThreadId,
+      sessionOwner,
+      persistenceSlug,
+      currentInitialThreadId: initialThreadId,
+      isInitialMountRef: isInitialMountRef.current,
+      isNewConversationDraftRef: isNewConversationDraftRef.current,
+      timestamp: new Date().toISOString(),
+    });
+
     // Skip if not initial mount or if we're intentionally in draft mode (new conversation)
     if (!isInitialMountRef.current || isNewConversationDraftRef.current) {
+      console.log("[DEBUG-CONV] MyChatContent initialThreadId effect SKIPPED", {
+        reason: !isInitialMountRef.current ? "not initial mount" : "new conversation draft mode",
+      });
       return;
     }
     const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
+    console.log("[DEBUG-CONV] MyChatContent storedId resolved", {
+      storedId,
+      fromUrl: !!urlThreadId,
+      fromStorage: !urlThreadId && !!storedId,
+    });
     if (storedId && storedId !== initialThreadId) {
+      console.log("[DEBUG-CONV] MyChatContent SETTING initialThreadId", { storedId, previousInitialThreadId: initialThreadId });
       // Initial mount - update immediately, don't defer
       setInitialThreadId(storedId);
       // Mark as no longer initial mount only when we actually load a thread

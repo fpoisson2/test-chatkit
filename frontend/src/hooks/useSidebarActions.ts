@@ -42,6 +42,7 @@ export function useSidebarActions({
   // Get state, setters, and refs from context
   const { state, setters, refs } = useChatContext();
   const { currentThread, initialThreadId, workflowSelection } = state;
+
   const {
     setCurrentThread,
     setIsNewConversationStreaming,
@@ -56,6 +57,14 @@ export function useSidebarActions({
 
   const handleSidebarThreadSelect = useCallback(
     async (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
+      console.log("[DEBUG-CONV] handleSidebarThreadSelect called", {
+        threadId,
+        workflowMetadata,
+        currentThreadId: currentThread?.id,
+        initialThreadId,
+        timestamp: new Date().toISOString(),
+      });
+
       isNewConversationDraftRef.current = false;
 
       const currentWorkflowId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id : null;
@@ -90,6 +99,8 @@ export function useSidebarActions({
     [
       sessionOwner,
       persistenceSlug,
+      currentThread,
+      initialThreadId,
       workflowSelection,
       workflows,
       mode,
@@ -118,7 +129,18 @@ export function useSidebarActions({
   );
 
   const handleNewConversation = useCallback(() => {
+    console.log("[DEBUG-CONV] handleNewConversation called", {
+      sessionOwner,
+      persistenceSlug,
+      currentThreadId: currentThread?.id,
+      initialThreadId,
+      workflowsLength: workflows.length,
+      timestamp: new Date().toISOString(),
+    });
+
     clearStoredThreadId(sessionOwner, persistenceSlug);
+    console.log("[DEBUG-CONV] clearStoredThreadId completed");
+
     lastThreadSnapshotRef.current = null;
     setCurrentThread(null);
     setIsNewConversationStreaming(false);
@@ -126,16 +148,25 @@ export function useSidebarActions({
     isNewConversationDraftRef.current = true;
     setInitialThreadId(null);
     setChatInstanceKey((v) => v + 1);
+
+    console.log("[DEBUG-CONV] State reset completed", {
+      isNewConversationDraftRef: isNewConversationDraftRef.current,
+    });
+
     // Reset workflow selection when starting a new conversation with multiple workflows
     // This forces the user to choose a workflow before auto-start can trigger
     if (workflows.length > 1) {
       setManagedWorkflowSelection({ kind: "local", workflow: null });
       setSelectedWorkflowId(null);
+      console.log("[DEBUG-CONV] Workflow selection reset (multiple workflows)");
     }
     navigate("/", { replace: true });
+    console.log("[DEBUG-CONV] Navigation to / completed");
   }, [
     sessionOwner,
     persistenceSlug,
+    currentThread,
+    initialThreadId,
     navigate,
     workflows.length,
     lastThreadSnapshotRef,
