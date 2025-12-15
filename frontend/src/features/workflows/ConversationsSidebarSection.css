@@ -179,14 +179,17 @@
   transform: translateY(-50%);
   animation: conversations-spinner-delay 0.25s ease-out forwards;
   opacity: 0;
+  visibility: hidden;
 }
 
 @keyframes conversations-spinner-delay {
   0%, 80% {
     opacity: 0;
+    visibility: hidden;
   }
   100% {
     opacity: 1;
+    visibility: visible;
   }
 }
 
