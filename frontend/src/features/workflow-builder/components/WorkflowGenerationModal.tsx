@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Modal } from "../../../components/Modal";
 import { useModalContext } from "../contexts/ModalContext";
 import { useWorkflowContext } from "../contexts/WorkflowContext";
 import { useGraphContext } from "../contexts/GraphContext";
 import { chatkitApi } from "../../../utils/backend";
-import styles from "../WorkflowBuilderPage.module.css";
 import type { ApiWorkflowNode, ApiWorkflowEdge } from "../types";
 
 interface GenerationPromptSummary {
@@ -194,236 +193,176 @@ export default function WorkflowGenerationModal() {
     }
   }, [isGenerating, closeGenerationModal, setGenerationError]);
 
+  if (!isGenerationModalOpen) {
+    return null;
+  }
+
   return (
-    <Dialog.Root open={isGenerationModalOpen} onOpenChange={(open) => !open && handleClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className={styles.modalOverlay} />
-        <Dialog.Content className={styles.modalContent}>
-          <Dialog.Title className={styles.modalTitle}>
-            Générer un workflow avec l'IA
-          </Dialog.Title>
-          <Dialog.Description className={styles.modalDescription}>
-            Décrivez le workflow que vous souhaitez créer et l'IA le générera pour vous.
-          </Dialog.Description>
+    <Modal
+      title="Générer un workflow avec l'IA"
+      onClose={handleClose}
+      size="lg"
+      footer={
+        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handleClose}
+            disabled={isGenerating}
+          >
+            Annuler
+          </button>
+          <button
+            type="submit"
+            form="generation-form"
+            className="btn btn-primary"
+            disabled={
+              !userMessage.trim() ||
+              !selectedPromptId ||
+              isGenerating ||
+              !prompts?.length
+            }
+          >
+            {isGenerating ? "Génération..." : "Générer"}
+          </button>
+        </div>
+      }
+    >
+      <form id="generation-form" onSubmit={handleSubmit}>
+        <p style={{ marginBottom: "1rem", color: "#6b7280", fontSize: "0.875rem" }}>
+          Décrivez le workflow que vous souhaitez créer et l'IA le générera pour vous.
+        </p>
 
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: "1rem" }}>
-              <label
-                htmlFor="generation-prompt-select"
+        <div style={{ marginBottom: "1rem" }}>
+          <label
+            htmlFor="generation-prompt-select"
+            style={{
+              display: "block",
+              marginBottom: "0.5rem",
+              fontWeight: 500,
+              fontSize: "0.875rem",
+            }}
+          >
+            Type de génération
+          </label>
+          <select
+            id="generation-prompt-select"
+            className="form-select"
+            value={selectedPromptId ?? ""}
+            onChange={(e) => setSelectedPromptId(Number(e.target.value))}
+            disabled={isLoadingPrompts || isGenerating}
+            style={{ width: "100%" }}
+          >
+            {isLoadingPrompts ? (
+              <option>Chargement...</option>
+            ) : prompts && prompts.length > 0 ? (
+              prompts.map((prompt) => (
+                <option key={prompt.id} value={prompt.id}>
+                  {prompt.name}
+                  {prompt.is_default ? " (par défaut)" : ""}
+                </option>
+              ))
+            ) : (
+              <option value="">Aucun prompt configuré</option>
+            )}
+          </select>
+          {prompts && selectedPromptId && (
+            <p style={{ marginTop: "0.25rem", fontSize: "0.75rem", color: "#6b7280" }}>
+              {prompts.find((p) => p.id === selectedPromptId)?.description}
+            </p>
+          )}
+        </div>
+
+        <div style={{ marginBottom: "1rem" }}>
+          <label
+            htmlFor="generation-user-message"
+            style={{
+              display: "block",
+              marginBottom: "0.5rem",
+              fontWeight: 500,
+              fontSize: "0.875rem",
+            }}
+          >
+            Décrivez votre workflow
+          </label>
+          <textarea
+            id="generation-user-message"
+            className="form-textarea"
+            value={userMessage}
+            onChange={(e) => setUserMessage(e.target.value)}
+            placeholder="Exemple: Crée un workflow pédagogique pour enseigner les bases de Python avec des questions à choix multiples et des exercices pratiques..."
+            disabled={isGenerating}
+            rows={6}
+            style={{
+              width: "100%",
+              resize: "vertical",
+            }}
+          />
+        </div>
+
+        {generationError && (
+          <div
+            style={{
+              marginBottom: "1rem",
+              padding: "0.75rem",
+              backgroundColor: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: "0.375rem",
+              color: "#dc2626",
+              fontSize: "0.875rem",
+            }}
+          >
+            {generationError}
+          </div>
+        )}
+
+        {isGenerating && taskStatus && (
+          <div
+            style={{
+              marginBottom: "1rem",
+              padding: "0.75rem",
+              backgroundColor: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              borderRadius: "0.375rem",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <div
+                className="spinner"
                 style={{
-                  display: "block",
-                  marginBottom: "0.5rem",
-                  fontWeight: 500,
-                  fontSize: "0.875rem",
+                  width: "1rem",
+                  height: "1rem",
+                  border: "2px solid #3b82f6",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite",
                 }}
-              >
-                Type de génération
-              </label>
-              <select
-                id="generation-prompt-select"
-                value={selectedPromptId ?? ""}
-                onChange={(e) => setSelectedPromptId(Number(e.target.value))}
-                disabled={isLoadingPrompts || isGenerating}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  borderRadius: "0.375rem",
-                  border: "1px solid var(--color-border, #e5e7eb)",
-                  fontSize: "0.875rem",
-                }}
-              >
-                {isLoadingPrompts ? (
-                  <option>Chargement...</option>
-                ) : prompts && prompts.length > 0 ? (
-                  prompts.map((prompt) => (
-                    <option key={prompt.id} value={prompt.id}>
-                      {prompt.name}
-                      {prompt.is_default ? " (par défaut)" : ""}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">Aucun prompt configuré</option>
-                )}
-              </select>
-              {prompts && selectedPromptId && (
-                <p style={{ marginTop: "0.25rem", fontSize: "0.75rem", color: "#6b7280" }}>
-                  {prompts.find((p) => p.id === selectedPromptId)?.description}
-                </p>
-              )}
+              />
+              <span style={{ fontSize: "0.875rem", color: "#1d4ed8" }}>
+                Génération en cours... {taskStatus.progress}%
+              </span>
             </div>
-
-            <div style={{ marginBottom: "1rem" }}>
-              <label
-                htmlFor="generation-user-message"
+            <div
+              style={{
+                marginTop: "0.5rem",
+                height: "0.5rem",
+                backgroundColor: "#dbeafe",
+                borderRadius: "0.25rem",
+                overflow: "hidden",
+              }}
+            >
+              <div
                 style={{
-                  display: "block",
-                  marginBottom: "0.5rem",
-                  fontWeight: 500,
-                  fontSize: "0.875rem",
-                }}
-              >
-                Décrivez votre workflow
-              </label>
-              <textarea
-                id="generation-user-message"
-                value={userMessage}
-                onChange={(e) => setUserMessage(e.target.value)}
-                placeholder="Exemple: Crée un workflow pédagogique pour enseigner les bases de Python avec des questions à choix multiples et des exercices pratiques..."
-                disabled={isGenerating}
-                rows={6}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  borderRadius: "0.375rem",
-                  border: "1px solid var(--color-border, #e5e7eb)",
-                  fontSize: "0.875rem",
-                  resize: "vertical",
-                  fontFamily: "inherit",
+                  width: `${taskStatus.progress}%`,
+                  height: "100%",
+                  backgroundColor: "#3b82f6",
+                  transition: "width 0.3s ease",
                 }}
               />
             </div>
-
-            {generationError && (
-              <div
-                style={{
-                  marginBottom: "1rem",
-                  padding: "0.75rem",
-                  backgroundColor: "#fef2f2",
-                  border: "1px solid #fecaca",
-                  borderRadius: "0.375rem",
-                  color: "#dc2626",
-                  fontSize: "0.875rem",
-                }}
-              >
-                {generationError}
-              </div>
-            )}
-
-            {isGenerating && taskStatus && (
-              <div
-                style={{
-                  marginBottom: "1rem",
-                  padding: "0.75rem",
-                  backgroundColor: "#eff6ff",
-                  border: "1px solid #bfdbfe",
-                  borderRadius: "0.375rem",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <div
-                    style={{
-                      width: "1rem",
-                      height: "1rem",
-                      border: "2px solid #3b82f6",
-                      borderTopColor: "transparent",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  />
-                  <span style={{ fontSize: "0.875rem", color: "#1d4ed8" }}>
-                    Génération en cours... {taskStatus.progress}%
-                  </span>
-                </div>
-                <div
-                  style={{
-                    marginTop: "0.5rem",
-                    height: "0.5rem",
-                    backgroundColor: "#dbeafe",
-                    borderRadius: "0.25rem",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${taskStatus.progress}%`,
-                      height: "100%",
-                      backgroundColor: "#3b82f6",
-                      transition: "width 0.3s ease",
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={handleClose}
-                disabled={isGenerating}
-                style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
-                  border: "1px solid var(--color-border, #e5e7eb)",
-                  backgroundColor: "white",
-                  cursor: isGenerating ? "not-allowed" : "pointer",
-                  opacity: isGenerating ? 0.5 : 1,
-                }}
-              >
-                Annuler
-              </button>
-              <button
-                type="submit"
-                disabled={
-                  !userMessage.trim() ||
-                  !selectedPromptId ||
-                  isGenerating ||
-                  !prompts?.length
-                }
-                style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
-                  border: "none",
-                  backgroundColor: "#3b82f6",
-                  color: "white",
-                  cursor:
-                    !userMessage.trim() || !selectedPromptId || isGenerating || !prompts?.length
-                      ? "not-allowed"
-                      : "pointer",
-                  opacity:
-                    !userMessage.trim() || !selectedPromptId || isGenerating || !prompts?.length
-                      ? 0.5
-                      : 1,
-                }}
-              >
-                {isGenerating ? "Génération..." : "Générer"}
-              </button>
-            </div>
-          </form>
-
-          <Dialog.Close asChild>
-            <button
-              type="button"
-              aria-label="Fermer"
-              onClick={handleClose}
-              disabled={isGenerating}
-              style={{
-                position: "absolute",
-                top: "1rem",
-                right: "1rem",
-                background: "none",
-                border: "none",
-                cursor: isGenerating ? "not-allowed" : "pointer",
-                padding: "0.25rem",
-                opacity: isGenerating ? 0.5 : 1,
-              }}
-            >
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </Dialog.Close>
-        </Dialog.Content>
-      </Dialog.Portal>
+          </div>
+        )}
+      </form>
 
       <style>{`
         @keyframes spin {
@@ -435,6 +374,6 @@ export default function WorkflowGenerationModal() {
           }
         }
       `}</style>
-    </Dialog.Root>
+    </Modal>
   );
 }
