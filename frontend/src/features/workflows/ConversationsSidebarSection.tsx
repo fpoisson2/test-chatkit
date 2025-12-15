@@ -555,7 +555,9 @@ export function ConversationsSidebarSection({
                     </span>
                   </button>
                   {isStreaming && (
-                    <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
+                    <span className="conversations-sidebar-section__thread-spinner-wrapper">
+                      <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
+                    </span>
                   )}
                   <button
                     type="button"
