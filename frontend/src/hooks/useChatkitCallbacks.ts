@@ -21,6 +21,7 @@ export type ChatkitCallbacks = {
   onError: (params: { error: Error }) => void;
   onThreadLoadStart: (params: { threadId: string }) => void;
   onThreadLoadEnd: (params: { threadId: string }) => void;
+  onThreadNotFound: (params: { threadId: string }) => void;
 };
 
 export function useChatkitCallbacks({
@@ -170,6 +171,42 @@ export function useChatkitCallbacks({
   const onThreadLoadEnd = useCallback(({ threadId }: { threadId: string }) => {
   }, []);
 
+  const onThreadNotFound = useCallback(
+    ({ threadId }: { threadId: string }) => {
+      console.log("[DEBUG-CONV] onThreadNotFound called", {
+        threadId,
+        sessionOwner,
+        persistenceSlug,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Clear stored thread ID since it no longer exists
+      clearStoredThreadId(sessionOwner, persistenceSlug);
+
+      // Set state for new conversation mode
+      lastThreadSnapshotRef.current = null;
+      isNewConversationDraftRef.current = true;
+      wasNewConversationStreamingRef.current = false;
+
+      // Reset to new conversation
+      setInitialThreadId(null);
+      setChatInstanceKey((v) => v + 1);
+
+      // Reset workflow selection when multiple workflows exist
+      if (workflowsCount > 1) {
+        setWorkflowSelection({ kind: "local", workflow: null });
+      }
+
+      // Navigate to home page (new conversation)
+      const currentPath = window.location.pathname;
+      if (currentPath !== "/") {
+        console.log("[DEBUG-CONV] onThreadNotFound: Navigating to /", { currentPath });
+        window.history.replaceState(null, "", "/");
+      }
+    },
+    [sessionOwner, persistenceSlug, workflowsCount, setInitialThreadId, setChatInstanceKey, setWorkflowSelection, lastThreadSnapshotRef, isNewConversationDraftRef, wasNewConversationStreamingRef],
+  );
+
   return {
     onThreadChange,
     onResponseStart,
@@ -178,5 +215,6 @@ export function useChatkitCallbacks({
     onError,
     onThreadLoadStart,
     onThreadLoadEnd,
+    onThreadNotFound,
   };
 }

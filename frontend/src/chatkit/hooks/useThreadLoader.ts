@@ -18,6 +18,7 @@ export interface UseThreadLoaderOptions {
   isTempThreadId: (threadId: string | null | undefined) => boolean;
   onThreadLoadStart?: (event: { threadId: string }) => void;
   onThreadLoadEnd?: (event: { threadId: string }) => void;
+  onThreadNotFound?: (event: { threadId: string }) => void;
   onError?: (error: { error: Error }) => void;
   onLog?: (entry: { name: string; data?: Record<string, unknown> }) => void;
 }
@@ -40,6 +41,7 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
     isTempThreadId,
     onThreadLoadStart,
     onThreadLoadEnd,
+    onThreadNotFound,
     onError,
     onLog,
   } = options;
@@ -97,6 +99,8 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
               visibleThreadIdRef.current = tempId;
               setThread(null);
               onThreadLoadEnd?.({ threadId: initialThread });
+              // Notify that the thread was not found so the UI can redirect to new conversation
+              onThreadNotFound?.({ threadId: initialThread });
             } else {
               onError?.({ error: err instanceof Error ? err : new Error(errorMessage) });
             }
