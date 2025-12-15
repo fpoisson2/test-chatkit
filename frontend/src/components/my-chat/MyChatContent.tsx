@@ -281,7 +281,7 @@ export function MyChatContent() {
         throw new Error(`Outil client non pris en charge : ${name}`);
       },
       onError: chatkitCallbacks.onError, onResponseStart: chatkitCallbacks.onResponseStart, onResponseEnd: chatkitCallbacks.onResponseEnd,
-      onThreadChange: chatkitCallbacks.onThreadChange, onThreadLoadStart: chatkitCallbacks.onThreadLoadStart, onThreadLoadEnd: chatkitCallbacks.onThreadLoadEnd, onLog: chatkitCallbacks.onLog,
+      onThreadChange: chatkitCallbacks.onThreadChange, onThreadLoadStart: chatkitCallbacks.onThreadLoadStart, onThreadLoadEnd: chatkitCallbacks.onThreadLoadEnd, onThreadNotFound: chatkitCallbacks.onThreadNotFound, onLog: chatkitCallbacks.onLog,
       isAdmin: user?.is_admin,
     } satisfies ChatKitOptions;
   }, [apiConfig, initialThreadId, activeWorkflow, user, isSidebarOpen, openSidebar, mode, workflows, workflowSelection, handleWorkflowSelectorChange, themeConfig, appearanceSettings, composerPlaceholder, attachmentsConfig, composerModels, widgetsConfig, chatkitCallbacks]);

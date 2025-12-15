@@ -28,6 +28,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     onThreadChange,
     onThreadLoadStart,
     onThreadLoadEnd,
+    onThreadNotFound,
     onLog,
     onClientTool,
   } = options;
@@ -71,6 +72,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     isTempThreadId,
     onThreadLoadStart,
     onThreadLoadEnd,
+    onThreadNotFound,
     onError,
     onLog,
   });
