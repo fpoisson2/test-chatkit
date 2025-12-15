@@ -114,6 +114,50 @@ export function ConversationsSidebarSection({
   // Track thread IDs that were created during this session (for title animation)
   const [newlyCreatedThreadIds, setNewlyCreatedThreadIds] = useState<Set<string>>(new Set());
 
+  // Track thread IDs that should show spinner (with delay to avoid flash)
+  const [visibleSpinnerIds, setVisibleSpinnerIds] = useState<Set<string>>(new Set());
+  const spinnerTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Manage delayed spinner visibility
+  useEffect(() => {
+    const currentStreaming = streamingThreadIds ?? new Set<string>();
+
+    // Add timers for new streaming threads
+    currentStreaming.forEach((threadId) => {
+      if (!visibleSpinnerIds.has(threadId) && !spinnerTimersRef.current.has(threadId)) {
+        const timer = setTimeout(() => {
+          setVisibleSpinnerIds((prev) => new Set(prev).add(threadId));
+          spinnerTimersRef.current.delete(threadId);
+        }, 250);
+        spinnerTimersRef.current.set(threadId, timer);
+      }
+    });
+
+    // Remove spinners for threads that stopped streaming
+    visibleSpinnerIds.forEach((threadId) => {
+      if (!currentStreaming.has(threadId)) {
+        setVisibleSpinnerIds((prev) => {
+          const next = new Set(prev);
+          next.delete(threadId);
+          return next;
+        });
+      }
+    });
+
+    // Clear timers for threads that stopped streaming before delay
+    spinnerTimersRef.current.forEach((timer, threadId) => {
+      if (!currentStreaming.has(threadId)) {
+        clearTimeout(timer);
+        spinnerTimersRef.current.delete(threadId);
+      }
+    });
+
+    return () => {
+      // Cleanup all timers on unmount
+      spinnerTimersRef.current.forEach((timer) => clearTimeout(timer));
+    };
+  }, [streamingThreadIds, visibleSpinnerIds]);
+
   // Keep track of the last streaming thread snapshot to show spinner even after clicking "+"
   // Initialize from cache to persist across remounts
   const [lastStreamingSnapshot, setLastStreamingSnapshotState] = useState<Thread | null>(cachedLastStreamingSnapshot);
@@ -554,10 +598,8 @@ export function ConversationsSidebarSection({
                       </TruncatedText>
                     </span>
                   </button>
-                  {isStreaming && (
-                    <span className="conversations-sidebar-section__thread-spinner-wrapper">
-                      <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
-                    </span>
+                  {visibleSpinnerIds.has(thread.id) && (
+                    <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
                   )}
                   <button
                     type="button"
