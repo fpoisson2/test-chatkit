@@ -4,34 +4,16 @@ import { Modal } from "../../../components/Modal";
 import { useModalContext } from "../contexts/ModalContext";
 import { useWorkflowContext } from "../contexts/WorkflowContext";
 import { useGraphContext } from "../contexts/GraphContext";
-import { chatkitApi } from "../../../utils/backend";
+import { useAuth } from "../../../auth";
+import {
+  workflowGenerationApi,
+  type WorkflowGenerationPromptSummary,
+  type WorkflowGenerationTaskStatus,
+} from "../../../utils/backend";
 import type { ApiWorkflowNode, ApiWorkflowEdge } from "../types";
 
-interface GenerationPromptSummary {
-  id: number;
-  name: string;
-  description: string | null;
-  is_default: boolean;
-}
-
-interface GenerationTaskStatus {
-  task_id: string;
-  workflow_id: number;
-  version_id: number | null;
-  prompt_id: number | null;
-  user_message: string;
-  status: string;
-  progress: number;
-  error_message: string | null;
-  result_json: {
-    nodes: ApiWorkflowNode[];
-    edges: ApiWorkflowEdge[];
-  } | null;
-  created_at: string;
-  completed_at: string | null;
-}
-
 export default function WorkflowGenerationModal() {
+  const { token } = useAuth();
   const {
     isGenerationModalOpen,
     closeGenerationModal,
@@ -52,13 +34,8 @@ export default function WorkflowGenerationModal() {
   // Fetch active generation prompts
   const { data: prompts, isLoading: isLoadingPrompts } = useQuery({
     queryKey: ["workflow-generation-prompts"],
-    queryFn: async () => {
-      const response = await chatkitApi.get<GenerationPromptSummary[]>(
-        "/api/workflows/generation/prompts"
-      );
-      return response;
-    },
-    enabled: isGenerationModalOpen,
+    queryFn: () => workflowGenerationApi.listPrompts(token),
+    enabled: isGenerationModalOpen && Boolean(token),
   });
 
   // Set default prompt when prompts are loaded
@@ -72,15 +49,11 @@ export default function WorkflowGenerationModal() {
   // Start generation mutation
   const startGenerationMutation = useMutation({
     mutationFn: async () => {
-      const response = await chatkitApi.post<{
-        task_id: string;
-        status: string;
-        message: string;
-      }>(`/api/workflows/${selectedWorkflowId}/generate`, {
+      if (!selectedWorkflowId) throw new Error("No workflow selected");
+      return workflowGenerationApi.startGeneration(token, selectedWorkflowId, {
         prompt_id: selectedPromptId,
         user_message: userMessage,
       });
-      return response;
     },
     onSuccess: (data) => {
       setGenerationTaskId(data.task_id);
@@ -95,13 +68,8 @@ export default function WorkflowGenerationModal() {
   // Poll for task status
   const { data: taskStatus } = useQuery({
     queryKey: ["workflow-generation-task", generationTaskId],
-    queryFn: async () => {
-      const response = await chatkitApi.get<GenerationTaskStatus>(
-        `/api/workflows/generation/tasks/${generationTaskId}`
-      );
-      return response;
-    },
-    enabled: Boolean(generationTaskId) && isGenerating,
+    queryFn: () => workflowGenerationApi.getTaskStatus(token, generationTaskId!),
+    enabled: Boolean(generationTaskId) && isGenerating && Boolean(token),
     refetchInterval: (query) => {
       const data = query.state.data;
       if (data && (data.status === "completed" || data.status === "failed")) {
@@ -123,7 +91,10 @@ export default function WorkflowGenerationModal() {
       });
 
       // Transform nodes and edges from API format to flow format
-      const { nodes: newNodes, edges: newEdges } = taskStatus.result_json;
+      const { nodes: newNodes, edges: newEdges } = taskStatus.result_json as {
+        nodes: ApiWorkflowNode[];
+        edges: ApiWorkflowEdge[];
+      };
 
       // Convert API nodes to flow nodes with proper positions
       const flowNodes = newNodes.map((node, index) => ({

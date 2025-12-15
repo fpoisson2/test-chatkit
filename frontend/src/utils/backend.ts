@@ -2151,3 +2151,69 @@ export const workflowGenerationPromptsApi = {
     });
   },
 };
+
+// ============================================================================
+// Workflow Generation API (for the generator modal)
+// ============================================================================
+
+export type WorkflowGenerationPromptSummary = {
+  id: number;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+};
+
+export type WorkflowGenerationStartResponse = {
+  task_id: string;
+  status: string;
+  message: string;
+};
+
+export type WorkflowGenerationTaskStatus = {
+  task_id: string;
+  workflow_id: number;
+  version_id: number | null;
+  prompt_id: number | null;
+  user_message: string;
+  status: string;
+  progress: number;
+  error_message: string | null;
+  result_json: {
+    nodes: unknown[];
+    edges: unknown[];
+  } | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export const workflowGenerationApi = {
+  async listPrompts(token: string | null): Promise<WorkflowGenerationPromptSummary[]> {
+    const response = await requestWithFallback("/api/workflows/generation/prompts", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async startGeneration(
+    token: string | null,
+    workflowId: number,
+    payload: { prompt_id: number | null; user_message: string },
+  ): Promise<WorkflowGenerationStartResponse> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/generate`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async getTaskStatus(
+    token: string | null,
+    taskId: string,
+  ): Promise<WorkflowGenerationTaskStatus> {
+    const response = await requestWithFallback(`/api/workflows/generation/tasks/${taskId}`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+};
