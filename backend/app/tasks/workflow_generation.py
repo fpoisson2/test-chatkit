@@ -126,10 +126,11 @@ def generate_workflow_task(
 
                 # Configurer le client OpenAI
                 client_kwargs = {}
-                if provider_binding and provider_binding.api_base:
-                    client_kwargs["base_url"] = provider_binding.api_base
-                if provider_binding and provider_binding.api_key:
-                    client_kwargs["api_key"] = provider_binding.api_key
+                if provider_binding and provider_binding.credentials:
+                    if provider_binding.credentials.api_base:
+                        client_kwargs["base_url"] = provider_binding.credentials.api_base
+                    if provider_binding.credentials.api_key:
+                        client_kwargs["api_key"] = provider_binding.credentials.api_key
 
                 client = OpenAI(**client_kwargs)
 
