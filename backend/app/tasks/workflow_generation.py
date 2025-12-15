@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from ..celery_app import celery_app
 from ..database import SessionLocal
+from ..model_providers._shared import normalize_api_base
 from ..models import (
     WorkflowGenerationPrompt,
     WorkflowGenerationTask,
@@ -128,7 +129,9 @@ def generate_workflow_task(
                 client_kwargs = {}
                 if provider_binding and provider_binding.credentials:
                     if provider_binding.credentials.api_base:
-                        client_kwargs["base_url"] = provider_binding.credentials.api_base
+                        client_kwargs["base_url"] = normalize_api_base(
+                            provider_binding.credentials.api_base
+                        )
                     if provider_binding.credentials.api_key:
                         client_kwargs["api_key"] = provider_binding.credentials.api_key
 
