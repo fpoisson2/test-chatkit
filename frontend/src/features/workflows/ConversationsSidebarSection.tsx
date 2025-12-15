@@ -313,6 +313,11 @@ export function ConversationsSidebarSection({
       return;
     }
 
+    // Don't sync stale snapshot after bulk delete - it no longer exists in backend
+    if (postBulkDelete) {
+      return;
+    }
+
     setThreads((currentThreads) => {
       const targetIndex = currentThreads.findIndex((thread) => thread.id === activeThreadSnapshot.id);
 
@@ -333,7 +338,7 @@ export function ConversationsSidebarSection({
       cachedThreads = nextThreads;
       return nextThreads;
     });
-  }, [activeThreadSnapshot]);
+  }, [activeThreadSnapshot, postBulkDelete]);
 
   // Auto-refresh when currentThreadId changes to a thread not in the list
   // This handles the case when a new conversation is created via ChatKit
