@@ -9,7 +9,6 @@ import './ThreadHistory.css';
 export interface ThreadHistoryProps {
   api: ChatKitAPIConfig;
   currentThreadId: string | null;
-  loadingThreadIds?: Set<string>;
   onThreadSelect: (threadId: string) => void;
   onThreadDeleted?: (threadId: string) => void;
   onClose: () => void;
@@ -20,7 +19,7 @@ let cachedThreads: Thread[] = [];
 let cachedAfter: string | undefined = undefined;
 let cachedHasMore = true;
 
-export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThreadSelect, onThreadDeleted, onClose }: ThreadHistoryProps): JSX.Element {
+export function ThreadHistory({ api, currentThreadId, onThreadSelect, onThreadDeleted, onClose }: ThreadHistoryProps): JSX.Element {
   const [threads, setThreads] = useState<Thread[]>(cachedThreads);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -233,9 +232,6 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
                           {items.length > 0 && formatDate(items[0].created_at)}
                         </div>
                       </div>
-                      {loadingThreadIds?.has(thread.id) && (
-                        <div className="thread-history-item-spinner" />
-                      )}
                       <button
                         className="thread-history-item-delete"
                         onClick={(event) => {
