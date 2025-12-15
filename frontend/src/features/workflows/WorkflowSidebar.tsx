@@ -1215,6 +1215,43 @@ export const ChatWorkflowSidebar = ({
            filteredHostedWorkflows.length > displayedHostedWorkflows.length;
   }, [filteredWorkflows, filteredHostedWorkflows, displayedWorkflows, displayedHostedWorkflows, searchQuery, showAllWorkflows]);
 
+  const handleOpenMenu = useCallback(
+    (id: string | number, placement: ActionMenuPlacement) => {
+      setWorkflowMenuPlacement(placement);
+      setOpenWorkflowMenuId(id);
+    },
+    [],
+  );
+
+  const sidebarCallbacks = useMemo(
+    () => ({
+      onHostedClick: handleHostedWorkflowClick,
+      onLocalClick: handleWorkflowClick,
+      onToggleHostedPin: toggleHostedPin,
+      onToggleLocalPin: toggleLocalPin,
+    }),
+    [handleHostedWorkflowClick, handleWorkflowClick, toggleHostedPin, toggleLocalPin],
+  );
+
+  const sidebarMenuConfig = useMemo(
+    () => ({
+      openWorkflowMenuId,
+      workflowMenuPlacement,
+      workflowMenuTriggerRef,
+      workflowMenuRef,
+      onOpenMenu: handleOpenMenu,
+      onCloseMenu: closeWorkflowMenu,
+    }),
+    [
+      openWorkflowMenuId,
+      workflowMenuPlacement,
+      workflowMenuTriggerRef,
+      workflowMenuRef,
+      handleOpenMenu,
+      closeWorkflowMenu,
+    ],
+  );
+
   const sidebarEntries = useWorkflowSidebarEntries({
     workflows: displayedWorkflows,
     hostedWorkflows: displayedHostedWorkflows,
@@ -1225,23 +1262,8 @@ export const ChatWorkflowSidebar = ({
     selectedWorkflowId: mode === "local" ? selectedWorkflowId : null,
     selectedHostedSlug: mode === "hosted" ? selectedHostedSlug : null,
     loading,
-    callbacks: {
-      onHostedClick: handleHostedWorkflowClick,
-      onLocalClick: handleWorkflowClick,
-      onToggleHostedPin: toggleHostedPin,
-      onToggleLocalPin: toggleLocalPin,
-    },
-    menuConfig: {
-      openWorkflowMenuId,
-      workflowMenuPlacement,
-      workflowMenuTriggerRef,
-      workflowMenuRef,
-      onOpenMenu: (id, placement) => {
-        setWorkflowMenuPlacement(placement);
-        setOpenWorkflowMenuId(id);
-      },
-      onCloseMenu: closeWorkflowMenu,
-    },
+    callbacks: sidebarCallbacks,
+    menuConfig: sidebarMenuConfig,
     hostedMenuItems,
     localMenuItems,
     hostedTrailingContent,
@@ -1794,6 +1816,42 @@ export const WorkflowBuilderSidebar = ({
     [t, warningStyle],
   );
 
+  const handleOpenMenu = useCallback(
+    (id: string | number, placement: ActionMenuPlacement) => {
+      setWorkflowMenuPlacement(placement);
+      setOpenWorkflowMenuId(id);
+    },
+    [setWorkflowMenuPlacement, setOpenWorkflowMenuId],
+  );
+
+  const sidebarCallbacks = useMemo(
+    () => ({
+      onLocalClick: onSelectWorkflow,
+      onToggleHostedPin,
+      onToggleLocalPin,
+    }),
+    [onSelectWorkflow, onToggleHostedPin, onToggleLocalPin],
+  );
+
+  const sidebarMenuConfig = useMemo(
+    () => ({
+      openWorkflowMenuId,
+      workflowMenuPlacement,
+      workflowMenuTriggerRef,
+      workflowMenuRef,
+      onOpenMenu: handleOpenMenu,
+      onCloseMenu: closeWorkflowMenu,
+    }),
+    [
+      openWorkflowMenuId,
+      workflowMenuPlacement,
+      workflowMenuTriggerRef,
+      workflowMenuRef,
+      handleOpenMenu,
+      closeWorkflowMenu,
+    ],
+  );
+
   const sidebarEntries = useWorkflowSidebarEntries({
     workflows: filteredWorkflows,
     hostedWorkflows: filteredHostedWorkflows,
@@ -1804,22 +1862,8 @@ export const WorkflowBuilderSidebar = ({
     selectedWorkflowId,
     loading,
     hostedLoading,
-    callbacks: {
-      onLocalClick: onSelectWorkflow,
-      onToggleHostedPin,
-      onToggleLocalPin,
-    },
-    menuConfig: {
-      openWorkflowMenuId,
-      workflowMenuPlacement,
-      workflowMenuTriggerRef,
-      workflowMenuRef,
-      onOpenMenu: (id, placement) => {
-        setWorkflowMenuPlacement(placement);
-        setOpenWorkflowMenuId(id);
-      },
-      onCloseMenu: closeWorkflowMenu,
-    },
+    callbacks: sidebarCallbacks,
+    menuConfig: sidebarMenuConfig,
     hostedMenuItems,
     localMenuItems,
     localTrailingContent,
