@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useCallback, useEffect, useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Modal } from "../../../components/Modal";
 import { useModalContext } from "../contexts/ModalContext";
 import { useWorkflowContext } from "../contexts/WorkflowContext";
@@ -8,7 +8,7 @@ import { useAuth } from "../../../auth";
 import {
   workflowGenerationApi,
   type WorkflowGenerationPromptSummary,
-  type WorkflowGenerationTaskStatus,
+  type WorkflowGenerationStreamEvent,
 } from "../../../utils/backend";
 import type { ApiWorkflowNode, ApiWorkflowEdge } from "../types";
 
@@ -21,7 +21,6 @@ export default function WorkflowGenerationModal() {
     setIsGenerating,
     setGenerationTaskId,
     setGenerationError,
-    generationTaskId,
     generationError,
   } = useModalContext();
 
@@ -30,6 +29,14 @@ export default function WorkflowGenerationModal() {
 
   const [userMessage, setUserMessage] = useState("");
   const [selectedPromptId, setSelectedPromptId] = useState<number | null>(null);
+
+  // Streaming state
+  const [streamingReasoning, setStreamingReasoning] = useState("");
+  const [streamingContent, setStreamingContent] = useState("");
+  const [isReasoningExpanded, setIsReasoningExpanded] = useState(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const reasoningEndRef = useRef<HTMLDivElement>(null);
+  const contentEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch active generation prompts
   const { data: prompts, isLoading: isLoadingPrompts } = useQuery({
@@ -46,116 +53,158 @@ export default function WorkflowGenerationModal() {
     }
   }, [prompts, selectedPromptId]);
 
-  // Start generation mutation
-  const startGenerationMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedWorkflowId) throw new Error("No workflow selected");
-      return workflowGenerationApi.startGeneration(token, selectedWorkflowId, {
-        prompt_id: selectedPromptId,
-        user_message: userMessage,
-      });
-    },
-    onSuccess: (data) => {
-      setGenerationTaskId(data.task_id);
-      setIsGenerating(true);
-    },
-    onError: (error: Error) => {
-      setGenerationError(error.message);
-      setIsGenerating(false);
-    },
-  });
-
-  // Poll for task status
-  const { data: taskStatus } = useQuery({
-    queryKey: ["workflow-generation-task", generationTaskId],
-    queryFn: () => workflowGenerationApi.getTaskStatus(token, generationTaskId!),
-    enabled: Boolean(generationTaskId) && isGenerating && Boolean(token),
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      if (data && (data.status === "completed" || data.status === "failed")) {
-        return false;
-      }
-      return 1500; // Poll every 1.5 seconds
-    },
-  });
-
-  // Handle task completion
+  // Auto-scroll to bottom of streaming content
   useEffect(() => {
-    if (!taskStatus) return;
+    reasoningEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [streamingReasoning]);
 
-    if (taskStatus.status === "completed" && taskStatus.result_json) {
-      // Transform nodes and edges from API format to flow format
-      const { nodes: newNodes, edges: newEdges } = taskStatus.result_json as {
-        nodes: ApiWorkflowNode[];
-        edges: ApiWorkflowEdge[];
-      };
-
-      // Convert API nodes to flow nodes with proper positions
-      const flowNodes = newNodes.map((node, index) => ({
-        id: node.slug,
-        type: node.kind === "while" ? "whileNode" : "customNode",
-        position: node.metadata?.position ?? { x: 100 + (index % 5) * 300, y: 100 + Math.floor(index / 5) * 200 },
-        data: {
-          slug: node.slug,
-          kind: node.kind,
-          displayName: node.display_name || node.slug,
-          label: node.display_name || node.slug,
-          isEnabled: node.is_enabled ?? true,
-          agentKey: node.agent_key ?? null,
-          parentSlug: node.parent_slug ?? null,
-          parameters: node.parameters ?? {},
-          parametersText: JSON.stringify(node.parameters ?? {}, null, 2),
-          parametersError: null,
-          metadata: node.metadata ?? {},
-        },
-        selected: false,
-        dragging: false,
-      }));
-
-      // Convert API edges to flow edges
-      const flowEdges = newEdges.map((edge, index) => ({
-        id: `edge-${edge.source}-${edge.target}-${edge.condition ?? "default"}-${index}`,
-        source: edge.source,
-        target: edge.target,
-        type: "smart",
-        data: {
-          condition: edge.condition,
-          metadata: edge.metadata ?? {},
-          created_at: edge.created_at,
-          updated_at: edge.updated_at,
-        },
-        selected: false,
-      }));
-
-      setNodes(flowNodes);
-      setEdges(flowEdges);
-
-      setIsGenerating(false);
-      setGenerationTaskId(null);
-      closeGenerationModal();
-    } else if (taskStatus.status === "failed") {
-      setGenerationError(taskStatus.error_message ?? "Génération échouée");
-      setIsGenerating(false);
-      setGenerationTaskId(null);
-    }
-  }, [taskStatus, setNodes, setEdges, setIsGenerating, setGenerationTaskId, setGenerationError, closeGenerationModal]);
+  useEffect(() => {
+    contentEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [streamingContent]);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
       if (!userMessage.trim() || !selectedWorkflowId) return;
+
       setGenerationError(null);
-      startGenerationMutation.mutate();
+      setStreamingReasoning("");
+      setStreamingContent("");
+      setIsGenerating(true);
+
+      // Create abort controller for cancellation
+      abortControllerRef.current = new AbortController();
+
+      try {
+        const stream = workflowGenerationApi.streamGeneration(
+          token,
+          selectedWorkflowId,
+          { prompt_id: selectedPromptId, user_message: userMessage },
+          abortControllerRef.current.signal
+        );
+
+        for await (const event of stream) {
+          switch (event.type) {
+            case "reasoning":
+              if (typeof event.content === "string") {
+                setStreamingReasoning((prev) => prev + event.content);
+              }
+              break;
+
+            case "content":
+              if (typeof event.content === "string") {
+                setStreamingContent((prev) => prev + event.content);
+              }
+              break;
+
+            case "result":
+              if (event.content && typeof event.content === "object") {
+                const { nodes: newNodes, edges: newEdges } = event.content as {
+                  nodes: ApiWorkflowNode[];
+                  edges: ApiWorkflowEdge[];
+                };
+
+                // Convert API nodes to flow nodes
+                const flowNodes = newNodes.map((node, index) => ({
+                  id: node.slug,
+                  type: node.kind === "while" ? "whileNode" : "customNode",
+                  position: node.metadata?.position ?? {
+                    x: 100 + (index % 5) * 300,
+                    y: 100 + Math.floor(index / 5) * 200,
+                  },
+                  data: {
+                    slug: node.slug,
+                    kind: node.kind,
+                    displayName: node.display_name || node.slug,
+                    label: node.display_name || node.slug,
+                    isEnabled: node.is_enabled ?? true,
+                    agentKey: node.agent_key ?? null,
+                    parentSlug: node.parent_slug ?? null,
+                    parameters: node.parameters ?? {},
+                    parametersText: JSON.stringify(node.parameters ?? {}, null, 2),
+                    parametersError: null,
+                    metadata: node.metadata ?? {},
+                  },
+                  selected: false,
+                  dragging: false,
+                }));
+
+                // Convert API edges to flow edges
+                const flowEdges = newEdges.map((edge, index) => ({
+                  id: `edge-${edge.source}-${edge.target}-${edge.condition ?? "default"}-${index}`,
+                  source: edge.source,
+                  target: edge.target,
+                  type: "smart",
+                  data: {
+                    condition: edge.condition,
+                    metadata: edge.metadata ?? {},
+                    created_at: edge.created_at,
+                    updated_at: edge.updated_at,
+                  },
+                  selected: false,
+                }));
+
+                setNodes(flowNodes);
+                setEdges(flowEdges);
+              }
+              break;
+
+            case "error":
+              setGenerationError(
+                typeof event.content === "string"
+                  ? event.content
+                  : "Une erreur est survenue"
+              );
+              break;
+
+            case "done":
+              // Stream completed
+              break;
+          }
+        }
+
+        setIsGenerating(false);
+        setGenerationTaskId(null);
+
+        // Only close if successful (no error)
+        if (!generationError) {
+          closeGenerationModal();
+        }
+      } catch (error) {
+        if ((error as Error).name === "AbortError") {
+          // User cancelled
+          setGenerationError("Génération annulée");
+        } else {
+          setGenerationError((error as Error).message || "Erreur de génération");
+        }
+        setIsGenerating(false);
+      }
     },
-    [userMessage, selectedWorkflowId, startGenerationMutation, setGenerationError]
+    [
+      userMessage,
+      selectedWorkflowId,
+      selectedPromptId,
+      token,
+      setGenerationError,
+      setIsGenerating,
+      setGenerationTaskId,
+      setNodes,
+      setEdges,
+      closeGenerationModal,
+      generationError,
+    ]
   );
 
   const handleClose = useCallback(() => {
-    if (!isGenerating) {
-      setUserMessage("");
-      setGenerationError(null);
-      closeGenerationModal();
+    if (isGenerating) {
+      // Cancel the streaming
+      abortControllerRef.current?.abort();
     }
+    setUserMessage("");
+    setStreamingReasoning("");
+    setStreamingContent("");
+    setGenerationError(null);
+    closeGenerationModal();
   }, [isGenerating, closeGenerationModal, setGenerationError]);
 
   if (!isGenerationModalOpen) {
@@ -173,9 +222,8 @@ export default function WorkflowGenerationModal() {
             type="button"
             className="btn btn-ghost"
             onClick={handleClose}
-            disabled={isGenerating}
           >
-            Annuler
+            {isGenerating ? "Annuler" : "Fermer"}
           </button>
           <button
             type="submit"
@@ -257,7 +305,7 @@ export default function WorkflowGenerationModal() {
             onChange={(e) => setUserMessage(e.target.value)}
             placeholder="Exemple: Crée un workflow pédagogique pour enseigner les bases de Python avec des questions à choix multiples et des exercices pratiques..."
             disabled={isGenerating}
-            rows={6}
+            rows={4}
             style={{
               width: "100%",
               resize: "vertical",
@@ -281,49 +329,136 @@ export default function WorkflowGenerationModal() {
           </div>
         )}
 
-        {isGenerating && taskStatus && (
+        {/* Streaming Reasoning Section */}
+        {(isGenerating || streamingReasoning) && (
           <div
             style={{
               marginBottom: "1rem",
-              padding: "0.75rem",
-              backgroundColor: "#eff6ff",
-              border: "1px solid #bfdbfe",
+              border: "1px solid #e5e7eb",
               borderRadius: "0.375rem",
+              overflow: "hidden",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <div
-                className="spinner"
-                style={{
-                  width: "1rem",
-                  height: "1rem",
-                  border: "2px solid #3b82f6",
-                  borderTopColor: "transparent",
-                  borderRadius: "50%",
-                  animation: "spin 1s linear infinite",
-                }}
-              />
-              <span style={{ fontSize: "0.875rem", color: "#1d4ed8" }}>
-                Génération en cours... {taskStatus.progress}%
+            <button
+              type="button"
+              onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}
+              style={{
+                width: "100%",
+                padding: "0.5rem 0.75rem",
+                backgroundColor: "#f9fafb",
+                border: "none",
+                borderBottom: isReasoningExpanded ? "1px solid #e5e7eb" : "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                color: "#374151",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "1rem" }}>🧠</span>
+                Raisonnement de l'IA
+                {isGenerating && streamingReasoning && (
+                  <span
+                    style={{
+                      width: "0.5rem",
+                      height: "0.5rem",
+                      backgroundColor: "#10b981",
+                      borderRadius: "50%",
+                      animation: "pulse 1.5s ease-in-out infinite",
+                    }}
+                  />
+                )}
               </span>
+              <span style={{ transform: isReasoningExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                ▼
+              </span>
+            </button>
+            {isReasoningExpanded && (
+              <div
+                style={{
+                  maxHeight: "150px",
+                  overflowY: "auto",
+                  padding: "0.75rem",
+                  backgroundColor: "#f3f4f6",
+                  fontSize: "0.8125rem",
+                  fontFamily: "monospace",
+                  whiteSpace: "pre-wrap",
+                  color: "#4b5563",
+                  lineHeight: 1.5,
+                }}
+              >
+                {streamingReasoning || (
+                  <span style={{ color: "#9ca3af", fontStyle: "italic" }}>
+                    En attente du raisonnement...
+                  </span>
+                )}
+                <div ref={reasoningEndRef} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Streaming Content Section */}
+        {(isGenerating || streamingContent) && (
+          <div
+            style={{
+              marginBottom: "1rem",
+              border: "1px solid #bfdbfe",
+              borderRadius: "0.375rem",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "0.5rem 0.75rem",
+                backgroundColor: "#eff6ff",
+                borderBottom: "1px solid #bfdbfe",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                color: "#1d4ed8",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+              }}
+            >
+              <span style={{ fontSize: "1rem" }}>📝</span>
+              Réponse de l'IA
+              {isGenerating && (
+                <div
+                  style={{
+                    width: "1rem",
+                    height: "1rem",
+                    border: "2px solid #3b82f6",
+                    borderTopColor: "transparent",
+                    borderRadius: "50%",
+                    animation: "spin 1s linear infinite",
+                    marginLeft: "auto",
+                  }}
+                />
+              )}
             </div>
             <div
               style={{
-                marginTop: "0.5rem",
-                height: "0.5rem",
-                backgroundColor: "#dbeafe",
-                borderRadius: "0.25rem",
-                overflow: "hidden",
+                maxHeight: "200px",
+                overflowY: "auto",
+                padding: "0.75rem",
+                backgroundColor: "#fff",
+                fontSize: "0.8125rem",
+                fontFamily: "monospace",
+                whiteSpace: "pre-wrap",
+                color: "#111827",
+                lineHeight: 1.5,
               }}
             >
-              <div
-                style={{
-                  width: `${taskStatus.progress}%`,
-                  height: "100%",
-                  backgroundColor: "#3b82f6",
-                  transition: "width 0.3s ease",
-                }}
-              />
+              {streamingContent || (
+                <span style={{ color: "#9ca3af", fontStyle: "italic" }}>
+                  En attente de la réponse...
+                </span>
+              )}
+              <div ref={contentEndRef} />
             </div>
           </div>
         )}
@@ -336,6 +471,14 @@ export default function WorkflowGenerationModal() {
           }
           to {
             transform: rotate(360deg);
+          }
+        }
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
           }
         }
       `}</style>

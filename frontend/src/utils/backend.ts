@@ -2186,6 +2186,11 @@ export type WorkflowGenerationTaskStatus = {
   completed_at: string | null;
 };
 
+export type WorkflowGenerationStreamEvent = {
+  type: "reasoning" | "content" | "result" | "error" | "done";
+  content?: string | { nodes: unknown[]; edges: unknown[] };
+};
+
 export const workflowGenerationApi = {
   async listPrompts(token: string | null): Promise<WorkflowGenerationPromptSummary[]> {
     const response = await requestWithFallback("/api/workflows/generation/prompts", {
@@ -2215,5 +2220,73 @@ export const workflowGenerationApi = {
       headers: withAuthHeaders(token),
     });
     return response.json();
+  },
+
+  /**
+   * Génère un workflow avec streaming SSE.
+   * Retourne un AsyncGenerator qui yield les événements de streaming.
+   */
+  async *streamGeneration(
+    token: string | null,
+    workflowId: number,
+    payload: { prompt_id: number | null; user_message: string },
+    signal?: AbortSignal,
+  ): AsyncGenerator<WorkflowGenerationStreamEvent, void, unknown> {
+    const url = `${backendUrl}/api/workflows/${workflowId}/generate/stream`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        ...withAuthHeaders(token),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new ApiError(`Generation failed: ${response.status}`, {
+        status: response.status,
+        detail: errorText,
+      });
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new ApiError("No response body");
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr) {
+              try {
+                const event = JSON.parse(jsonStr) as WorkflowGenerationStreamEvent;
+                yield event;
+                if (event.type === "done") {
+                  return;
+                }
+              } catch {
+                // Ignore invalid JSON
+              }
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   },
 };

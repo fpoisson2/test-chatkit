@@ -1040,3 +1040,159 @@ async def get_generation_task_status(
         created_at=task.created_at.isoformat(),
         completed_at=task.completed_at.isoformat() if task.completed_at else None,
     )
+
+
+@router.post("/api/workflows/{workflow_id}/generate/stream")
+async def generate_workflow_stream(
+    workflow_id: int,
+    payload: WorkflowGenerateRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Génère un workflow avec streaming SSE.
+
+    Retourne un flux SSE avec les événements suivants:
+    - type: "reasoning" - Contenu du raisonnement de l'IA
+    - type: "content" - Contenu du message de l'assistant
+    - type: "result" - Résultat final JSON avec nodes et edges
+    - type: "error" - Erreur lors de la génération
+    - type: "done" - Fin du streaming
+    """
+    import json
+    import re
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy import select
+    from openai import OpenAI
+    from ..models import Workflow, WorkflowGenerationPrompt
+    from ..chatkit.agent_registry import get_agent_provider_binding
+    from ..model_providers._shared import normalize_api_base
+
+    _ensure_admin(current_user)
+
+    # Vérifier que le workflow existe
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow non trouvé",
+        )
+
+    # Charger le prompt
+    prompt_id = payload.prompt_id
+    if prompt_id:
+        prompt = session.get(WorkflowGenerationPrompt, prompt_id)
+    else:
+        prompt = session.scalar(
+            select(WorkflowGenerationPrompt)
+            .where(WorkflowGenerationPrompt.is_default)
+            .where(WorkflowGenerationPrompt.is_active)
+        )
+
+    if not prompt:
+        prompt = session.scalar(
+            select(WorkflowGenerationPrompt)
+            .where(WorkflowGenerationPrompt.is_active)
+            .order_by(WorkflowGenerationPrompt.id)
+            .limit(1)
+        )
+
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Aucun prompt de génération configuré",
+        )
+
+    async def generate_stream():
+        try:
+            # Résoudre le provider
+            provider_binding = get_agent_provider_binding(
+                prompt.provider_id, prompt.provider_slug
+            )
+
+            # Configurer le client OpenAI
+            client_kwargs = {}
+            if provider_binding and provider_binding.credentials:
+                if provider_binding.credentials.api_base:
+                    client_kwargs["base_url"] = normalize_api_base(
+                        provider_binding.credentials.api_base
+                    )
+                if provider_binding.credentials.api_key:
+                    client_kwargs["api_key"] = provider_binding.credentials.api_key
+
+            client = OpenAI(**client_kwargs)
+
+            # Préparer les messages
+            messages = [
+                {"role": "developer", "content": prompt.developer_message},
+                {"role": "user", "content": payload.user_message},
+            ]
+
+            # Préparer les paramètres du modèle
+            model_params = {
+                "model": prompt.model,
+                "messages": messages,
+                "stream": True,
+            }
+
+            # Ajouter le niveau de raisonnement si supporté
+            if prompt.reasoning_effort and prompt.reasoning_effort != "none":
+                model_params["reasoning_effort"] = prompt.reasoning_effort
+
+            # Appeler l'API en streaming
+            stream = client.chat.completions.create(**model_params)
+
+            full_content = ""
+            full_reasoning = ""
+
+            for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    choice = chunk.choices[0]
+                    delta = choice.delta
+
+                    # Récupérer le reasoning si disponible (pour les modèles o1, o3, etc.)
+                    if hasattr(delta, "reasoning") and delta.reasoning:
+                        full_reasoning += delta.reasoning
+                        yield f"data: {json.dumps({'type': 'reasoning', 'content': delta.reasoning})}\n\n"
+
+                    # Récupérer le contenu du message
+                    if delta.content:
+                        full_content += delta.content
+                        yield f"data: {json.dumps({'type': 'content', 'content': delta.content})}\n\n"
+
+            # Parser le résultat JSON
+            try:
+                result_json = json.loads(full_content)
+            except json.JSONDecodeError:
+                # Essayer d'extraire le JSON de la réponse
+                json_match = re.search(r"\{.*\}", full_content, re.DOTALL)
+                if not json_match:
+                    yield f"data: {json.dumps({'type': 'error', 'content': 'Failed to extract JSON from AI response'})}\n\n"
+                    yield "data: {\"type\": \"done\"}\n\n"
+                    return
+                result_json = json.loads(json_match.group(0))
+
+            # Valider la structure
+            if "nodes" not in result_json or "edges" not in result_json:
+                yield f"data: {json.dumps({'type': 'error', 'content': 'Invalid workflow structure: missing nodes or edges'})}\n\n"
+                yield "data: {\"type\": \"done\"}\n\n"
+                return
+
+            # Envoyer le résultat final
+            yield f"data: {json.dumps({'type': 'result', 'content': result_json})}\n\n"
+            yield "data: {\"type\": \"done\"}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            yield "data: {\"type\": \"done\"}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
