@@ -549,14 +549,14 @@ export function ConversationsSidebarSection({
                     aria-current={isActive ? "true" : undefined}
                   >
                     <span className="conversations-sidebar-section__thread-title-row">
-                      {isStreaming && (
-                        <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
-                      )}
                       <TruncatedText className="conversations-sidebar-section__thread-title">
                         <AnimatedTitle stableId={thread.id} disabled={disableTitleAnimation}>{threadTitle}</AnimatedTitle>
                       </TruncatedText>
                     </span>
                   </button>
+                  {isStreaming && (
+                    <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
+                  )}
                   <button
                     type="button"
                     className="conversations-sidebar-section__action-button"
