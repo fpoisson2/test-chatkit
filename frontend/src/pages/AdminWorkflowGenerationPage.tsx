@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useCallback, useMemo } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth";
 import { Modal } from "../components/Modal";
 import { FeedbackMessages, FormField, FormSection } from "../components";
@@ -8,6 +8,8 @@ import {
   type WorkflowGenerationPrompt,
 } from "../utils/backend";
 import { useI18n } from "../i18n";
+import { useModelsAdmin } from "../hooks/useModels";
+import { useQuery } from "@tanstack/react-query";
 
 import styles from "./AdminModelProvidersPage.module.css";
 
@@ -27,7 +29,7 @@ interface PromptFormData {
 const defaultFormData: PromptFormData = {
   name: "",
   description: "",
-  model: "o3",
+  model: "",
   provider_id: "",
   provider_slug: "",
   developer_message: "",
@@ -53,6 +55,24 @@ export const AdminWorkflowGenerationPage = () => {
     queryFn: () => workflowGenerationPromptsApi.list(token),
     enabled: Boolean(token),
   });
+
+  // Fetch available models
+  const { data: availableModels = [], isLoading: modelsLoading } = useModelsAdmin(token);
+
+  // Group models by provider for display
+  const modelsByProvider = useMemo(() => {
+    const grouped = new Map<string, typeof availableModels>();
+
+    for (const model of availableModels) {
+      const providerKey = model.provider_slug || model.provider_id || "default";
+      if (!grouped.has(providerKey)) {
+        grouped.set(providerKey, []);
+      }
+      grouped.get(providerKey)!.push(model);
+    }
+
+    return grouped;
+  }, [availableModels]);
 
   // Create mutation
   const createMutation = useMutation({
@@ -182,6 +202,20 @@ export const AdminWorkflowGenerationPage = () => {
     []
   );
 
+  // Handle model selection - auto-fill provider info
+  const handleModelChange = useCallback(
+    (modelName: string) => {
+      const selectedModel = availableModels.find((m) => m.name === modelName);
+      setFormData((prev) => ({
+        ...prev,
+        model: modelName,
+        provider_id: selectedModel?.provider_id || "",
+        provider_slug: selectedModel?.provider_slug || "",
+      }));
+    },
+    [availableModels]
+  );
+
   if (isLoading) {
     return (
       <div className="admin-content">
@@ -256,7 +290,14 @@ export const AdminWorkflowGenerationPage = () => {
                       )}
                     </div>
                   </td>
-                  <td>{prompt.model}</td>
+                  <td>
+                    {prompt.model}
+                    {prompt.provider_slug && (
+                      <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+                        {" "}({prompt.provider_slug})
+                      </span>
+                    )}
+                  </td>
                   <td>{prompt.reasoning_effort}</td>
                   <td>
                     {prompt.is_default ? (
@@ -346,34 +387,32 @@ export const AdminWorkflowGenerationPage = () => {
 
             <FormSection title="Configuration du modèle">
               <FormField label="Modèle" required>
-                <input
-                  type="text"
-                  className="form-input"
+                <select
+                  className="form-select"
                   value={formData.model}
-                  onChange={(e) => handleFieldChange("model", e.target.value)}
-                  placeholder="Ex: o3, gpt-4o, etc."
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  disabled={modelsLoading}
                   required
-                />
-              </FormField>
-
-              <FormField label="Provider ID (optionnel)">
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.provider_id}
-                  onChange={(e) => handleFieldChange("provider_id", e.target.value)}
-                  placeholder="ID du provider configuré"
-                />
-              </FormField>
-
-              <FormField label="Provider Slug (optionnel)">
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.provider_slug}
-                  onChange={(e) => handleFieldChange("provider_slug", e.target.value)}
-                  placeholder="Ex: openai, anthropic"
-                />
+                >
+                  <option value="">
+                    {modelsLoading ? "Chargement..." : "Sélectionner un modèle"}
+                  </option>
+                  {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
+                    <optgroup key={provider} label={provider === "default" ? "Sans provider" : provider}>
+                      {models.map((model) => (
+                        <option key={`${model.name}-${model.provider_id || ""}`} value={model.name}>
+                          {model.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                {formData.model && formData.provider_slug && (
+                  <p style={{ marginTop: "0.25rem", fontSize: "0.75rem", color: "#6b7280" }}>
+                    Provider: {formData.provider_slug}
+                    {formData.provider_id && ` (${formData.provider_id})`}
+                  </p>
+                )}
               </FormField>
 
               <FormField label="Niveau de raisonnement">
