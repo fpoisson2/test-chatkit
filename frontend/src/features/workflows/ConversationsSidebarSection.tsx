@@ -114,6 +114,9 @@ export function ConversationsSidebarSection({
   // Track thread IDs that were created during this session (for title animation)
   const [newlyCreatedThreadIds, setNewlyCreatedThreadIds] = useState<Set<string>>(new Set());
 
+  // Track if we just did a bulk delete (to ignore stale snapshots)
+  const [postBulkDelete, setPostBulkDelete] = useState(false);
+
   // Track thread IDs that should show spinner (with delay to avoid flash)
   const [visibleSpinnerIds, setVisibleSpinnerIds] = useState<Set<string>>(new Set());
   const spinnerTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -266,6 +269,8 @@ export function ConversationsSidebarSection({
       setHasMore(true);
       setAfter(undefined);
       setLastStreamingSnapshot(null);
+      // Ignore stale snapshots from parent until a new conversation is created
+      setPostBulkDelete(true);
       if (api) {
         loadThreads(true, false);
       }
@@ -293,6 +298,14 @@ export function ConversationsSidebarSection({
       setLastStreamingSnapshot(null);
     }
   }, [lastStreamingSnapshot?.id, streamingThreadIds]);
+
+  // Reset postBulkDelete when a new conversation starts streaming
+  // This indicates a new conversation is being created after the bulk delete
+  useEffect(() => {
+    if (postBulkDelete && activeThreadSnapshot?.id && streamingThreadIds?.has(activeThreadSnapshot.id)) {
+      setPostBulkDelete(false);
+    }
+  }, [postBulkDelete, activeThreadSnapshot?.id, streamingThreadIds]);
 
   // Keep sidebar entry in sync with the latest active thread snapshot (title, metadata...)
   useEffect(() => {
@@ -500,17 +513,20 @@ export function ConversationsSidebarSection({
       }
     };
 
-    // Add lastStreamingSnapshot first (will appear after activeThreadSnapshot if both exist)
-    // This handles the case where user clicked "+" while streaming
-    maybeAddThread(lastStreamingSnapshot);
+    // Don't add stale snapshots after bulk delete (they no longer exist in backend)
+    if (!postBulkDelete) {
+      // Add lastStreamingSnapshot first (will appear after activeThreadSnapshot if both exist)
+      // This handles the case where user clicked "+" while streaming
+      maybeAddThread(lastStreamingSnapshot);
 
-    // Add activeThreadSnapshot (will appear at top)
-    // This handles the race condition where streamingThreadIds is updated
-    // before the useEffect adds the thread to the threads list
-    maybeAddThread(activeThreadSnapshot);
+      // Add activeThreadSnapshot (will appear at top)
+      // This handles the race condition where streamingThreadIds is updated
+      // before the useEffect adds the thread to the threads list
+      maybeAddThread(activeThreadSnapshot);
+    }
 
     return result;
-  }, [filteredThreads, isExpanded, maxVisible, searchQuery, activeThreadSnapshot, lastStreamingSnapshot]);
+  }, [filteredThreads, isExpanded, maxVisible, searchQuery, activeThreadSnapshot, lastStreamingSnapshot, postBulkDelete]);
 
   const hasHiddenThreads = filteredThreads.length > maxVisible && !isExpanded && !searchQuery.trim();
 
