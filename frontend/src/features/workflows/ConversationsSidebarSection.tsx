@@ -114,6 +114,11 @@ export function ConversationsSidebarSection({
   // Track thread IDs that were created during this session (for title animation)
   const [newlyCreatedThreadIds, setNewlyCreatedThreadIds] = useState<Set<string>>(new Set());
 
+  // Track if we just did a bulk delete (to ignore stale snapshots)
+  // Use both state (for re-render) and ref (for synchronous checks in effects)
+  const [postBulkDelete, setPostBulkDelete] = useState(false);
+  const postBulkDeleteRef = useRef(false);
+
   // Track thread IDs that should show spinner (with delay to avoid flash)
   const [visibleSpinnerIds, setVisibleSpinnerIds] = useState<Set<string>>(new Set());
   const spinnerTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -205,8 +210,9 @@ export function ConversationsSidebarSection({
         let updatedThreads = (isInitial || isRefresh) ? newThreads : [...currentThreads, ...newThreads];
 
         // Apply latest snapshot if available (to preserve title updates that arrived during load)
+        // But skip if we just did a bulk delete - the snapshot thread no longer exists
         const snapshot = latestSnapshotRef.current;
-        if (snapshot?.id) {
+        if (snapshot?.id && !postBulkDeleteRef.current) {
           const snapshotIndex = updatedThreads.findIndex((t) => t.id === snapshot.id);
           if (snapshotIndex !== -1) {
             // Update existing thread with snapshot data
@@ -254,6 +260,34 @@ export function ConversationsSidebarSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api?.url]);
 
+  // Listen for bulk conversation deletion events (from admin cleanup)
+  useEffect(() => {
+    const handleBulkDelete = () => {
+      // Clear module-level cache
+      cachedThreads = [];
+      cachedHasMore = true;
+      cachedLastStreamingSnapshot = null;
+      // Reset local state and reload
+      setThreads([]);
+      setHasMore(true);
+      setAfter(undefined);
+      setLastStreamingSnapshot(null);
+      // Ignore stale snapshots from parent until a new conversation is created
+      // Set ref immediately (synchronous) for checks in other effects
+      postBulkDeleteRef.current = true;
+      setPostBulkDelete(true);
+      // Use onNewConversation to fully reset state (clears workflow selection, prevents auto-start)
+      // This is better than onThreadDeleted which only clears the thread ID
+      onNewConversation?.();
+      if (api) {
+        loadThreads(true, false);
+      }
+    };
+
+    window.addEventListener("conversations-deleted", handleBulkDelete);
+    return () => window.removeEventListener("conversations-deleted", handleBulkDelete);
+  }, [api, loadThreads, setLastStreamingSnapshot, onNewConversation]);
+
   // Keep a ref to the latest snapshot for use after loadThreads completes
   const latestSnapshotRef = useRef<Thread | null>(null);
   latestSnapshotRef.current = activeThreadSnapshot ?? null;
@@ -273,9 +307,24 @@ export function ConversationsSidebarSection({
     }
   }, [lastStreamingSnapshot?.id, streamingThreadIds]);
 
+  // Reset postBulkDelete when a new conversation starts streaming
+  // This indicates a new conversation is being created after the bulk delete
+  useEffect(() => {
+    if (postBulkDelete && activeThreadSnapshot?.id && streamingThreadIds?.has(activeThreadSnapshot.id)) {
+      postBulkDeleteRef.current = false;
+      setPostBulkDelete(false);
+    }
+  }, [postBulkDelete, activeThreadSnapshot?.id, streamingThreadIds]);
+
   // Keep sidebar entry in sync with the latest active thread snapshot (title, metadata...)
   useEffect(() => {
     if (!activeThreadSnapshot?.id) {
+      return;
+    }
+
+    // Don't sync stale snapshot after bulk delete - it no longer exists in backend
+    // Use ref for synchronous check (state may not be updated yet)
+    if (postBulkDeleteRef.current) {
       return;
     }
 
@@ -299,6 +348,7 @@ export function ConversationsSidebarSection({
       cachedThreads = nextThreads;
       return nextThreads;
     });
+    // Note: we use postBulkDeleteRef instead of postBulkDelete state for synchronous check
   }, [activeThreadSnapshot]);
 
   // Auto-refresh when currentThreadId changes to a thread not in the list
@@ -479,17 +529,20 @@ export function ConversationsSidebarSection({
       }
     };
 
-    // Add lastStreamingSnapshot first (will appear after activeThreadSnapshot if both exist)
-    // This handles the case where user clicked "+" while streaming
-    maybeAddThread(lastStreamingSnapshot);
+    // Don't add stale snapshots after bulk delete (they no longer exist in backend)
+    if (!postBulkDelete) {
+      // Add lastStreamingSnapshot first (will appear after activeThreadSnapshot if both exist)
+      // This handles the case where user clicked "+" while streaming
+      maybeAddThread(lastStreamingSnapshot);
 
-    // Add activeThreadSnapshot (will appear at top)
-    // This handles the race condition where streamingThreadIds is updated
-    // before the useEffect adds the thread to the threads list
-    maybeAddThread(activeThreadSnapshot);
+      // Add activeThreadSnapshot (will appear at top)
+      // This handles the race condition where streamingThreadIds is updated
+      // before the useEffect adds the thread to the threads list
+      maybeAddThread(activeThreadSnapshot);
+    }
 
     return result;
-  }, [filteredThreads, isExpanded, maxVisible, searchQuery, activeThreadSnapshot, lastStreamingSnapshot]);
+  }, [filteredThreads, isExpanded, maxVisible, searchQuery, activeThreadSnapshot, lastStreamingSnapshot, postBulkDelete]);
 
   const hasHiddenThreads = filteredThreads.length > maxVisible && !isExpanded && !searchQuery.trim();
 

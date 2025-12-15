@@ -35,6 +35,8 @@ export const useDeleteConversations = () => {
     onSuccess: (_data, variables) => {
       // Invalidate stats to refresh counts
       queryClient.invalidateQueries({ queryKey: cleanupKeys.stats(variables.token) });
+      // Notify sidebar to refresh its conversation list
+      window.dispatchEvent(new CustomEvent("conversations-deleted"));
     },
   });
 };
@@ -102,6 +104,8 @@ export const useFactoryReset = () => {
       // Invalidate all relevant caches
       queryClient.invalidateQueries({ queryKey: cleanupKeys.stats(variables.token) });
       queryClient.invalidateQueries({ queryKey: ["workflows"] });
+      // Notify sidebar to refresh its conversation list
+      window.dispatchEvent(new CustomEvent("conversations-deleted"));
     },
   });
 };
