@@ -70,13 +70,13 @@ export const useGitHubSyncWebSocket = ({
   const handleSyncEvent = useCallback(
     (event: GitHubSyncEvent) => {
       if (event.type === "github_sync_complete") {
-        // Invalidate workflows list to refresh sidebar
-        queryClient.invalidateQueries({ queryKey: workflowsKeys.all });
+        // Refetch workflows list to refresh sidebar immediately
+        void queryClient.refetchQueries({ queryKey: workflowsKeys.all });
         // Also invalidate GitHub-related queries
         queryClient.invalidateQueries({ queryKey: githubKeys.repoSyncs() });
 
         console.log(
-          "[GitHubSync] Received sync notification, invalidating queries",
+          "[GitHubSync] Received sync notification, refetching workflows",
           event.data
         );
       }
