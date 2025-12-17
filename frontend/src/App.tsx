@@ -92,17 +92,24 @@ const AppLayoutGuard = () => {
 const HomePage = () => <MyChat />;
 const ConversationPage = () => <MyChat />;
 
-const AuthenticatedAppLayout = () => {
+// Inner component that uses both auth and sidebar context
+const GitHubSyncConnector = () => {
   const { token } = useAuth();
 
   // Connect to GitHub sync WebSocket for real-time updates
+  // This must be inside WorkflowSidebarProvider to access loadWorkflows
   useGitHubSyncWebSocket({
     token,
     enabled: Boolean(token),
   });
 
+  return null;
+};
+
+const AuthenticatedAppLayout = () => {
   return (
     <WorkflowSidebarProvider>
+      <GitHubSyncConnector />
       <AppLayout />
     </WorkflowSidebarProvider>
   );

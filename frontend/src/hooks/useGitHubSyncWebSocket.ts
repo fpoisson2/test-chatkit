@@ -1,11 +1,12 @@
 /**
  * WebSocket hook for real-time GitHub sync notifications.
- * Automatically invalidates workflows query when sync events are received.
+ * Automatically refreshes workflows when sync events are received.
  */
 import { useEffect, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { workflowsKeys } from "./useWorkflows";
 import { githubKeys } from "./useGitHubIntegrations";
+import { useWorkflowSidebar } from "../features/workflows/WorkflowSidebarProvider";
 
 interface GitHubSyncEvent {
   type: "connected" | "github_sync_complete" | "ping";
@@ -62,6 +63,7 @@ export const useGitHubSyncWebSocket = ({
   enabled,
 }: UseGitHubSyncWebSocketOptions): void => {
   const queryClient = useQueryClient();
+  const { loadWorkflows } = useWorkflowSidebar();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -70,18 +72,18 @@ export const useGitHubSyncWebSocket = ({
   const handleSyncEvent = useCallback(
     (event: GitHubSyncEvent) => {
       if (event.type === "github_sync_complete") {
-        // Refetch workflows list to refresh sidebar immediately
-        void queryClient.refetchQueries({ queryKey: workflowsKeys.all });
-        // Also invalidate GitHub-related queries
-        queryClient.invalidateQueries({ queryKey: githubKeys.repoSyncs() });
+        // Dispatch custom event so ALL workflow contexts can refresh
+        window.dispatchEvent(new CustomEvent("github-sync-refresh", { detail: event.data }));
 
-        console.log(
-          "[GitHubSync] Received sync notification, refetching workflows",
-          event.data
-        );
+        // Reload workflows in sidebar context
+        void loadWorkflows();
+        // Also refetch React Query cache for any other components
+        void queryClient.refetchQueries({ queryKey: workflowsKeys.all });
+        // Invalidate GitHub-related queries
+        queryClient.invalidateQueries({ queryKey: githubKeys.repoSyncs() });
       }
     },
-    [queryClient]
+    [queryClient, loadWorkflows]
   );
 
   const connect = useCallback(() => {

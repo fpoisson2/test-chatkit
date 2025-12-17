@@ -74,7 +74,7 @@ def publish_github_sync_complete(
     import os
     import redis
 
-    redis_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+    redis_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6380/0")
     try:
         r = redis.from_url(redis_url)
         message = json.dumps({
@@ -97,7 +97,7 @@ async def listen_to_redis_pubsub():
     Background task to listen to Redis pub/sub and broadcast to WebSocket clients.
     """
     import os
-    redis_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+    redis_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6380/0")
     while True:
         try:
             r = aioredis.from_url(redis_url)

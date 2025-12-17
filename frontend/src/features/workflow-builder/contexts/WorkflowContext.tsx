@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from "react";
 import type {
   WorkflowSummary,
   WorkflowVersionSummary,
@@ -7,6 +7,7 @@ import type {
 import type { HostedWorkflowMetadata } from "../../../utils/backend";
 import { chatkitApi, makeApiEndpointCandidates } from "../../../utils/backend";
 import { backendUrl } from "../WorkflowBuilderUtils";
+import { useAuth } from "../../../auth";
 
 // Context types
 type WorkflowContextValue = {
@@ -98,6 +99,8 @@ type WorkflowProviderProps = {
 };
 
 export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
+  const { token } = useAuth();
+
   // State
   const [workflows, setWorkflowsState] = useState<WorkflowSummary[]>([]);
   const [hostedWorkflows, setHostedWorkflowsState] = useState<HostedWorkflowMetadata[]>([]);
@@ -528,6 +531,21 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
     },
     [loadWorkflows],
   );
+
+  // Listen for GitHub sync refresh events
+  useEffect(() => {
+    const handleGitHubSyncRefresh = () => {
+      if (token) {
+        const authHeader = { Authorization: `Bearer ${token}` };
+        void loadWorkflows(authHeader);
+      }
+    };
+
+    window.addEventListener("github-sync-refresh", handleGitHubSyncRefresh);
+    return () => {
+      window.removeEventListener("github-sync-refresh", handleGitHubSyncRefresh);
+    };
+  }, [loadWorkflows, token]);
 
   const value = useMemo<WorkflowContextValue>(
     () => ({
