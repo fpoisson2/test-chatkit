@@ -223,6 +223,7 @@ export const usePushWorkflowToGitHub = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: githubKeys.mappings(variables.payload.repo_sync_id) });
       queryClient.invalidateQueries({ queryKey: githubKeys.repoSync(variables.payload.repo_sync_id) });
+      queryClient.invalidateQueries({ queryKey: githubKeys.repoSyncs() });
     },
   });
 };
