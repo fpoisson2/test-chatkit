@@ -108,24 +108,17 @@ async def github_sync_websocket(websocket: WebSocket):
             "data": {"message": "Connected to GitHub sync notifications"}
         })
 
-        # Keep connection alive with periodic pings
+        # Keep connection alive - just wait for messages or disconnection
+        # The connection stays open and receives broadcast messages
         while True:
             try:
-                # Wait for client messages (ping/pong) or timeout
-                await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=30.0
-                )
-            except asyncio.TimeoutError:
-                # Send ping to keep connection alive
-                try:
-                    await websocket.send_json({"type": "ping"})
-                except Exception:
-                    break
+                # Send periodic ping to keep connection alive
+                await asyncio.sleep(25)
+                await websocket.send_json({"type": "ping"})
             except WebSocketDisconnect:
                 break
             except Exception as e:
-                logger.error(f"Error in GitHub sync WebSocket loop: {e}")
+                logger.debug(f"GitHub sync WebSocket ping failed: {e}")
                 break
 
     except WebSocketDisconnect:

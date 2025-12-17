@@ -106,9 +106,8 @@ export const useGitHubSyncWebSocket = ({
         try {
           const message: GitHubSyncEvent = JSON.parse(event.data);
 
+          // Ignore ping messages (keep-alive)
           if (message.type === "ping") {
-            // Respond to keep-alive ping
-            ws.send(JSON.stringify({ type: "pong" }));
             return;
           }
 
