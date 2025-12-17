@@ -10,7 +10,6 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import redis.asyncio as aioredis
 
-from ..config import get_settings
 from ..security import decode_access_token
 
 router = APIRouter()
@@ -72,11 +71,12 @@ def publish_github_sync_complete(
         sync_type: Either "pull" or "push"
         workflows_affected: List of workflow slugs that were affected
     """
+    import os
     import redis
 
-    settings = get_settings()
+    redis_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
     try:
-        r = redis.from_url(settings.redis_url)
+        r = redis.from_url(redis_url)
         message = json.dumps({
             "type": "github_sync_complete",
             "data": {
@@ -96,10 +96,11 @@ async def listen_to_redis_pubsub():
     """
     Background task to listen to Redis pub/sub and broadcast to WebSocket clients.
     """
-    settings = get_settings()
+    import os
+    redis_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
     while True:
         try:
-            r = aioredis.from_url(settings.redis_url)
+            r = aioredis.from_url(redis_url)
             pubsub = r.pubsub()
             await pubsub.subscribe(GITHUB_SYNC_CHANNEL)
             logger.info("Started listening to GitHub sync Redis channel")
