@@ -66,6 +66,7 @@ else:
             computer as computer_routes,
             docs,
             github,
+            github_ws,
             health,
             languages,
             lti,
@@ -145,6 +146,7 @@ else:
         app.include_router(computer_routes.router)
         app.include_router(docs.router)
         app.include_router(github.router)
+        app.include_router(github_ws.router)
         app.include_router(health.router)
         app.include_router(languages.router)
         app.include_router(lti.router)

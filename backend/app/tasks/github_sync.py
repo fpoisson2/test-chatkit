@@ -225,6 +225,22 @@ def webhook_sync_task(
 
             logger.info(f"Webhook sync completed: {result}")
 
+            # Notify connected WebSocket clients
+            try:
+                from ..routes.github_ws import notify_github_sync_complete
+
+                workflows_affected = result.get("imported", []) + result.get("updated", [])
+                asyncio.run(
+                    notify_github_sync_complete(
+                        repo_full_name=repo_sync.repo_full_name,
+                        branch=repo_sync.branch,
+                        sync_type="pull",
+                        workflows_affected=workflows_affected,
+                    )
+                )
+            except Exception as notify_err:
+                logger.warning(f"Failed to send WebSocket notification: {notify_err}")
+
     except Exception as e:
         logger.exception(f"Webhook sync failed for repo sync {repo_sync_id}: {e}")
         raise

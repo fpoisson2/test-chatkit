@@ -7,6 +7,7 @@ import { AuthErrorHandler } from "./components/AuthErrorHandler";
 import { WorkflowSidebarProvider } from "./features/workflows/WorkflowSidebarProvider";
 import { SuspenseRoute } from "./components/SuspenseRoute";
 import { useAuth } from "./auth";
+import { useGitHubSyncWebSocket } from "./hooks/useGitHubSyncWebSocket";
 import { MyChat } from "./MyChat";
 import { LoginPage } from "./pages/LoginPage";
 
@@ -91,11 +92,21 @@ const AppLayoutGuard = () => {
 const HomePage = () => <MyChat />;
 const ConversationPage = () => <MyChat />;
 
-const AuthenticatedAppLayout = () => (
-  <WorkflowSidebarProvider>
-    <AppLayout />
-  </WorkflowSidebarProvider>
-);
+const AuthenticatedAppLayout = () => {
+  const { token } = useAuth();
+
+  // Connect to GitHub sync WebSocket for real-time updates
+  useGitHubSyncWebSocket({
+    token,
+    enabled: Boolean(token),
+  });
+
+  return (
+    <WorkflowSidebarProvider>
+      <AppLayout />
+    </WorkflowSidebarProvider>
+  );
+};
 
 export const App = () => (
   <QueryClientProvider client={queryClient}>
