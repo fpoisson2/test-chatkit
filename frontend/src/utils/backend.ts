@@ -2290,3 +2290,273 @@ export const workflowGenerationApi = {
     }
   },
 };
+
+// =============================================================================
+// GitHub Integration API
+// =============================================================================
+
+export interface GitHubIntegration {
+  id: number;
+  github_username: string;
+  github_email: string | null;
+  github_avatar_url: string | null;
+  scopes: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  repo_syncs_count: number;
+}
+
+export interface GitHubRepo {
+  id: number;
+  full_name: string;
+  name: string;
+  owner: string;
+  description: string | null;
+  private: boolean;
+  default_branch: string;
+  html_url: string;
+}
+
+export interface GitHubRepoSync {
+  id: number;
+  integration_id: number;
+  repo_full_name: string;
+  branch: string;
+  file_pattern: string;
+  sync_direction: string;
+  auto_sync_enabled: boolean;
+  webhook_id: number | null;
+  has_webhook: boolean;
+  last_sync_at: string | null;
+  last_sync_status: string | null;
+  last_sync_error: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  mappings_count: number;
+}
+
+export interface GitHubSyncTask {
+  task_id: string;
+  repo_sync_id: number;
+  operation: string;
+  status: string;
+  progress: number;
+  files_processed: number;
+  files_total: number;
+  result_summary: Record<string, unknown> | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface GitHubFileScanResult {
+  file_path: string;
+  sha: string;
+  size: number;
+  is_new: boolean;
+  mapped_workflow_id: number | null;
+  mapped_workflow_slug: string | null;
+}
+
+export interface WorkflowGitHubMapping {
+  id: number;
+  workflow_id: number;
+  workflow_slug: string;
+  workflow_display_name: string;
+  repo_sync_id: number;
+  file_path: string;
+  github_sha: string | null;
+  sync_status: string;
+  last_pull_at: string | null;
+  last_push_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const githubApi = {
+  // OAuth
+  async startOAuth(token: string | null): Promise<{ authorization_url: string; state: string }> {
+    const response = await requestWithFallback("/api/github/oauth/start", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async pollOAuthStatus(
+    state: string,
+  ): Promise<{ status: string; error: string | null; integration_id: number | null; remaining_seconds: number }> {
+    const response = await requestWithFallback(`/api/github/oauth/status/${state}`, {
+      headers: { "Content-Type": "application/json" },
+    });
+    return response.json();
+  },
+
+  // Integrations
+  async listIntegrations(token: string | null): Promise<GitHubIntegration[]> {
+    const response = await requestWithFallback("/api/github/integrations", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async deleteIntegration(token: string | null, integrationId: number): Promise<void> {
+    const response = await requestWithFallback(`/api/github/integrations/${integrationId}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    if (!response.ok && response.status !== 204) {
+      throw new ApiError("Failed to delete GitHub integration", { status: response.status });
+    }
+  },
+
+  // Repos
+  async listRepos(token: string | null, integrationId: number): Promise<GitHubRepo[]> {
+    const response = await requestWithFallback(`/api/github/repos?integration_id=${integrationId}`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  // Repo Syncs
+  async listRepoSyncs(token: string | null): Promise<GitHubRepoSync[]> {
+    const response = await requestWithFallback("/api/github/repo-syncs", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async getRepoSync(token: string | null, syncId: number): Promise<GitHubRepoSync> {
+    const response = await requestWithFallback(`/api/github/repo-syncs/${syncId}`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async createRepoSync(
+    token: string | null,
+    payload: {
+      integration_id: number;
+      repo_full_name: string;
+      branch?: string;
+      file_pattern: string;
+      sync_direction?: string;
+      auto_sync_enabled?: boolean;
+    },
+  ): Promise<GitHubRepoSync> {
+    const response = await requestWithFallback("/api/github/repo-syncs", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async updateRepoSync(
+    token: string | null,
+    syncId: number,
+    payload: {
+      branch?: string;
+      file_pattern?: string;
+      sync_direction?: string;
+      auto_sync_enabled?: boolean;
+      is_active?: boolean;
+    },
+  ): Promise<GitHubRepoSync> {
+    const response = await requestWithFallback(`/api/github/repo-syncs/${syncId}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async deleteRepoSync(token: string | null, syncId: number): Promise<void> {
+    const response = await requestWithFallback(`/api/github/repo-syncs/${syncId}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    if (!response.ok && response.status !== 204) {
+      throw new ApiError("Failed to delete repo sync", { status: response.status });
+    }
+  },
+
+  // Scan & Sync
+  async scanRepoFiles(
+    token: string | null,
+    syncId: number,
+  ): Promise<{ repo_full_name: string; branch: string; file_pattern: string; files: GitHubFileScanResult[]; total_files: number }> {
+    const response = await requestWithFallback(`/api/github/repo-syncs/${syncId}/scan`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async triggerSync(
+    token: string | null,
+    syncId: number,
+    operation: "pull" | "push" | "sync" = "sync",
+  ): Promise<GitHubSyncTask> {
+    const response = await requestWithFallback(`/api/github/repo-syncs/${syncId}/sync`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ operation }),
+    });
+    return response.json();
+  },
+
+  async getSyncTaskStatus(token: string | null, taskId: string): Promise<GitHubSyncTask> {
+    const response = await requestWithFallback(`/api/github/sync-tasks/${taskId}`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  // Mappings
+  async listMappings(token: string | null, syncId: number): Promise<WorkflowGitHubMapping[]> {
+    const response = await requestWithFallback(`/api/github/repo-syncs/${syncId}/mappings`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  // Push workflow
+  async pushWorkflow(
+    token: string | null,
+    payload: {
+      workflow_id: number;
+      repo_sync_id: number;
+      file_path?: string;
+      commit_message?: string;
+    },
+  ): Promise<{ success: boolean; file_path: string; commit_sha: string | null; html_url: string | null; error: string | null }> {
+    const response = await requestWithFallback("/api/github/push-workflow", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  // Webhook management
+  async createWebhook(token: string | null, syncId: number): Promise<{ status: string; webhook_id: number }> {
+    const response = await requestWithFallback(`/api/github/repo-syncs/${syncId}/webhook`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async deleteWebhook(token: string | null, syncId: number): Promise<void> {
+    const response = await requestWithFallback(`/api/github/repo-syncs/${syncId}/webhook`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    if (!response.ok && response.status !== 204) {
+      throw new ApiError("Failed to delete webhook", { status: response.status });
+    }
+  },
+};

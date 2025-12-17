@@ -32,7 +32,7 @@ export const useWorkflowStyles = ({
     [isMobileLayout],
   );
 
-  const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
+  const shouldShowWorkflowDescription = false;
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
 

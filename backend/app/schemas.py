@@ -1564,3 +1564,193 @@ class ActiveWorkflowSessionsResponse(BaseModel):
 
     sessions: list[ActiveWorkflowSession]
     total_count: int
+
+
+# ============================================================================
+# GitHub Integration Schemas
+# ============================================================================
+
+
+class GitHubOAuthStartResponse(BaseModel):
+    """Response from starting GitHub OAuth flow."""
+
+    authorization_url: str
+    state: str
+
+
+class GitHubOAuthStatusResponse(BaseModel):
+    """Status of ongoing OAuth flow."""
+
+    status: Literal["pending", "ok", "error"]
+    error: str | None = None
+    integration_id: int | None = None
+    remaining_seconds: int = 0
+
+
+class GitHubIntegrationResponse(BaseModel):
+    """GitHub integration details."""
+
+    id: int
+    github_username: str
+    github_email: str | None = None
+    github_avatar_url: str | None = None
+    scopes: str
+    is_active: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    repo_syncs_count: int = 0
+
+
+class GitHubRepoResponse(BaseModel):
+    """GitHub repository info."""
+
+    id: int
+    full_name: str  # owner/repo
+    name: str
+    owner: str
+    description: str | None = None
+    private: bool
+    default_branch: str
+    html_url: str
+
+
+class GitHubRepoSyncCreateRequest(BaseModel):
+    """Request to create a repo sync configuration."""
+
+    integration_id: int
+    repo_full_name: str = Field(..., min_length=3, pattern=r"^[\w.-]+/[\w.-]+$")
+    branch: str = Field(default="main", min_length=1)
+    file_pattern: str = Field(..., min_length=1)  # e.g., "workflows/*.json"
+    sync_direction: Literal["pull_only", "push_only", "bidirectional"] = "bidirectional"
+    auto_sync_enabled: bool = True
+
+
+class GitHubRepoSyncUpdateRequest(BaseModel):
+    """Request to update a repo sync configuration."""
+
+    branch: str | None = Field(default=None, min_length=1)
+    file_pattern: str | None = Field(default=None, min_length=1)
+    sync_direction: Literal["pull_only", "push_only", "bidirectional"] | None = None
+    auto_sync_enabled: bool | None = None
+    is_active: bool | None = None
+
+
+class GitHubRepoSyncResponse(BaseModel):
+    """Repository sync configuration details."""
+
+    id: int
+    integration_id: int
+    repo_full_name: str
+    branch: str
+    file_pattern: str
+    sync_direction: str
+    auto_sync_enabled: bool
+    webhook_id: int | None = None
+    has_webhook: bool = False
+    last_sync_at: datetime.datetime | None = None
+    last_sync_status: str | None = None
+    last_sync_error: str | None = None
+    is_active: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    mappings_count: int = 0
+
+
+class WorkflowGitHubMappingResponse(BaseModel):
+    """Workflow to GitHub file mapping details."""
+
+    id: int
+    workflow_id: int
+    workflow_slug: str
+    workflow_display_name: str
+    repo_sync_id: int
+    file_path: str
+    github_sha: str | None = None
+    sync_status: str
+    last_pull_at: datetime.datetime | None = None
+    last_push_at: datetime.datetime | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class GitHubSyncTriggerRequest(BaseModel):
+    """Request to trigger a sync operation."""
+
+    operation: Literal["pull", "push", "sync"] = "sync"
+
+
+class GitHubSyncTaskResponse(BaseModel):
+    """Background sync task status."""
+
+    task_id: str
+    repo_sync_id: int
+    operation: str
+    status: str
+    progress: int
+    files_processed: int
+    files_total: int
+    result_summary: dict[str, Any] | None = None
+    error_message: str | None = None
+    started_at: datetime.datetime | None = None
+    completed_at: datetime.datetime | None = None
+    created_at: datetime.datetime
+
+
+class GitHubFileScanResult(BaseModel):
+    """Result of scanning GitHub repo for matching files."""
+
+    file_path: str
+    sha: str
+    size: int
+    is_new: bool = True  # Whether this file is not yet mapped
+    mapped_workflow_id: int | None = None
+    mapped_workflow_slug: str | None = None
+
+
+class GitHubScanResponse(BaseModel):
+    """Response from scanning a repo for workflow files."""
+
+    repo_full_name: str
+    branch: str
+    file_pattern: str
+    files: list[GitHubFileScanResult]
+    total_files: int
+
+
+class GitHubWebhookPayload(BaseModel):
+    """Partial GitHub webhook push event payload."""
+
+    ref: str  # "refs/heads/main"
+    before: str  # commit SHA before
+    after: str  # commit SHA after
+    repository: dict[str, Any]
+    commits: list[dict[str, Any]] = Field(default_factory=list)
+
+    @property
+    def branch(self) -> str:
+        """Extract branch name from ref."""
+        return self.ref.replace("refs/heads/", "")
+
+    @property
+    def repo_full_name(self) -> str:
+        """Get repository full name."""
+        return self.repository.get("full_name", "")
+
+
+class WorkflowPushRequest(BaseModel):
+    """Request to push a workflow to GitHub."""
+
+    workflow_id: int
+    repo_sync_id: int
+    file_path: str | None = None  # Optional, auto-generate if not provided
+    commit_message: str | None = None  # Optional, auto-generate if not provided
+
+
+class WorkflowPushResponse(BaseModel):
+    """Response from pushing a workflow to GitHub."""
+
+    success: bool
+    file_path: str
+    commit_sha: str | None = None
+    html_url: str | None = None
+    error: str | None = None

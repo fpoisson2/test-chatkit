@@ -38,7 +38,11 @@ celery_app = Celery(
     "chatkit",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.language_generation", "app.tasks.workflow_generation"]
+    include=[
+        "app.tasks.language_generation",
+        "app.tasks.workflow_generation",
+        "app.tasks.github_sync",
+    ]
 )
 
 # Configuration

@@ -3024,6 +3024,28 @@ class WorkflowService:
                 user_id,
             )
 
+            # Filter out viewports for non-existent workflows
+            if normalized:
+                workflow_ids_in_payload = {wid for wid, _, _ in normalized.keys()}
+                existing_workflow_ids = set(
+                    db.scalars(
+                        select(Workflow.id).where(
+                            Workflow.id.in_(workflow_ids_in_payload)
+                        )
+                    ).all()
+                )
+                invalid_workflow_ids = workflow_ids_in_payload - existing_workflow_ids
+                if invalid_workflow_ids:
+                    logger.warning(
+                        "Filtering out %s viewport(s) for non-existent workflow(s): %s",
+                        len([k for k in normalized if k[0] in invalid_workflow_ids]),
+                        invalid_workflow_ids,
+                    )
+                    normalized = {
+                        k: v for k, v in normalized.items()
+                        if k[0] not in invalid_workflow_ids
+                    }
+
             existing = {
                 (
                     viewport.workflow_id,

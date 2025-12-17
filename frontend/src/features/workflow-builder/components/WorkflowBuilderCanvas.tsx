@@ -189,7 +189,7 @@ const WorkflowBuilderCanvas = ({
 
   const workflowBusy = loading || isImporting || isExporting;
 
-  const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
+  const shouldShowWorkflowDescription = false;
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
 

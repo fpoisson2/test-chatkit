@@ -7,6 +7,7 @@ export type AdminSectionKey =
   | "vector-stores"
   | "widgets"
   | "mcp-servers"
+  | "github"
   | "telephony"
   | "workflow-monitor"
   | "workflow-generation"
@@ -83,6 +84,16 @@ export const ADMIN_SECTIONS: AdminSection[] = [
     Component: lazy(() =>
       import("../pages/AdminMcpServersPage").then((module) => ({
         default: module.AdminMcpServersPage,
+      })),
+    ),
+    requireAdmin: true,
+  },
+  {
+    key: "github",
+    labelKey: "admin.tabs.github",
+    Component: lazy(() =>
+      import("../pages/AdminGitHubIntegrationsPage").then((module) => ({
+        default: module.AdminGitHubIntegrationsPage,
       })),
     ),
     requireAdmin: true,

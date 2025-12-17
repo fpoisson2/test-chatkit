@@ -24,6 +24,7 @@ interface WorkflowBuilderHeaderProps {
   onExportWorkflow: () => void | Promise<void>;
   onOpenDeployModal: () => void;
   onOpenGenerationModal: () => void;
+  onOpenGitHubModal: () => void;
 
   // Render props pour description et publication reminder
   renderWorkflowDescription: (className?: string) => React.ReactNode;
@@ -56,6 +57,7 @@ export default function WorkflowBuilderHeader({
   onExportWorkflow,
   onOpenDeployModal,
   onOpenGenerationModal,
+  onOpenGitHubModal,
   renderWorkflowDescription,
   renderWorkflowPublicationReminder,
   isMobileActionsOpen,
@@ -94,6 +96,8 @@ export default function WorkflowBuilderHeader({
     loading || !selectedWorkflowId || versions.length === 0 || isDeploying;
   const generateDisabled =
     loading || !selectedWorkflowId || !selectedVersionId || isGenerating;
+  const githubDisabled =
+    loading || !selectedWorkflowId || !selectedVersionId;
 
   // Labels dynamiques
   const importLabel = isImporting
@@ -112,7 +116,7 @@ export default function WorkflowBuilderHeader({
   const draftDisplayName = t("workflowBuilder.save.draftDisplayName");
 
   // Workflow description et publication reminder
-  const showWorkflowDescription = Boolean(selectedWorkflow?.description);
+  const showWorkflowDescription = false;
   const showWorkflowPublicationReminder = Boolean(
     selectedWorkflow && !selectedWorkflow.active_version_id,
   );
@@ -129,6 +133,7 @@ export default function WorkflowBuilderHeader({
       exportDisabled={exportDisabled}
       deployDisabled={deployDisabled}
       generateDisabled={generateDisabled}
+      githubDisabled={githubDisabled}
       importLabel={importLabel}
       exportLabel={exportLabel}
       onVersionChange={onVersionChange}
@@ -138,6 +143,7 @@ export default function WorkflowBuilderHeader({
       onExportWorkflow={onExportWorkflow}
       onOpenDeployModal={onOpenDeployModal}
       onOpenGenerationModal={onOpenGenerationModal}
+      onOpenGitHubModal={onOpenGitHubModal}
       mobileActionsTriggerRef={mobileActionsTriggerRef}
       mobileActionsMenuRef={mobileActionsMenuRef}
       isMobileActionsOpen={isMobileActionsOpen}

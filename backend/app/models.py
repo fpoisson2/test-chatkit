@@ -1329,6 +1329,240 @@ class WorkflowGenerationTask(Base):
     )
 
 
+# =============================================================================
+# GitHub Integration Models
+# =============================================================================
+
+
+class GitHubIntegration(Base):
+    """Per-user GitHub OAuth connection for workflow synchronization."""
+
+    __tablename__ = "github_integrations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    access_token_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    refresh_token_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    token_expires_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    github_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    github_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    github_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    github_avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    scopes: Mapped[str] = mapped_column(Text, nullable=False)  # comma-separated
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    # Relations
+    user: Mapped[User] = relationship("User", foreign_keys=[user_id])
+    repo_syncs: Mapped[list["GitHubRepoSync"]] = relationship(
+        "GitHubRepoSync", back_populates="integration", cascade="all, delete-orphan"
+    )
+
+
+class GitHubRepoSync(Base):
+    """Repository sync configuration with file patterns."""
+
+    __tablename__ = "github_repo_syncs"
+    __table_args__ = (
+        UniqueConstraint(
+            "integration_id", "repo_full_name", "branch",
+            name="uq_github_repo_sync_repo_branch"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    integration_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("github_integrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    repo_full_name: Mapped[str] = mapped_column(
+        String(255), nullable=False
+    )  # "owner/repo"
+    branch: Mapped[str] = mapped_column(String(255), nullable=False, default="main")
+    file_pattern: Mapped[str] = mapped_column(
+        String(512), nullable=False
+    )  # e.g., "workflows/*.json"
+    sync_direction: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="bidirectional"
+    )  # "pull_only", "push_only", "bidirectional"
+    auto_sync_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    webhook_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    webhook_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sync_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_sync_status: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # "success", "partial", "failed"
+    last_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    # Relations
+    integration: Mapped[GitHubIntegration] = relationship(
+        "GitHubIntegration", back_populates="repo_syncs"
+    )
+    workflow_mappings: Mapped[list["WorkflowGitHubMapping"]] = relationship(
+        "WorkflowGitHubMapping",
+        back_populates="repo_sync",
+        cascade="all, delete-orphan",
+    )
+
+
+class WorkflowGitHubMapping(Base):
+    """Maps workflows to GitHub files with sync metadata."""
+
+    __tablename__ = "workflow_github_mappings"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id", "repo_sync_id", name="uq_workflow_github_mapping"
+        ),
+        UniqueConstraint(
+            "repo_sync_id", "file_path", name="uq_github_file_path"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workflow_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    repo_sync_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("github_repo_syncs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    file_path: Mapped[str] = mapped_column(
+        String(512), nullable=False
+    )  # relative path in repo
+    github_sha: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )  # blob SHA
+    github_commit_sha: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )  # commit SHA
+    last_synced_version_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("workflow_definitions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    sync_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending"
+    )  # "synced", "conflict", "pending", "error", "local_changes", "remote_changes"
+    last_pull_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_push_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    # Relations
+    workflow: Mapped[Workflow] = relationship("Workflow", foreign_keys=[workflow_id])
+    repo_sync: Mapped[GitHubRepoSync] = relationship(
+        "GitHubRepoSync", back_populates="workflow_mappings"
+    )
+    last_synced_version: Mapped[WorkflowDefinition | None] = relationship(
+        "WorkflowDefinition", foreign_keys=[last_synced_version_id]
+    )
+
+
+class GitHubSyncTask(Base):
+    """Track background sync operations."""
+
+    __tablename__ = "github_sync_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[str] = mapped_column(
+        String(255), unique=True, nullable=False, index=True
+    )
+    repo_sync_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("github_repo_syncs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    triggered_by_user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    operation: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # "pull", "push", "sync"
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True
+    )  # "pending", "running", "completed", "failed"
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0-100
+    files_processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    files_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_summary: Mapped[dict[str, Any] | None] = mapped_column(
+        PortableJSONB(), nullable=True
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    # Relations
+    repo_sync: Mapped[GitHubRepoSync] = relationship("GitHubRepoSync")
+    triggered_by: Mapped[User | None] = relationship("User")
+
+
 Index("ix_json_documents_metadata", JsonDocument.metadata_json, postgresql_using="gin")
 Index("ix_json_chunks_metadata", JsonChunk.metadata_json, postgresql_using="gin")
 Index(

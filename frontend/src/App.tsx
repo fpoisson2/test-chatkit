@@ -205,6 +205,7 @@ export const App = () => (
       <Route path="/admin/providers" element={<Navigate to="/?admin=providers" replace />} />
       <Route path="/admin/sip-accounts" element={<Navigate to="/?admin=telephony" replace />} />
       <Route path="/admin/mcp-servers" element={<Navigate to="/?admin=mcp-servers" replace />} />
+      <Route path="/admin/github" element={<Navigate to="/?admin=github" replace />} />
       <Route path="/admin/languages" element={<Navigate to="/?admin=languages" replace />} />
       <Route path="/admin/lti" element={<Navigate to="/?admin=lti" replace />} />
       <Route

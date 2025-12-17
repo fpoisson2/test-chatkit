@@ -3,8 +3,10 @@ import { useAuth } from "../../../auth";
 import { useI18n } from "../../../i18n";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import DeployWorkflowModal from "./DeployWorkflowModal";
+import GitHubPushModal from "./GitHubPushModal";
 import WorkflowAppearanceModal from "../../workflows/WorkflowAppearanceModal";
 import WorkflowGenerationModal from "./WorkflowGenerationModal";
+import type { WorkflowSummary } from "../types";
 
 /**
  * Props for modals that require external handlers
@@ -27,6 +29,11 @@ interface WorkflowBuilderModalsProps {
   // Appearance modal
   appearanceModalTarget: "local" | "hosted" | null;
   onCloseAppearanceModal: () => void;
+
+  // GitHub Push modal
+  selectedWorkflow: WorkflowSummary | null;
+  isGitHubModalOpen: boolean;
+  onCloseGitHubModal: () => void;
 }
 
 /**
@@ -45,6 +52,9 @@ export default function WorkflowBuilderModals({
   shouldShowVersionPath,
   appearanceModalTarget,
   onCloseAppearanceModal,
+  selectedWorkflow,
+  isGitHubModalOpen,
+  onCloseGitHubModal,
 }: WorkflowBuilderModalsProps) {
   const { token } = useAuth();
   const { t } = useI18n();
@@ -115,6 +125,12 @@ export default function WorkflowBuilderModals({
       />
 
       <WorkflowGenerationModal />
+
+      <GitHubPushModal
+        isOpen={isGitHubModalOpen}
+        onClose={onCloseGitHubModal}
+        workflow={selectedWorkflow}
+      />
     </>
   );
 }

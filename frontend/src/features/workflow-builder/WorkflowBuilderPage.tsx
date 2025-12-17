@@ -515,6 +515,11 @@ const WorkflowBuilderPage = () => {
     isDeploying,
   });
 
+  // GitHub Push Modal state
+  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
+  const handleOpenGitHubModal = useCallback(() => setIsGitHubModalOpen(true), []);
+  const handleCloseGitHubModal = useCallback(() => setIsGitHubModalOpen(false), []);
+
   // Phase 4: Refs migrated to contexts
   // - SaveContext: lastSavedSnapshotRef, saveStateRef
   // - SelectionContext: selectedNodeIdRef, selectedEdgeIdRef, selectedNodeIdsRef, selectedEdgeIdsRef, previousSelectedElementRef
@@ -809,19 +814,7 @@ const WorkflowBuilderPage = () => {
     t,
   });
 
-  const renderWorkflowDescription = (className?: string) =>
-    selectedWorkflow?.description ? (
-      <div
-        className={className}
-        style={
-          className
-            ? undefined
-            : { color: "var(--text-muted)", fontSize: "0.95rem" }
-        }
-      >
-        {selectedWorkflow.description}
-      </div>
-    ) : null;
+  const renderWorkflowDescription = (_className?: string) => null;
 
   const renderWorkflowPublicationReminder = (className?: string) =>
     selectedWorkflow && !selectedWorkflow.active_version_id ? (
@@ -851,6 +844,7 @@ const WorkflowBuilderPage = () => {
         onExportWorkflow={handleExportWorkflow}
         onOpenDeployModal={handleOpenDeployModalWithSetup}
         onOpenGenerationModal={openGenerationModal}
+        onOpenGitHubModal={handleOpenGitHubModal}
         renderWorkflowDescription={renderWorkflowDescription}
         renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
         isMobileActionsOpen={isMobileActionsOpen}
@@ -1613,6 +1607,9 @@ const WorkflowBuilderPage = () => {
             shouldShowVersionPath={versionSummaryForPromotion != null}
             appearanceModalTarget={appearanceModalTarget}
             onCloseAppearanceModal={handleCloseAppearanceModal}
+            selectedWorkflow={selectedWorkflow}
+            isGitHubModalOpen={isGitHubModalOpen}
+            onCloseGitHubModal={handleCloseGitHubModal}
           />
         </SelectionProvider>
       </GraphProvider>

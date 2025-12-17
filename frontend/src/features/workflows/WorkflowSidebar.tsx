@@ -1134,9 +1134,6 @@ export const ChatWorkflowSidebar = ({
             {t("workflows.hostedUnavailable")}
           </p>
         ) : null}
-        {hosted.description ? (
-          <p className="chatkit-sidebar__workflow-meta">{hosted.description}</p>
-        ) : null}
       </>
     ),
     [t],
@@ -1808,9 +1805,6 @@ export const WorkflowBuilderSidebar = ({
             {t("workflowBuilder.localSection.missingProduction")}
           </p>
         ) : null}
-        {workflow.description ? (
-          <p className="chatkit-sidebar__workflow-meta">{workflow.description}</p>
-        ) : null}
       </>
     ),
     [t, warningStyle],
@@ -1937,20 +1931,11 @@ export const WorkflowBuilderSidebar = ({
     }
 
     const footerContent =
-      selectedWorkflow?.description || (selectedWorkflow && !selectedWorkflow.active_version_id)
+      selectedWorkflow && !selectedWorkflow.active_version_id
         ? (
-          <>
-            {selectedWorkflow?.description ? (
-              <p className="chatkit-sidebar__section-text">
-                {selectedWorkflow.description}
-              </p>
-            ) : null}
-            {selectedWorkflow && !selectedWorkflow.active_version_id ? (
-              <p className="chatkit-sidebar__section-text" style={warningStyle}>
-                Publiez une version pour l'utiliser.
-              </p>
-            ) : null}
-          </>
+          <p className="chatkit-sidebar__section-text" style={warningStyle}>
+            Publiez une version pour l'utiliser.
+          </p>
         )
         : null;
 

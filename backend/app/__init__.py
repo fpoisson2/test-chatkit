@@ -65,6 +65,7 @@ else:
             auth,
             computer as computer_routes,
             docs,
+            github,
             health,
             languages,
             lti,
@@ -143,6 +144,7 @@ else:
         app.include_router(workflow_monitor_ws.router)
         app.include_router(computer_routes.router)
         app.include_router(docs.router)
+        app.include_router(github.router)
         app.include_router(health.router)
         app.include_router(languages.router)
         app.include_router(lti.router)

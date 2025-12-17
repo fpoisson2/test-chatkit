@@ -395,6 +395,10 @@ class Settings:
     lti_tool_private_key_path: str | None
     lti_tool_public_key_path: str | None
     workflow_model_pricing: dict[str, dict[str, float]]
+    # GitHub OAuth configuration
+    github_oauth_client_id: str | None
+    github_oauth_client_secret: str | None
+    github_webhook_secret: str | None
 
     @property
     def chatkit_api_base(self) -> str:
@@ -802,6 +806,9 @@ class Settings:
                 env.get("WORKFLOW_MODEL_PRICING")
                 or env.get("WORKFLOW_MODEL_PRICING_JSON")
             ),
+            github_oauth_client_id=get_stripped("GITHUB_OAUTH_CLIENT_ID"),
+            github_oauth_client_secret=get_stripped("GITHUB_OAUTH_CLIENT_SECRET"),
+            github_webhook_secret=get_stripped("GITHUB_WEBHOOK_SECRET"),
         )
 
 

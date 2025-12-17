@@ -24,6 +24,7 @@ type WorkflowBuilderHeaderControlsProps = {
   exportDisabled: boolean;
   deployDisabled: boolean;
   generateDisabled: boolean;
+  githubDisabled: boolean;
   importLabel: string;
   exportLabel: string;
   onVersionChange: (event: ChangeEvent<HTMLSelectElement>) => void;
@@ -33,6 +34,7 @@ type WorkflowBuilderHeaderControlsProps = {
   onExportWorkflow: () => void | Promise<void>;
   onOpenDeployModal: () => void;
   onOpenGenerationModal: () => void;
+  onOpenGitHubModal: () => void;
   mobileActionsTriggerRef: MutableRefObject<HTMLButtonElement | null>;
   mobileActionsMenuRef: MutableRefObject<HTMLDivElement | null>;
   isMobileActionsOpen: boolean;
@@ -61,6 +63,7 @@ const WorkflowBuilderHeaderControls = ({
   exportDisabled,
   deployDisabled,
   generateDisabled,
+  githubDisabled,
   importLabel,
   exportLabel,
   onVersionChange,
@@ -70,6 +73,7 @@ const WorkflowBuilderHeaderControls = ({
   onExportWorkflow,
   onOpenDeployModal,
   onOpenGenerationModal,
+  onOpenGitHubModal,
   mobileActionsTriggerRef,
   mobileActionsMenuRef,
   isMobileActionsOpen,
@@ -251,6 +255,18 @@ const WorkflowBuilderHeaderControls = ({
                     type="button"
                     role="menuitem"
                     onClick={() => {
+                      onOpenGitHubModal();
+                      closeMobileActions();
+                    }}
+                    disabled={githubDisabled}
+                    style={getMobileActionButtonStyle({ disabled: githubDisabled })}
+                  >
+                    GitHub
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
                       onOpenDeployModal();
                       closeMobileActions();
                     }}
@@ -312,6 +328,17 @@ const WorkflowBuilderHeaderControls = ({
           })}
         >
           {exportLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onOpenGitHubModal}
+          disabled={githubDisabled}
+          title="Push to GitHub"
+          style={getDeployButtonStyle(false, {
+            disabled: githubDisabled,
+          })}
+        >
+          GitHub
         </button>
         <button
           type="button"
