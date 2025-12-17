@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import redis.asyncio as aioredis
 
+from ..config import get_settings
 from ..security import decode_access_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+GITHUB_SYNC_CHANNEL = "github_sync_notifications"
 
 
 class GitHubSyncConnectionManager:
@@ -51,14 +56,15 @@ class GitHubSyncConnectionManager:
 github_sync_manager = GitHubSyncConnectionManager()
 
 
-async def notify_github_sync_complete(
+def publish_github_sync_complete(
     repo_full_name: str,
     branch: str,
     sync_type: str,
     workflows_affected: list[str],
 ):
     """
-    Notify all connected clients that a GitHub sync has completed.
+    Publish a GitHub sync completion event to Redis.
+    This is called from Celery tasks (synchronous context).
 
     Args:
         repo_full_name: The repository (e.g., "owner/repo")
@@ -66,15 +72,61 @@ async def notify_github_sync_complete(
         sync_type: Either "pull" or "push"
         workflows_affected: List of workflow slugs that were affected
     """
-    await github_sync_manager.broadcast({
-        "type": "github_sync_complete",
-        "data": {
-            "repo_full_name": repo_full_name,
-            "branch": branch,
-            "sync_type": sync_type,
-            "workflows_affected": workflows_affected,
-        }
-    })
+    import redis
+
+    settings = get_settings()
+    try:
+        r = redis.from_url(settings.redis_url)
+        message = json.dumps({
+            "type": "github_sync_complete",
+            "data": {
+                "repo_full_name": repo_full_name,
+                "branch": branch,
+                "sync_type": sync_type,
+                "workflows_affected": workflows_affected,
+            }
+        })
+        r.publish(GITHUB_SYNC_CHANNEL, message)
+        logger.info(f"Published GitHub sync notification to Redis: {repo_full_name}")
+    except Exception as e:
+        logger.error(f"Failed to publish GitHub sync notification: {e}")
+
+
+async def listen_to_redis_pubsub():
+    """
+    Background task to listen to Redis pub/sub and broadcast to WebSocket clients.
+    """
+    settings = get_settings()
+    while True:
+        try:
+            r = aioredis.from_url(settings.redis_url)
+            pubsub = r.pubsub()
+            await pubsub.subscribe(GITHUB_SYNC_CHANNEL)
+            logger.info("Started listening to GitHub sync Redis channel")
+
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    try:
+                        data = json.loads(message["data"])
+                        await github_sync_manager.broadcast(data)
+                        logger.info(f"Broadcasted GitHub sync notification to {len(github_sync_manager.active_connections)} clients")
+                    except Exception as e:
+                        logger.error(f"Error processing Redis message: {e}")
+
+        except Exception as e:
+            logger.error(f"Redis pub/sub error: {e}")
+            await asyncio.sleep(5)  # Wait before reconnecting
+
+
+# Start Redis listener as background task when first WebSocket connects
+_redis_listener_task: asyncio.Task | None = None
+
+
+def ensure_redis_listener():
+    """Ensure the Redis listener background task is running."""
+    global _redis_listener_task
+    if _redis_listener_task is None or _redis_listener_task.done():
+        _redis_listener_task = asyncio.create_task(listen_to_redis_pubsub())
 
 
 @router.websocket("/api/github/sync/ws")
@@ -102,6 +154,9 @@ async def github_sync_websocket(websocket: WebSocket):
     try:
         await github_sync_manager.connect(websocket)
 
+        # Ensure Redis listener is running
+        ensure_redis_listener()
+
         # Send initial connection confirmation
         await websocket.send_json({
             "type": "connected",
@@ -109,7 +164,7 @@ async def github_sync_websocket(websocket: WebSocket):
         })
 
         # Keep connection alive - just wait for messages or disconnection
-        # The connection stays open and receives broadcast messages
+        # The connection stays open and receives broadcast messages from Redis
         while True:
             try:
                 # Send periodic ping to keep connection alive
