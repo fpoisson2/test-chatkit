@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_session
@@ -52,6 +54,19 @@ async def get_jwks(session: Session = Depends(get_session)) -> dict[str, Any]:
     """
     service = LTIService(session=session)
     return service.get_tool_jwks()
+
+
+@router.get("/api/lti/icon.png")
+async def get_lti_icon():
+    """Serve the LTI tool icon for Moodle integration."""
+    icon_path = Path(__file__).parent.parent / "static" / "icon.png"
+    if not icon_path.exists():
+        raise HTTPException(status_code=404, detail="Icon not found")
+    return FileResponse(
+        icon_path,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @router.post("/api/lti/login")
