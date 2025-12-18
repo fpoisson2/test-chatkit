@@ -41,7 +41,7 @@ class GitHubOAuthSession:
     redirect_uri: str
     scopes: list[str]
     expires_at: float
-    status: Literal["pending", "completed", "error"] = "pending"
+    status: Literal["pending", "ok", "error"] = "pending"
     integration_id: int | None = None
     error: str | None = None
 
@@ -301,7 +301,7 @@ async def complete_github_oauth_callback(
             )
 
         # Update session status
-        _update_session(state, status="completed", integration_id=integration.id)
+        _update_session(state, status="ok", integration_id=integration.id)
 
         return integration
 
