@@ -31,13 +31,25 @@ else:
 
         from .config import get_settings
 
+        # Paths that are allowed to be embedded in iframes (LTI integration)
+        LTI_IFRAME_PATHS = (
+            "/api/lti/",
+            "/.well-known/jwks.json",
+        )
+
         class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             """Middleware to add security headers to all responses."""
 
             async def dispatch(self, request: Request, call_next):
                 response = await call_next(request)
-                # Prevent clickjacking
-                response.headers["X-Frame-Options"] = "DENY"
+                path = request.url.path
+
+                # Allow LTI routes to be embedded in iframes
+                is_lti_path = any(path.startswith(p) for p in LTI_IFRAME_PATHS)
+
+                # Prevent clickjacking (except for LTI routes which need iframe embedding)
+                if not is_lti_path:
+                    response.headers["X-Frame-Options"] = "DENY"
                 # Prevent MIME type sniffing
                 response.headers["X-Content-Type-Options"] = "nosniff"
                 # XSS protection (legacy browsers)
