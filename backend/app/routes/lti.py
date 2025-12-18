@@ -189,18 +189,18 @@ async def list_deep_link_workflows(
     user authentication. This endpoint is used during deep linking before
     the user is fully authenticated.
     """
-    from ..models import Workflow, LTIRegistration, LTIOIDCSession, workflow_lti_registrations
+    from ..models import Workflow, LTIRegistration, LTIUserSession, workflow_lti_registrations
     from sqlalchemy import select
     import logging
 
     logger = logging.getLogger(__name__)
 
-    # Validate the state by looking up the OIDC session
-    oidc_session = session.scalar(
-        select(LTIOIDCSession).where(LTIOIDCSession.state == state)
+    # Validate the state by looking up the LTI user session
+    lti_session = session.scalar(
+        select(LTIUserSession).where(LTIUserSession.state == state)
     )
 
-    if not oidc_session:
+    if not lti_session:
         logger.warning("Deep link workflows: Invalid or expired state")
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
@@ -208,7 +208,7 @@ async def list_deep_link_workflows(
         )
 
     # Get the issuer from the registration
-    issuer = oidc_session.registration.issuer if oidc_session.registration else None
+    issuer = lti_session.registration.issuer if lti_session.registration else None
 
     query = (
         select(Workflow)
