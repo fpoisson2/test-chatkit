@@ -187,6 +187,62 @@ Originally built for education (hence the LMS integration), but works for:
 4. Define welcome messages
 5. Configure translations if needed
 
+### 6. Connect a GitHub repository
+
+The GitHub integration allows you to sync your workflows with a GitHub repository. You can push workflows to GitHub for version control, or pull them from GitHub to deploy changes.
+
+#### Create a GitHub OAuth App
+
+1. Go to **GitHub** → **Settings** → **Developer settings** → **OAuth Apps**
+2. Click **New OAuth App**
+3. Fill in the form:
+   - **Application name**: edxo (or any name you prefer)
+   - **Homepage URL**: `https://your-domain.com`
+   - **Authorization callback URL**: `https://your-domain.com/api/github/oauth/callback`
+4. Click **Register application**
+5. Copy the **Client ID**
+6. Click **Generate a new client secret** and copy it
+
+#### Configure environment variables
+
+Add these variables to your `.env` file:
+
+```bash
+# GitHub OAuth (required for GitHub integration)
+GITHUB_OAUTH_CLIENT_ID=your-client-id
+GITHUB_OAUTH_CLIENT_SECRET=your-client-secret
+
+# Optional: webhook secret for auto-sync (generated automatically per repo)
+GITHUB_WEBHOOK_SECRET=your-webhook-secret
+```
+
+#### Connect your account in edxo
+
+1. Go to **Admin** → **GitHub Integrations**
+2. Click **Connect GitHub Account**
+3. Authorize the OAuth app in the popup
+4. Your GitHub account is now linked
+
+#### Configure repository sync
+
+1. Click **Add Repository Sync** (+ button)
+2. Select your GitHub integration
+3. Choose a repository from the list
+4. Configure sync options:
+   - **Branch**: The branch to sync with (e.g., `main`)
+   - **File pattern**: Which files to sync (e.g., `workflows/*.json`)
+   - **Sync direction**: `bidirectional`, `pull_only`, or `push_only`
+   - **Auto-sync**: Enable to automatically sync on GitHub pushes
+5. Click **Create**
+
+#### Sync workflows
+
+- **Pull**: Import workflows from GitHub to edxo
+- **Push**: Export workflows from edxo to GitHub
+- **Sync**: Bidirectional sync (based on last modification)
+
+You can also enable **webhooks** to automatically trigger syncs when changes are pushed to GitHub.
+
 ---
 
 ## Technical architecture
