@@ -532,7 +532,7 @@ async def push_workflow_to_github(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Push a workflow to GitHub."""
+    """Push a workflow to GitHub (create or update)."""
     repo_sync = session.get(GitHubRepoSync, payload.repo_sync_id)
 
     if not repo_sync:
@@ -543,12 +543,29 @@ async def push_workflow_to_github(
 
     try:
         sync_service = WorkflowSyncService(session)
-        result = await sync_service.push_new_workflow(
-            workflow_id=payload.workflow_id,
-            repo_sync=repo_sync,
-            file_path=payload.file_path,
-            commit_message=payload.commit_message,
+
+        # Check if workflow is already mapped to this repo sync
+        existing_mapping = session.scalar(
+            select(WorkflowGitHubMapping).where(
+                WorkflowGitHubMapping.workflow_id == payload.workflow_id,
+                WorkflowGitHubMapping.repo_sync_id == repo_sync.id,
+            )
         )
+
+        if existing_mapping:
+            # Update existing mapping
+            result = await sync_service.push_workflow(
+                mapping=existing_mapping,
+                commit_message=payload.commit_message,
+            )
+        else:
+            # Create new mapping and push
+            result = await sync_service.push_new_workflow(
+                workflow_id=payload.workflow_id,
+                repo_sync=repo_sync,
+                file_path=payload.file_path,
+                commit_message=payload.commit_message,
+            )
         return WorkflowPushResponse(**result)
     except Exception as e:
         logger.exception(f"Push failed: {e}")
