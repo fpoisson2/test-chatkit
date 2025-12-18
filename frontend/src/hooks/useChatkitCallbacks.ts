@@ -62,6 +62,7 @@ export function useChatkitCallbacks({
         workflowsCount,
         isNewConversationDraftRef: isNewConversationDraftRef.current,
         wasNewConversationStreamingRef: wasNewConversationStreamingRef.current,
+        currentPath: window.location.pathname,
         timestamp: new Date().toISOString(),
         stack: new Error().stack?.split("\n").slice(1, 5).join("\n"),
       });

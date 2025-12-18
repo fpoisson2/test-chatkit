@@ -107,6 +107,14 @@
   padding-left: 1.5em;
 }
 
+ul.chatkit-markdown-list {
+  list-style-type: disc;
+}
+
+ol.chatkit-markdown-list {
+  list-style-type: decimal;
+}
+
 .chatkit-markdown-list-item {
   margin: 0.25em 0;
 }

@@ -86,6 +86,7 @@ export function MyChatContent() {
       currentInitialThreadId: initialThreadId,
       isInitialMountRef: isInitialMountRef.current,
       isNewConversationDraftRef: isNewConversationDraftRef.current,
+      currentPath: window.location.pathname,
       timestamp: new Date().toISOString(),
     });
 
@@ -96,6 +97,14 @@ export function MyChatContent() {
       });
       return;
     }
+
+    // Additional safety: if URL is root path "/" and initialThreadId is already null,
+    // don't try to load from storage - we're in new conversation mode
+    if (window.location.pathname === "/" && initialThreadId === null) {
+      console.log("[DEBUG-CONV] MyChatContent initialThreadId effect SKIPPED (root path + null initialThreadId)");
+      return;
+    }
+
     const storedId = urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug);
     console.log("[DEBUG-CONV] MyChatContent storedId resolved", {
       storedId,

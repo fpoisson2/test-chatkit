@@ -58,9 +58,17 @@ export function useUrlThreadSync({
 
     // Navigate to new conversation (URL cleared)
     if (currentUrlThreadId === null && prevUrlThreadId !== undefined) {
-      console.log("[DEBUG-CONV] useUrlThreadSync: Navigate to new conversation (URL cleared)", { prevUrlThreadId });
+      console.log("[DEBUG-CONV] useUrlThreadSync: Navigate to new conversation (URL cleared)", { prevUrlThreadId, initialThreadId });
       clearStoredThreadId(sessionOwner, persistenceSlug);
       isNewConversationDraftRef.current = true;
+
+      // Skip state updates if initialThreadId is already null (handleNewConversation already called them)
+      // This prevents double-incrementing chatInstanceKey which causes multiple remounts
+      if (initialThreadId === null) {
+        console.log("[DEBUG-CONV] useUrlThreadSync: SKIPPED state updates (initialThreadId already null)");
+        return;
+      }
+
       // Defer state updates to avoid updating parent during render
       const timeoutId = setTimeout(() => {
         console.log("[DEBUG-CONV] useUrlThreadSync: Deferred setInitialThreadId(null)");
