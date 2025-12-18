@@ -178,6 +178,71 @@ async def list_lti_registrations(
     ]
 
 
+@router.get("/api/lti/deep-link/workflows")
+async def list_deep_link_workflows(
+    state: str,
+    session: Session = Depends(get_session),
+) -> list[dict[str, Any]]:
+    """Liste les workflows disponibles pour LTI Deep Linking.
+
+    Validates the LTI session via the state parameter instead of requiring
+    user authentication. This endpoint is used during deep linking before
+    the user is fully authenticated.
+    """
+    from ..models import Workflow, LTIRegistration, LTIOIDCSession, workflow_lti_registrations
+    from sqlalchemy import select
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Validate the state by looking up the OIDC session
+    oidc_session = session.scalar(
+        select(LTIOIDCSession).where(LTIOIDCSession.state == state)
+    )
+
+    if not oidc_session:
+        logger.warning("Deep link workflows: Invalid or expired state")
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            detail="Session LTI invalide ou expirée",
+        )
+
+    # Get the issuer from the registration
+    issuer = oidc_session.registration.issuer if oidc_session.registration else None
+
+    query = (
+        select(Workflow)
+        .where(Workflow.active_version_id.is_not(None))
+    )
+
+    if issuer:
+        # Filter workflows authorized for this specific issuer
+        query = query.join(
+            workflow_lti_registrations,
+            Workflow.id == workflow_lti_registrations.c.workflow_id
+        ).join(
+            LTIRegistration,
+            workflow_lti_registrations.c.lti_registration_id == LTIRegistration.id
+        ).where(LTIRegistration.issuer == issuer)
+    else:
+        # Fallback to lti_enabled flag
+        query = query.where(Workflow.lti_enabled == True)
+
+    workflows = session.scalars(query).all()
+
+    logger.info("Deep link workflows: Found %d workflows for issuer %s", len(workflows), issuer)
+
+    return [
+        {
+            "id": w.id,
+            "slug": w.slug,
+            "display_name": w.display_name,
+            "description": w.description,
+        }
+        for w in workflows
+    ]
+
+
 @router.get("/api/lti/workflows")
 async def list_lti_workflows(
     issuer: str | None = None,
@@ -400,9 +465,13 @@ async def lti_deep_link_page(state: str | None = None, id_token: str | None = No
 
         async function loadWorkflows() {{
             try {{
-                const response = await fetch('/api/lti/workflows');
+                if (!state) {{
+                    throw new Error('Paramètre state manquant');
+                }}
+                const response = await fetch('/api/lti/deep-link/workflows?state=' + encodeURIComponent(state));
                 if (!response.ok) {{
-                    throw new Error('Impossible de charger les workflows');
+                    const data = await response.json().catch(() => ({{}}));
+                    throw new Error(data.detail || 'Impossible de charger les workflows');
                 }}
                 const workflows = await response.json();
                 renderWorkflows(workflows);
