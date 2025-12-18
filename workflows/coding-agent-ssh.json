@@ -1,0 +1,383 @@
+{
+  "slug": "coding-agent-ssh",
+  "display_name": "Agent de codage SSH",
+  "description": "Agent de codage autonome style Claude Code/Codex avec mode plan. Analyse d'abord la demande, propose un plan, puis execute les taches une par une.",
+  "nodes": [
+    {
+      "id": 1,
+      "slug": "start",
+      "kind": "start",
+      "display_name": "Demarrage",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 1,
+      "is_enabled": true,
+      "parameters": {
+        "auto_start": true,
+        "auto_start_assistant_message": "# Agent de codage SSH\n\nJe suis un agent de codage autonome connecte a votre environnement de developpement via SSH.\n\n**Mes capacites:**\n- Explorer et analyser des projets\n- Executer des commandes shell\n- Creer et modifier des fichiers\n- Compiler, tester et debugger du code\n\n**Mon fonctionnement:**\n1. J'analyse votre demande\n2. Je propose un **plan d'action** avec les taches a realiser\n3. Vous validez ou ajustez le plan\n4. J'execute chaque tache une par une\n5. Je vous fais un resume a la fin\n\nQue souhaitez-vous que je fasse?"
+      },
+      "metadata": { "order": 1 }
+    },
+    {
+      "id": 2,
+      "slug": "state-init",
+      "kind": "state",
+      "display_name": "Initialisation",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 2,
+      "is_enabled": true,
+      "parameters": {
+        "state": [
+          { "target": "state.task_index", "expression": "0" },
+          { "target": "state.total_tasks", "expression": "0" },
+          { "target": "state.tasks_completed", "expression": "[]" },
+          { "target": "state.plan_approved", "expression": "False" }
+        ]
+      },
+      "metadata": { "order": 2 }
+    },
+    {
+      "id": 3,
+      "slug": "wait-user-request",
+      "kind": "wait_for_user_input",
+      "display_name": "Attente demande",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 3,
+      "is_enabled": true,
+      "parameters": {},
+      "metadata": { "order": 3 }
+    },
+    {
+      "id": 4,
+      "slug": "condition-quit",
+      "kind": "condition",
+      "display_name": "Quitter?",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 4,
+      "is_enabled": true,
+      "parameters": {
+        "mode": "contains",
+        "path": "input.user_message",
+        "value": "/quit"
+      },
+      "metadata": { "order": 4 }
+    },
+    {
+      "id": 5,
+      "slug": "agent-planner",
+      "kind": "agent",
+      "display_name": "Planificateur",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 5,
+      "is_enabled": true,
+      "parameters": {
+        "model": "gpt-5.2",
+        "model_provider": "openai",
+        "model_provider_slug": "openai",
+        "instructions": "Tu es un planificateur de taches de developpement. Ton role est d'analyser la demande de l'utilisateur et de creer un plan d'action structure.\n\nAnalyse la demande et decompose-la en taches atomiques et sequentielles. Chaque tache doit etre:\n- Claire et specifique\n- Realisable en une seule etape\n- Verifiable\n\nExemples de bonnes taches:\n- \"Explorer la structure du projet avec ls et tree\"\n- \"Lire le fichier package.json pour comprendre les dependances\"\n- \"Creer le fichier utils/helpers.py avec la fonction formatDate\"\n- \"Modifier auth.py pour ajouter la validation du token\"\n- \"Executer les tests avec pytest\"\n- \"Commiter les changements avec git\"\n\nSi la demande est simple (une seule action), cree une seule tache.\nSi la demande est complexe, decompose en 3-10 taches maximum.\n\nRetourne un JSON structure avec:\n- tasks: liste des taches a executer dans l'ordre\n- summary: resume du plan en une phrase\n- estimated_complexity: \"simple\", \"moderate\", ou \"complex\"",
+        "model_settings": {
+          "text": { "verbosity": "low" },
+          "reasoning": { "effort": "medium" },
+          "include_chat_history": true
+        },
+        "response_format": {
+          "name": "task_plan",
+          "type": "json_schema",
+          "schema": {
+            "type": "object",
+            "required": ["tasks", "summary", "estimated_complexity"],
+            "properties": {
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "description", "type"],
+                  "properties": {
+                    "id": { "type": "integer" },
+                    "description": { "type": "string" },
+                    "type": {
+                      "type": "string",
+                      "enum": ["explore", "read", "create", "modify", "delete", "execute", "test", "git"]
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              },
+              "summary": { "type": "string" },
+              "estimated_complexity": {
+                "type": "string",
+                "enum": ["simple", "moderate", "complex"]
+              }
+            }
+          },
+          "strict": true
+        }
+      },
+      "metadata": { "order": 5 }
+    },
+    {
+      "id": 6,
+      "slug": "state-save-plan",
+      "kind": "state",
+      "display_name": "Sauvegarder plan",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 6,
+      "is_enabled": true,
+      "parameters": {
+        "state": [
+          { "target": "state.tasks", "expression": "input.get('output_structured', {}).get('tasks', [])" },
+          { "target": "state.total_tasks", "expression": "len(input.get('output_structured', {}).get('tasks', []))" },
+          { "target": "state.plan_summary", "expression": "input.get('output_structured', {}).get('summary', '')" },
+          { "target": "state.complexity", "expression": "input.get('output_structured', {}).get('estimated_complexity', 'simple')" },
+          { "target": "state.task_index", "expression": "0" },
+          { "target": "state.tasks_completed", "expression": "[]" }
+        ]
+      },
+      "metadata": { "order": 6 }
+    },
+    {
+      "id": 7,
+      "slug": "assistant-show-plan",
+      "kind": "assistant_message",
+      "display_name": "Afficher plan",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 7,
+      "is_enabled": true,
+      "parameters": {
+        "message": "## Plan d'action\n\n**Resume:** {{ state.plan_summary }}\n\n**Complexite estimee:** {{ state.complexity }}\n\n**Taches ({{ state.total_tasks }}):**\n{% for task in state.tasks %}\n{{ task.id }}. **[{{ task.type }}]** {{ task.description }}\n{% endfor %}\n\n---\n\nVoulez-vous que j'execute ce plan?\n- Repondez **oui** ou **go** pour executer\n- Repondez **non** ou decrivez les modifications souhaitees",
+        "simulate_stream_delay_ms": 3
+      },
+      "metadata": { "order": 7 }
+    },
+    {
+      "id": 8,
+      "slug": "wait-plan-approval",
+      "kind": "wait_for_user_input",
+      "display_name": "Validation plan",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 8,
+      "is_enabled": true,
+      "parameters": {},
+      "metadata": { "order": 8 }
+    },
+    {
+      "id": 9,
+      "slug": "agent-check-approval",
+      "kind": "agent",
+      "display_name": "Verifier approbation",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 9,
+      "is_enabled": true,
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "model_provider": "openai",
+        "model_provider_slug": "openai",
+        "instructions": "Analyse la reponse de l'utilisateur pour determiner s'il approuve le plan ou s'il veut des modifications.\n\nApprobation = oui, ok, go, d'accord, parfait, execute, lance, yes, sure, do it, etc.\nRefus/Modification = non, no, modifie, change, ajoute, supprime, ou toute nouvelle demande/instruction.\n\nSi l'utilisateur donne une nouvelle instruction ou demande des changements, c'est un refus.",
+        "model_settings": {
+          "text": { "verbosity": "low" },
+          "reasoning": { "effort": "low" },
+          "include_chat_history": true
+        },
+        "response_format": {
+          "name": "approval_check",
+          "type": "json_schema",
+          "schema": {
+            "type": "object",
+            "required": ["approved", "reason"],
+            "properties": {
+              "approved": { "type": "boolean" },
+              "reason": { "type": "string" }
+            }
+          },
+          "strict": true
+        }
+      },
+      "metadata": { "order": 9 }
+    },
+    {
+      "id": 10,
+      "slug": "condition-approved",
+      "kind": "condition",
+      "display_name": "Plan approuve?",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 10,
+      "is_enabled": true,
+      "parameters": {
+        "mode": "value",
+        "path": "input.output_structured.approved"
+      },
+      "metadata": { "order": 10 }
+    },
+    {
+      "id": 11,
+      "slug": "assistant-start-execution",
+      "kind": "assistant_message",
+      "display_name": "Debut execution",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 11,
+      "is_enabled": true,
+      "parameters": {
+        "message": "**Execution du plan en cours...**\n\n---",
+        "simulate_stream_delay_ms": 3
+      },
+      "metadata": { "order": 11 }
+    },
+    {
+      "id": 12,
+      "slug": "while-tasks",
+      "kind": "while",
+      "display_name": "Boucle taches",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 12,
+      "is_enabled": true,
+      "parameters": {
+        "condition": "state.get('task_index', 0) < state.get('total_tasks', 0)",
+        "max_iterations": 20,
+        "iteration_var": "iteration"
+      },
+      "metadata": {
+        "order": 12,
+        "width": 500,
+        "height": 400
+      }
+    },
+    {
+      "id": 13,
+      "slug": "assistant-task-header",
+      "kind": "assistant_message",
+      "display_name": "En-tete tache",
+      "agent_key": null,
+      "parent_slug": "while-tasks",
+      "position": 13,
+      "is_enabled": true,
+      "parameters": {
+        "message": "### Tache {{ (state.task_index | int) + 1 }}/{{ state.total_tasks }}: {{ state.tasks[state.task_index | int].description }}",
+        "simulate_stream_delay_ms": 2
+      },
+      "metadata": { "order": 13 }
+    },
+    {
+      "id": 14,
+      "slug": "coding-agent",
+      "kind": "computer_use",
+      "display_name": "Execution tache",
+      "agent_key": null,
+      "parent_slug": "while-tasks",
+      "position": 14,
+      "is_enabled": true,
+      "parameters": {
+        "environment": "ssh",
+        "mode": "agent",
+        "display_width": 1920,
+        "display_height": 1080,
+        "ssh_host": "localhost",
+        "ssh_port": 22,
+        "ssh_username": "developer",
+        "ssh_password": "",
+        "model": "gpt-5.2",
+        "model_provider": "openai",
+        "instructions": "Tu es un agent de codage expert. Tu dois executer UNE SEULE tache specifique.\n\n## Tache actuelle\n{{ state.tasks[state.task_index | int].description }}\n\nType: {{ state.tasks[state.task_index | int].type }}\n\n## Contexte\nPlan global: {{ state.plan_summary }}\nProgression: Tache {{ (state.task_index | int) + 1 }} sur {{ state.total_tasks }}\nTaches completees: {{ state.tasks_completed }}\n\n## Tes outils\n\n### Shell Tool\nExecute des commandes shell:\n- ls, find, tree (exploration)\n- cat, head, tail (lecture)\n- grep, ripgrep (recherche)\n- git (version control)\n- python, node, npm, etc. (execution)\n\n### ApplyPatch Tool\nModifie des fichiers avec le format:\n```\n*** Begin Patch\n*** Add File: /path/file.py\n+contenu\n*** End Patch\n```\n\n```\n*** Begin Patch\n*** Update File: /path/file.py\n contexte\n-supprimer\n+ajouter\n*** End Patch\n```\n\n## Instructions\n\n1. Concentre-toi UNIQUEMENT sur la tache actuelle\n2. Explique brievement ce que tu fais\n3. Execute les commandes necessaires\n4. Verifie que la tache est bien completee\n5. Termine quand la tache est faite\n\n## Securite\n- Ne jamais afficher de secrets ou mots de passe\n- Etre prudent avec les commandes destructives"
+      },
+      "metadata": { "order": 14 }
+    },
+    {
+      "id": 15,
+      "slug": "state-task-done",
+      "kind": "state",
+      "display_name": "Tache completee",
+      "agent_key": null,
+      "parent_slug": "while-tasks",
+      "position": 15,
+      "is_enabled": true,
+      "parameters": {
+        "state": [
+          { "target": "state.tasks_completed", "expression": "state.get('tasks_completed', []) + [state.get('tasks', [])[state.get('task_index', 0)].get('description', '')]" },
+          { "target": "state.task_index", "expression": "(state.get('task_index', 0) or 0) + 1" }
+        ]
+      },
+      "metadata": { "order": 15 }
+    },
+    {
+      "id": 16,
+      "slug": "assistant-task-complete",
+      "kind": "assistant_message",
+      "display_name": "Tache terminee",
+      "agent_key": null,
+      "parent_slug": "while-tasks",
+      "position": 16,
+      "is_enabled": true,
+      "parameters": {
+        "message": "✓ **Tache completee** ({{ state.task_index }}/{{ state.total_tasks }})\n\n---",
+        "simulate_stream_delay_ms": 2
+      },
+      "metadata": { "order": 16 }
+    },
+    {
+      "id": 17,
+      "slug": "assistant-all-done",
+      "kind": "assistant_message",
+      "display_name": "Toutes taches terminees",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 17,
+      "is_enabled": true,
+      "parameters": {
+        "message": "## Execution terminee\n\n**{{ state.total_tasks }} tache(s) completee(s):**\n{% for task in state.tasks_completed %}\n✓ {{ task }}\n{% endfor %}\n\n---\n\nY a-t-il autre chose que je peux faire? (tapez `/quit` pour terminer)",
+        "simulate_stream_delay_ms": 3
+      },
+      "metadata": { "order": 17 }
+    },
+    {
+      "id": 18,
+      "slug": "end-session",
+      "kind": "end",
+      "display_name": "Fin de session",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 18,
+      "is_enabled": true,
+      "parameters": {
+        "message": "Session de codage terminee. A bientot!",
+        "status": {
+          "type": "closed",
+          "reason": "Session terminee par l'utilisateur"
+        }
+      },
+      "metadata": { "order": 18 }
+    }
+  ],
+  "edges": [
+    { "id": 1, "source": "start", "target": "state-init", "condition": null, "metadata": {} },
+    { "id": 2, "source": "state-init", "target": "wait-user-request", "condition": null, "metadata": {} },
+    { "id": 3, "source": "wait-user-request", "target": "condition-quit", "condition": null, "metadata": {} },
+    { "id": 4, "source": "condition-quit", "target": "end-session", "condition": "true", "metadata": { "label": "/quit" } },
+    { "id": 5, "source": "condition-quit", "target": "agent-planner", "condition": "false", "metadata": { "label": "continuer" } },
+    { "id": 6, "source": "agent-planner", "target": "state-save-plan", "condition": null, "metadata": {} },
+    { "id": 7, "source": "state-save-plan", "target": "assistant-show-plan", "condition": null, "metadata": {} },
+    { "id": 8, "source": "assistant-show-plan", "target": "wait-plan-approval", "condition": null, "metadata": {} },
+    { "id": 9, "source": "wait-plan-approval", "target": "agent-check-approval", "condition": null, "metadata": {} },
+    { "id": 10, "source": "agent-check-approval", "target": "condition-approved", "condition": null, "metadata": {} },
+    { "id": 11, "source": "condition-approved", "target": "assistant-start-execution", "condition": "true", "metadata": { "label": "approuve" } },
+    { "id": 12, "source": "condition-approved", "target": "agent-planner", "condition": "false", "metadata": { "label": "modifier" } },
+    { "id": 13, "source": "assistant-start-execution", "target": "while-tasks", "condition": null, "metadata": {} },
+    { "id": 14, "source": "while-tasks", "target": "assistant-all-done", "condition": null, "metadata": {} },
+    { "id": 15, "source": "assistant-all-done", "target": "wait-user-request", "condition": null, "metadata": { "label": "nouvelle demande" } },
+    { "id": 20, "source": "assistant-task-header", "target": "coding-agent", "condition": null, "metadata": {} },
+    { "id": 21, "source": "coding-agent", "target": "state-task-done", "condition": null, "metadata": {} },
+    { "id": 22, "source": "state-task-done", "target": "assistant-task-complete", "condition": null, "metadata": {} }
+  ]
+}
