@@ -128,7 +128,13 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
       <ReactMarkdown
         components={{
           // Customisation des composants HTML générés
-          p: ({ children }) => <p className="chatkit-markdown-paragraph">{children}</p>,
+          // Préserver les styles inline pour le HTML passé via rehypeRaw
+          div: ({ children, style, className, ...props }: any) => (
+            <div className={className || ''} style={style} {...props}>{children}</div>
+          ),
+          p: ({ children, style, className, ...props }: any) => (
+            <p className={`chatkit-markdown-paragraph ${className || ''}`.trim()} style={style} {...props}>{children}</p>
+          ),
           code: ({ inline, children, className, ...props }: any) => {
             const isInline = inline || !className?.includes('language-');
             const codeContent = String(children).replace(/\n$/, '');
@@ -154,9 +160,15 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
 
             return <CodeBlock language={language} theme={theme}>{codeContent}</CodeBlock>;
           },
-          ul: ({ children }) => <ul className="chatkit-markdown-list">{children}</ul>,
-          ol: ({ children }) => <ol className="chatkit-markdown-list">{children}</ol>,
-          li: ({ children }) => <li className="chatkit-markdown-list-item">{children}</li>,
+          ul: ({ children, style, className, ...props }: any) => (
+            <ul className={`chatkit-markdown-list ${className || ''}`.trim()} style={style} {...props}>{children}</ul>
+          ),
+          ol: ({ children, style, className, ...props }: any) => (
+            <ol className={`chatkit-markdown-list ${className || ''}`.trim()} style={style} {...props}>{children}</ol>
+          ),
+          li: ({ children, style, className, ...props }: any) => (
+            <li className={`chatkit-markdown-list-item ${className || ''}`.trim()} style={style} {...props}>{children}</li>
+          ),
           blockquote: ({ children }) => <blockquote className="chatkit-markdown-blockquote">{children}</blockquote>,
           h1: ({ children }) => <h1 className="chatkit-markdown-heading chatkit-markdown-h1">{children}</h1>,
           h2: ({ children }) => <h2 className="chatkit-markdown-heading chatkit-markdown-h2">{children}</h2>,

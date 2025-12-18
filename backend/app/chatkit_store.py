@@ -73,7 +73,15 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             return ""
 
         # Convert legacy HTML-formatted responses back to raw text/markdown.
+        # BUT preserve intentional HTML (tags with style attributes, divs, lists, etc.)
         if "<" in normalized and ">" in normalized:
+            # Check if this contains intentional styled HTML that should be preserved
+            has_styled_html = re.search(r'<[^>]+\s+style\s*=', normalized, re.IGNORECASE)
+            if has_styled_html:
+                # Preserve the HTML as-is, only convert <br> tags
+                normalized = normalized.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+                return normalized
+
             normalized = normalized.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
 
             def _replace_code_block(match: re.Match[str]) -> str:
