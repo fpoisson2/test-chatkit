@@ -500,6 +500,16 @@
   transition: all var(--transition-duration-basic);
 }
 
+[data-theme="dark"] .chatkit-sidebar__section-icon-button {
+  color: var(--color-text-emphasis);
+  border-color: color-mix(in srgb, var(--color-text-emphasis) 36%, transparent);
+  background: color-mix(in srgb, var(--color-text-emphasis) 14%, transparent);
+}
+
+[data-theme="dark"] .chatkit-sidebar__section-icon-button span[aria-hidden="true"] {
+  font-weight: var(--font-weight-semibold);
+}
+
 .chatkit-sidebar__section-icon-button:hover,
 .chatkit-sidebar__section-icon-button:focus-visible {
   background: var(--alpha-08);
@@ -510,6 +520,12 @@
   display: block;
   width: 16px;
   height: 16px;
+}
+
+[data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
+[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible {
+  border-color: color-mix(in srgb, var(--primary-hover) 55%, transparent);
+  background: color-mix(in srgb, var(--color-text-emphasis) 20%, transparent);
 }
 
 .chatkit-sidebar__section-icon-button:disabled {
@@ -1578,10 +1594,14 @@
   transition-delay: 0s;
 }
 
+[data-theme="dark"] .chatkit-sidebar__dismiss {
+  color: var(--color-text-emphasis);
+}
+
 .chatkit-sidebar__dismiss:hover,
 .chatkit-sidebar__dismiss:focus-visible {
   background: transparent;
-  color: var(--color-text-strong);
+  color: var(--color-text-emphasis);
 }
 
 .chatkit-sidebar--open .chatkit-sidebar__dismiss {
