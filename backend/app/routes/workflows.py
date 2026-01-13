@@ -453,6 +453,55 @@ async def get_workflow_version(
         get_workflow_persistence_service
     ),
 ) -> WorkflowDefinitionResponse:
+    # Admin users can access all workflows
+    if current_user.is_admin:
+        try:
+            definition = service.get_version(workflow_id, version_id, session)
+        except WorkflowVersionNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
+        return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+
+    # LTI users can only access workflows from their LTI resource links
+    if current_user.is_lti:
+        from ..models import LTIUserSession
+        from sqlalchemy import select, desc
+
+        # Get the most recent launched LTI session for this user
+        latest_session_stmt = (
+            select(LTIUserSession)
+            .where(
+                LTIUserSession.user_id == current_user.id,
+                LTIUserSession.launched_at.isnot(None)
+            )
+            .order_by(desc(LTIUserSession.launched_at))
+            .limit(1)
+        )
+        latest_session = session.scalar(latest_session_stmt)
+
+        if not latest_session or not latest_session.resource_link:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No active LTI session found"
+            )
+
+        # Check if the requested workflow matches the LTI session workflow
+        if latest_session.resource_link.workflow_id != workflow_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this workflow"
+            )
+
+        try:
+            definition = service.get_version(workflow_id, version_id, session)
+        except WorkflowVersionNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
+        return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+
+    # Regular users - check ownership or shares
     _ensure_admin(current_user)
     try:
         definition = service.get_version(workflow_id, version_id, session)
