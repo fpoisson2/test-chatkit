@@ -26,3 +26,9 @@ coverage.xml
 .pytest_cache/
 .env.local
 *.pem
+backend-cm0-configmap.yaml
+backend-deployment.yaml
+backend-service.yaml
+.claude/settings.local.json
+*.yaml
+frontend/Dockerfile

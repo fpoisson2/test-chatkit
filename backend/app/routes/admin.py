@@ -163,6 +163,12 @@ async def patch_app_settings(
     if result.provider_changed or result.model_settings_changed:
         configure_model_provider(runtime_settings or get_settings())
 
+    if result.title_model_changed or result.prompt_changed:
+        from ..chatkit import get_chatkit_server
+
+        server = get_chatkit_server()
+        server.reload_title_agent()
+
     override = get_thread_title_prompt_override(session)
     serialized = serialize_admin_settings(override)
     return AppSettingsResponse.model_validate(serialized)

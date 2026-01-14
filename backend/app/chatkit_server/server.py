@@ -627,6 +627,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self.attachment_store = attachment_store
         self._ags_client: AGSClientProtocol = ags_client or NullAGSClient()
 
+    def reload_title_agent(self) -> None:
+        """Recharge l'agent de génération de titre avec la configuration actuelle."""
+        logger.info("🔄 Rechargement de l'agent de génération de titre")
+        self._title_agent = _get_thread_title_agent()
+        logger.info("✅ Agent de génération de titre rechargé")
+
     async def _process_streaming_impl(
         self,
         request: StreamingReq,

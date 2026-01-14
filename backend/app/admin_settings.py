@@ -38,6 +38,7 @@ class AdminSettingsUpdateResult:
     settings: AppSettings | None
     sip_changed: bool
     prompt_changed: bool
+    title_model_changed: bool
     model_settings_changed: bool
     provider_changed: bool
 
@@ -1174,6 +1175,7 @@ def update_admin_settings(
             settings=None if created else settings,
             sip_changed=False,
             prompt_changed=False,
+            title_model_changed=False,
             model_settings_changed=False,
             provider_changed=False,
         )
@@ -1215,6 +1217,7 @@ def update_admin_settings(
             prompt_changed=(
                 previous_prompt != new_prompt or previous_model != new_model
             ),
+            title_model_changed=previous_model != new_model,
             model_settings_changed=previous_overrides != new_overrides,
             provider_changed=(
                 previous_overrides.get("model_provider")
@@ -1236,6 +1239,7 @@ def update_admin_settings(
         prompt_changed=(
             previous_prompt != new_prompt or previous_model != new_model
         ),
+        title_model_changed=previous_model != new_model,
         model_settings_changed=previous_overrides != final_overrides,
         provider_changed=(
             previous_overrides.get("model_provider")

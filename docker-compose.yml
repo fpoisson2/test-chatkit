@@ -109,12 +109,12 @@ services:
       - redis-data:/data
     networks:
       - app-network
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:?CLOUDFLARED_TOKEN is required}
-    restart: unless-stopped
-    networks:
-      - app-network
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:?CLOUDFLARED_TOKEN is required}
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
   celery-worker:
     image: chatkit-backend:latest
     working_dir: /workspace/backend

@@ -262,8 +262,9 @@ class AgentContext(BaseModel, Generic[TContext]):
 def _convert_content(content: Content) -> AssistantMessageContent:
     if content.type == "output_text":
         annotations = []
-        for annotation in content.annotations:
-            annotations.extend(_convert_annotation(annotation))
+        if content.annotations is not None:
+            for annotation in content.annotations:
+                annotations.extend(_convert_annotation(annotation))
         return AssistantMessageContent(
             text=content.text,
             annotations=annotations,

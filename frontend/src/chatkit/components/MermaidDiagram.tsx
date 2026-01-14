@@ -16,9 +16,64 @@ export interface MermaidDiagramProps {
 let mermaidIdCounter = 0;
 const mermaidSvgCache = new Map<string, { svg: string; error: string | null }>();
 
+// Color mappings for dark mode
+const colorMappings: Record<string, string> = {
+  // Zone Client (vert clair -> vert plus sombre)
+  '#f0fdf4': 'rgba(22, 163, 74, 0.15)',  // fill vert clair -> vert dark transparent
+  '#16a34a': '#22c55e',  // stroke vert -> vert plus clair
+  '#052e16': '#f0fdf4',  // color texte sombre -> texte clair
+
+  // Zone Access (bleu clair -> bleu plus sombre)
+  '#eff6ff': 'rgba(37, 99, 235, 0.15)',  // fill bleu clair -> bleu dark transparent
+  '#2563eb': '#3b82f6',  // stroke bleu -> bleu plus clair
+  '#0f172a': '#dbeafe',  // color texte sombre -> texte clair
+
+  // Zone Lab (gris clair -> gris plus sombre)
+  '#f9fafb': 'rgba(71, 85, 105, 0.15)',  // fill gris clair -> gris dark transparent
+  '#4b5563': '#64748b',  // stroke gris -> gris plus clair
+  '#020617': '#e2e8f0',  // color texte sombre -> texte clair
+
+  // Zone Cloud (jaune clair -> jaune plus sombre)
+  '#fefce8': 'rgba(217, 119, 6, 0.15)',  // fill jaune clair -> orange dark transparent
+  '#d97706': '#f59e0b',  // stroke orange -> orange plus clair
+  '#451a03': '#fef3c7',  // color texte sombre -> texte clair
+
+  // Component Core (gris)
+  '#e5e7eb': 'rgba(100, 116, 139, 0.2)',
+
+  // Component Service (bleu violet)
+  '#eef2ff': 'rgba(99, 102, 241, 0.15)',
+  '#6366f1': '#818cf8',
+
+  // Component Device (cyan)
+  '#ecfeff': 'rgba(6, 182, 212, 0.15)',
+  '#06b6d4': '#22d3ee',
+
+  // Security Edge (rouge)
+  '#fef2f2': 'rgba(185, 28, 28, 0.15)',
+  '#b91c1c': '#ef4444',
+};
+
+/**
+ * Adapts Mermaid diagram colors for dark mode
+ */
+function adaptColorsForDarkMode(chart: string): string {
+  let adaptedChart = chart;
+
+  // Replace each color with its dark mode equivalent
+  for (const [lightColor, darkColor] of Object.entries(colorMappings)) {
+    const regex = new RegExp(lightColor, 'gi');
+    adaptedChart = adaptedChart.replace(regex, darkColor);
+  }
+
+  return adaptedChart;
+}
+
 export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
-  const cacheKey = `${theme}:${chart}`;
+  // Adapt colors for dark mode if needed
+  const adaptedChart = theme === 'dark' ? adaptColorsForDarkMode(chart) : chart;
+  const cacheKey = `${theme}:${adaptedChart}`;
   const cached = mermaidSvgCache.get(cacheKey) ?? { svg: '', error: null };
   const [svg, setSvg] = useState<string>(cached.svg);
   const [error, setError] = useState<string | null>(cached.error);
@@ -44,26 +99,42 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
           curve: 'basis',
         },
         themeVariables: theme === 'dark' ? {
-          primaryColor: '#3b82f6',
-          primaryTextColor: '#f8fafc',
-          primaryBorderColor: '#60a5fa',
-          lineColor: '#94a3b8',
-          secondaryColor: '#1e293b',
+          // Zone Client (vert) - adapté pour dark
+          primaryColor: '#16a34a',
+          primaryTextColor: '#f0fdf4',
+          primaryBorderColor: '#22c55e',
+          // Zone Access (bleu) - adapté pour dark
+          secondaryColor: '#1e3a8a',
+          secondaryTextColor: '#dbeafe',
+          secondaryBorderColor: '#3b82f6',
+          // Zone Lab (gris) - adapté pour dark
           tertiaryColor: '#334155',
+          tertiaryTextColor: '#e2e8f0',
+          tertiaryBorderColor: '#64748b',
+          // Autres
+          lineColor: '#94a3b8',
           background: '#0f172a',
           mainBkg: '#1e293b',
           nodeBorder: '#60a5fa',
-          clusterBkg: '#1e293b',
+          clusterBkg: 'rgba(30, 41, 59, 0.5)',
           clusterBorder: '#475569',
           titleColor: '#f8fafc',
           edgeLabelBackground: '#1e293b',
         } : {
-          primaryColor: '#3b82f6',
-          primaryTextColor: '#0f172a',
-          primaryBorderColor: '#2563eb',
+          // Zone Client (vert)
+          primaryColor: '#f0fdf4',
+          primaryTextColor: '#052e16',
+          primaryBorderColor: '#16a34a',
+          // Zone Access (bleu)
+          secondaryColor: '#eff6ff',
+          secondaryTextColor: '#0f172a',
+          secondaryBorderColor: '#2563eb',
+          // Zone Lab (gris)
+          tertiaryColor: '#f9fafb',
+          tertiaryTextColor: '#020617',
+          tertiaryBorderColor: '#4b5563',
+          // Autres
           lineColor: '#64748b',
-          secondaryColor: '#f1f5f9',
-          tertiaryColor: '#e2e8f0',
           background: '#ffffff',
           mainBkg: '#f8fafc',
           nodeBorder: '#2563eb',
@@ -76,7 +147,7 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
 
       try {
         // Validate the diagram first
-        const isValid = await mermaid.parse(chart);
+        const isValid = await mermaid.parse(adaptedChart);
         if (!isValid) {
           setError('Invalid Mermaid syntax');
           mermaidSvgCache.set(cacheKey, { svg: '', error: 'Invalid Mermaid syntax' });
@@ -84,7 +155,7 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
         }
 
         // Render the diagram
-        const { svg: renderedSvg } = await mermaid.render(idRef, chart);
+        const { svg: renderedSvg } = await mermaid.render(idRef, adaptedChart);
         setSvg(renderedSvg);
         setError(null);
         mermaidSvgCache.set(cacheKey, { svg: renderedSvg, error: null });
@@ -96,14 +167,14 @@ export function MermaidDiagram({ chart, theme = 'light' }: MermaidDiagramProps):
     };
 
     renderDiagram();
-  }, [cacheKey, chart, theme, idRef]);
+  }, [cacheKey, adaptedChart, theme, idRef]);
 
   if (error) {
     return (
       <div className="chatkit-mermaid-error">
         <div className="chatkit-mermaid-error-title">Diagram Error</div>
         <div className="chatkit-mermaid-error-message">{error}</div>
-        <pre className="chatkit-mermaid-error-code">{chart}</pre>
+        <pre className="chatkit-mermaid-error-code">{adaptedChart}</pre>
       </div>
     );
   }
