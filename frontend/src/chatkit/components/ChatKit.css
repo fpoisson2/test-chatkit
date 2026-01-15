@@ -359,7 +359,7 @@
 }
 
 .chatkit-composer-form.is-singleline .chatkit-input {
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .chatkit-composer-form.is-singleline .chatkit-input:placeholder-shown {

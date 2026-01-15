@@ -75,8 +75,6 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
-  const singleLineHeightRef = useRef<number | null>(null);
-  const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Extraire la configuration des modèles
   const composerModels = config?.models;
@@ -180,99 +178,34 @@ export function Composer({
     if (!value && !forceMultiline) {
       setIsMultiline(false);
       textarea.style.height = '';
-      singleLineHeightRef.current = null;
-      const form = textarea.closest('.chatkit-composer-form');
-      if (form) {
-        form.classList.remove('is-multiline');
-        form.classList.add('is-singleline');
-      }
       return;
     }
 
-    // Si on force le multiline, toujours appliquer le mode multiline
-    if (forceMultiline) {
-      const form = textarea.closest('.chatkit-composer-form');
-      if (form) {
-        form.classList.add('is-multiline');
-        form.classList.remove('is-singleline');
-      }
-      // Ajuster la hauteur du textarea
-      textarea.style.height = 'auto';
-      const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${Math.min(Math.max(scrollHeight, 24), TEXTAREA_MAX_HEIGHT_PX)}px`;
-      return;
-    }
-
-    // Calculer la hauteur minimale basée sur le style réel du textarea
-    const styles = window.getComputedStyle(textarea);
-    const lineHeight = parseFloat(styles.lineHeight || '0');
-    const paddingTop = parseFloat(styles.paddingTop || '0');
-    const paddingBottom = parseFloat(styles.paddingBottom || '0');
-    const lineHeightValue = lineHeight || 20;
-
-    // Stocker la hauteur de référence pour une seule ligne (avec le contenu actuel)
-    if (singleLineHeightRef.current === null) {
-      singleLineHeightRef.current = lineHeightValue + paddingTop + paddingBottom;
-    }
-
-    const baseHeight = singleLineHeightRef.current;
-
-    // Mesurer la hauteur du contenu en mode single-line
-    const originalHeight = textarea.style.height;
-    const originalWhiteSpace = textarea.style.whiteSpace;
-    const originalOverflow = textarea.style.overflow;
-    const originalWordWrap = textarea.style.wordWrap;
-
-    // Mesure single-line
+    // Calculer la hauteur du contenu
     textarea.style.height = 'auto';
-    textarea.style.whiteSpace = 'nowrap';
-    textarea.style.overflow = 'hidden';
-    textarea.style.wordWrap = 'normal';
-    const singleLineContentHeight = textarea.scrollHeight;
+    const scrollHeight = textarea.scrollHeight;
+    const minHeight = 24;
 
-    // Mesure multiline
-    textarea.style.whiteSpace = 'pre-wrap';
-    textarea.style.wordWrap = 'break-word';
-    const multilineContentHeight = textarea.scrollHeight;
-
-    // Restaurer les styles originaux
-    textarea.style.height = originalHeight;
-    textarea.style.whiteSpace = originalWhiteSpace;
-    textarea.style.overflow = originalOverflow;
-    textarea.style.wordWrap = originalWordWrap;
+    // Ajuster la hauteur
+    const newHeight = Math.min(Math.max(scrollHeight, minHeight), TEXTAREA_MAX_HEIGHT_PX);
+    textarea.style.height = `${newHeight}px`;
 
     // Déterminer si on doit être en mode multiline avec hystérésis
-    const shouldBeMultiline = isMultiline
-      ? singleLineContentHeight > baseHeight + 2
-      : singleLineContentHeight > baseHeight + (lineHeightValue * 0.1);
+    // Pour passer en multiline: retour à la ligne OU hauteur > 40px
+    // Pour revenir en singleline: pas de retour à la ligne ET hauteur < 36px (seuil plus bas)
+    const hasLineBreaks = value.includes('\n');
 
-    // Ajuster la hauteur immédiatement en fonction du contenu effectif
-    const nextHeight = Math.max(isMultiline ? multilineContentHeight : singleLineContentHeight, baseHeight);
-    textarea.style.height = `${Math.min(nextHeight, TEXTAREA_MAX_HEIGHT_PX)}px`;
-
-    // Changer le mode si nécessaire
-    if (shouldBeMultiline !== isMultiline) {
-      if (modeChangeTimeoutRef.current) {
-        clearTimeout(modeChangeTimeoutRef.current);
-        modeChangeTimeoutRef.current = null;
+    if (!isMultiline) {
+      // Passer en multiline si nécessaire
+      if (forceMultiline || hasLineBreaks || scrollHeight > 40) {
+        setIsMultiline(true);
       }
-
-      modeChangeTimeoutRef.current = setTimeout(() => {
-        setIsMultiline(shouldBeMultiline);
-        const form = textarea.closest('.chatkit-composer-form');
-        if (form) {
-          form.classList.toggle('is-multiline', shouldBeMultiline);
-          form.classList.toggle('is-singleline', !shouldBeMultiline);
-        }
-        modeChangeTimeoutRef.current = null;
-      }, 50);
+    } else {
+      // Revenir en singleline seulement si vraiment sur une seule ligne courte
+      if (!forceMultiline && !hasLineBreaks && scrollHeight <= 36) {
+        setIsMultiline(false);
+      }
     }
-
-    return () => {
-      if (modeChangeTimeoutRef.current) {
-        clearTimeout(modeChangeTimeoutRef.current);
-      }
-    };
   }, [value, isMultiline, forceMultiline]);
 
   // Focus textarea on mount (e.g., after workflow selection)
@@ -348,7 +281,7 @@ export function Composer({
       <div className="chatkit-composer">
         <form
           onSubmit={handleSubmit}
-          className={`chatkit-composer-form ${isModelSelectorEnabled && availableModels.length > 0 ? 'is-multiline' : 'is-singleline'}${attachments.length > 0 ? ' has-attachments' : ''}${isDraggingFiles ? ' is-dragging' : ''}`}
+          className={`chatkit-composer-form ${(isModelSelectorEnabled && availableModels.length > 0) || isMultiline ? 'is-multiline' : 'is-singleline'}${attachments.length > 0 ? ' has-attachments' : ''}${isDraggingFiles ? ' is-dragging' : ''}`}
         >
           {/* Attachments preview inside form */}
           {attachments.length > 0 && (
