@@ -22,14 +22,17 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  max-height: 100dvh;
   width: 100%;
   background: var(--chatkit-background, #fff);
   font-family: 'Inter', var(--chatkit-font-family, system-ui, -apple-system, sans-serif);
   --chatkit-keyboard-offset: 0px;
+  overflow: hidden;
 }
 
 .chatkit-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-anchor: none;
   scroll-behavior: auto;
@@ -37,7 +40,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  padding-bottom: calc(150px + var(--chatkit-keyboard-offset) + max(env(safe-area-inset-bottom), 0px));
+  padding-bottom: 16px;
 }
 
 .chatkit-messages > * {
@@ -269,11 +272,8 @@
 }
 
 .chatkit-composer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 8px 4px calc(6px + max(env(safe-area-inset-bottom), 0px));
+  flex-shrink: 0;
+  padding: 0 4px calc(6px + max(env(safe-area-inset-bottom), 0px));
   background: transparent;
   display: flex;
   flex-direction: column;
@@ -2760,7 +2760,7 @@
 }
 
 [data-theme="dark"] .chatkit-composer {
-  background: transparent;
+  background: var(--chatkit-dark-bg-primary);
 }
 
 [data-theme="dark"] .chatkit-composer form {
