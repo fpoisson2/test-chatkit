@@ -2254,12 +2254,13 @@ async def stream_agent_response(
             if event.type == "response.content_part.added":
                 if event.part.type == "reasoning_text":
                     continue
-                content = _convert_content(event.part)
+                # Initialize with empty text - the actual text will come via text_delta events
+                # This prevents duplicate text at the start of streaming
                 yield ThreadItemUpdated(
                     item_id=event.item_id,
                     update=AssistantMessageContentPartAdded(
                         content_index=event.content_index,
-                        content=content,
+                        content=AssistantMessageContent(text="", annotations=[]),
                     ),
                 )
             elif event.type == "response.output_text.delta":
