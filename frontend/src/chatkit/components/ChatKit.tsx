@@ -152,7 +152,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   }, [control]);
 
   // Callback for composer submission
-  const handleComposerSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[]) => {
+  const handleComposerSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[], selectedModelId?: string | null) => {
     // Build message content
     const content: UserMessageContent[] = [];
     if (message) {
@@ -167,8 +167,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     }
 
-    // Send the message
-    await control.sendMessage(content);
+    // Build inference options if a model is selected
+    const inferenceOptions = selectedModelId ? { model: selectedModelId } : undefined;
+
+    // Send the message with inference options
+    await control.sendMessage(content, inferenceOptions ? { inferenceOptions } : undefined);
 
     // Reset the form
     setInputValue('');

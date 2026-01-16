@@ -153,6 +153,20 @@ def _get_run_workflow():
     return chatkit_module.run_workflow
 
 
+def _get_last_model_override_from_history(history: Page[ThreadItem]) -> str | None:
+    """Récupère le dernier model_override depuis l'historique des messages utilisateur."""
+    # Parcourir l'historique en ordre inverse pour trouver le dernier message utilisateur avec inference_options
+    for item in reversed(history.data):
+        if isinstance(item, UserMessageItem):
+            inference_opts = getattr(item, "inference_options", None)
+            if inference_opts is not None:
+                model = getattr(inference_opts, "model", None)
+                if model:
+                    logger.debug("Found last model_override from history: %s", model)
+                    return model
+    return None
+
+
 _stream_registry: dict[str, StreamProcessor] = {}
 
 
@@ -1698,6 +1712,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         saved_state = wait_state.get("state", {})
         conversation_history = wait_state.get("conversation_history", [])
 
+        # Récupérer le dernier model_override depuis l'historique
+        model_override = _get_last_model_override_from_history(history_asc)
+
         # Create runtime snapshot with explicit current_slug
         runtime_snapshot = WorkflowRuntimeSnapshot(
             state=saved_state if isinstance(saved_state, dict) else {},
@@ -1713,7 +1730,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             auto_start_was_triggered=False,
             auto_start_assistant_message=None,
             source_item_id=None,
-            model_override=None,
+            model_override=model_override,
         )
 
         event_queue: asyncio.Queue[Any] = asyncio.Queue()

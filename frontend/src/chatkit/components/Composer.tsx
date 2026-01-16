@@ -30,7 +30,7 @@ export interface ComposerProps {
   /** Callback pour mettre à jour les pièces jointes */
   onAttachmentsChange: (attachments: Attachment[]) => void;
   /** Callback pour soumettre le message */
-  onSubmit: (message: string, attachments: Attachment[]) => Promise<void>;
+  onSubmit: (message: string, attachments: Attachment[], selectedModelId?: string | null) => Promise<void>;
   /** Si le composant est en état de chargement */
   isLoading?: boolean;
   /** Si le thread est désactivé (fermé/verrouillé) */
@@ -96,28 +96,10 @@ export function Composer({
     [availableModels, selectedModelId],
   );
 
-  // Make selectedModel available to parent via onSubmit wrapper
+  // Pass selectedModelId to parent via onSubmit
   const handleModelAwareSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[]) => {
-      // Create a custom event or mechanism if we want to bubble this up cleanly
-      // But looking at the ComposerProps, onSubmit doesn't support extra options.
-      // However, ChatKit uses Composer and handles submission.
-      // The issue is: ChatKit's handleComposerSubmit calls control.sendMessage(content).
-      // But it doesn't receive the model from Composer.
-
-      // We need to pass the model to the parent component, but Composer props don't seem to have onModelChange.
-      // Let's check how it was supposed to work.
-      // It seems the implementation of Composer was not passing the model up.
-
-      // Wait, looking at the previous failing test:
-      // expect(sendMessage).toHaveBeenCalledWith(..., { inferenceOptions: { model: "gpt-4" } })
-
-      // This implies ChatKit was somehow getting the model.
-      // But Composer only calls onSubmit with (message, attachments).
-
-      // I need to add onModelChange to Composer props and use it in ChatKit.
-
-      await onSubmit(message, uploadedAttachments);
-  }, [onSubmit]);
+      await onSubmit(message, uploadedAttachments, selectedModelId);
+  }, [onSubmit, selectedModelId]);
 
   // Initialiser le modèle par défaut
   useEffect(() => {
@@ -251,7 +233,7 @@ export function Composer({
 
       // Let's update ComposerProps to include onModelChange.
 
-      await onSubmit(message, successfulAttachments);
+      await onSubmit(message, successfulAttachments, selectedModelId);
     } catch (error) {
       // Error ignored
     }
