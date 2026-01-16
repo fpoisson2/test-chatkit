@@ -263,10 +263,13 @@ class StreamProcessor:
                                 content_index = getattr(event.update, "content_index", -1)
                                 new_content = getattr(event.update, "content", None)
                                 if new_content and content_index >= 0:
+                                    # IMPORTANT: Create a deep copy to avoid modifying the event's content object
+                                    # when we later apply text deltas to item.content
+                                    content_copy = new_content.model_copy(deep=True) if hasattr(new_content, "model_copy") else new_content
                                     if content_index >= len(item.content):
-                                        item.content.append(new_content)
+                                        item.content.append(content_copy)
                                     else:
-                                        item.content.insert(content_index, new_content)
+                                        item.content.insert(content_index, content_copy)
 
                         elif (
                             hasattr(event.update, "type")

@@ -2299,12 +2299,18 @@ async def stream_agent_response(
                     if ctx.workflow_item:
                         yield end_workflow(ctx.workflow_item)
                     produced_items.add(item.id)
+                    # Initialize content with empty text - actual text will come via delta events
+                    # This prevents duplicate text at the start of streaming
+                    empty_content = [
+                        AssistantMessageContent(text="", annotations=[])
+                        for _ in item.content
+                    ]
                     yield ThreadItemAddedEvent(
                         item=AssistantMessageItem(
                             # Reusing the Responses message ID
                             id=item.id,
                             thread_id=thread.id,
-                            content=[_convert_content(c) for c in item.content],
+                            content=empty_content,
                             created_at=datetime.now(),
                             reasoning_id=current_reasoning_id,
                         ),
