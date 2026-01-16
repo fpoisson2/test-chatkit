@@ -545,20 +545,38 @@ function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): 
   const items = thread?.items || [];
   const lastItem = items[items.length - 1];
 
-  // Only show typing indicator if we're STREAMING a response (not just loading a thread)
-  // - Must be loading exactly ONE thread (the current one)
-  // - That thread must have at least one message
-  // - The last message must be from the user
-  // This prevents showing the indicator when finishing loading a thread (race condition)
+  // Show typing indicator when:
+  // - Thread exists and is active (waiting for assistant)
+  // - Thread is being loaded (streaming in progress)
+  // - Last message is from user (no response started yet)
   const hasMessages = items.length > 0;
-  const isOnlyLoadingCurrentThread =
-    thread &&
-    loadingThreadIds.size === 1 &&
-    loadingThreadIds.has(thread.id);
+  const isThreadActive = thread?.status?.type === 'active';
+  const isLoadingCurrentThread =
+    thread && loadingThreadIds.has(thread.id);
+  const lastItemIsUserMessage = lastItem?.type === 'user_message';
+
+  // Show indicator if:
+  // 1. Thread is actively being loaded (streaming) AND thread is active
+  // 2. OR last item is user message AND thread is active
   const isWaitingForAssistant =
-    isOnlyLoadingCurrentThread &&
-    hasMessages &&
-    (!lastItem || lastItem.type === 'user_message');
+    thread &&
+    isThreadActive &&
+    (isLoadingCurrentThread || (hasMessages && lastItemIsUserMessage));
+
+  // Debug logging
+  console.log('[LoadingIndicator]', {
+    threadId: thread?.id,
+    threadStatus: thread?.status?.type,
+    loadingThreadIds: Array.from(loadingThreadIds),
+    loadingThreadIdsSize: loadingThreadIds.size,
+    hasMessages,
+    itemsLength: items.length,
+    lastItemType: lastItem?.type,
+    isThreadActive,
+    isLoadingCurrentThread,
+    lastItemIsUserMessage,
+    isWaitingForAssistant,
+  });
 
   if (!isWaitingForAssistant) {
     return null;
@@ -568,7 +586,11 @@ function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): 
     <div className="chatkit-message chatkit-message-assistant">
       <div className="chatkit-message-content">
         <div className="chatkit-workflow-loading">
-          <div className="chatkit-workflow-loading-spinner"></div>
+          <div className="chatkit-typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
         </div>
       </div>
     </div>
