@@ -1156,3 +1156,15 @@
   background-color: var(--input-background, #1f2937);
   color: var(--text-primary, #f9fafb);
 }
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) :local(.schemaPropertyName),
+  :global(:root:not([data-theme])) :local(.schemaPropertyDescription),
+  :global(:root:not([data-theme])) :local(.schemaPropertyType),
+  :global(:root:not([data-theme])) :local(.schemaEnumInput),
+  :global(:root:not([data-theme])) :local(.schemaArrayItemType) {
+    border-color: rgba(156, 163, 175, 0.3);
+    background-color: var(--input-background, #1f2937);
+    color: var(--text-primary, #f9fafb);
+  }
+}

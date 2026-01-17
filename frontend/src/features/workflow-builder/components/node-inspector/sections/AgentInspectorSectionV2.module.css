@@ -668,6 +668,12 @@ textarea[data-schema-editor="true"] {
   color: var(--text-primary, #f3f4f6);
 }
 
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) :local(.radioLabel) {
+    color: var(--text-primary, #f3f4f6);
+  }
+}
+
 /* Bouton d'ajout */
 .addButton {
   margin-top: 1rem;
