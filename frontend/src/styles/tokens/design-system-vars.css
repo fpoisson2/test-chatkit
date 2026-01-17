@@ -662,6 +662,96 @@
   :root:not([data-theme]) {
     color-scheme: dark;
     /* Apply dark theme variables when no explicit theme is set */
-    /* Same as [data-theme="dark"] above */
+    --color-surface: #18181b;
+    --color-surface-secondary: #27272a;
+    --color-surface-tertiary: #3f3f46;
+    --color-surface-elevated: #27272a;
+    --color-surface-elevated-secondary: #3f3f46;
+
+    --alpha-base: #ffffff;
+
+    --gray-0: #09090b;
+    --gray-25: #18181b;
+    --gray-50: #27272a;
+    --gray-100: #3f3f46;
+    --gray-150: #52525b;
+    --gray-200: #71717a;
+    --gray-300: #a1a1aa;
+    --gray-350: #d4d4d8;
+    --gray-500: #e4e4e7;
+    --gray-600: #f4f4f5;
+    --gray-700: #fafafa;
+    --gray-800: #ffffff;
+    --gray-900: #ffffff;
+
+    --color-text: #e4e4e7;
+    --color-text-emphasis: #fafafa;
+    --color-text-prose: #e4e4e7;
+    --color-text-secondary: #a1a1aa;
+    --color-text-tertiary: #71717a;
+    --color-text-inverse: #18181b;
+
+    --color-border: #3f3f46;
+    --color-border-strong: #52525b;
+    --color-border-subtle: #27272a;
+
+    --button-background-color: var(--gray-100);
+
+    --input-outline-border-color: var(--gray-100);
+    --input-outline-border-color-hover: var(--gray-200);
+    --input-outline-border-color-focus: var(--gray-300);
+    --input-soft-background-color: var(--gray-50);
+    --input-soft-border-color-focus: var(--gray-200);
+
+    --menu-item-background-color: var(--gray-100);
+    --menu-separator-background-color: var(--color-border);
+
+    --radio-group-indicator-background-color: var(--gray-0);
+    --radio-group-indicator-hole-background-color: var(--gray-900);
+    --radio-group-indicator-border-color: var(--gray-200);
+    --radio-group-indicator-border-color-hover: var(--gray-300);
+
+    --color-background-secondary-soft-alpha: var(--alpha-08);
+    --color-text-secondary-soft: var(--gray-300);
+
+    --color-background-success-soft: #0f2417;
+    --color-background-success-soft-alpha: rgba(15, 36, 23, 0.5);
+    --color-text-success-soft: #86efac;
+
+    --color-background-warning-soft: #3a2a0c;
+    --color-background-warning-soft-alpha: rgba(58, 42, 12, 0.5);
+    --color-text-warning-soft: #fde047;
+
+    --color-background-danger-soft: #3a0f0f;
+    --color-background-danger-soft-alpha: rgba(58, 15, 15, 0.5);
+    --color-text-danger-soft: #fca5a5;
+
+    --color-background-info-soft: #0f1e3a;
+    --color-background-info-soft-alpha: rgba(15, 30, 58, 0.5);
+    --color-text-info-soft: #93c5fd;
+
+    --color-background-discovery-soft: #2a0f3a;
+    --color-background-discovery-soft-alpha: rgba(42, 15, 58, 0.5);
+    --color-text-discovery-soft: #d8b4fe;
+
+    --color-background-secondary-solid: var(--gray-300);
+    --color-text-secondary-solid: var(--gray-900);
+
+    --chat-background-color: var(--gray-25);
+    --user-message-background-color: var(--gray-100);
+    --user-message-text-color: var(--color-text);
+
+    --composer-background-color: var(--gray-50);
+
+    --codeblock-background-color: var(--gray-100);
+    --codeblock-syntax-1: #79c0ff;
+    --codeblock-syntax-2: #ff7b72;
+    --codeblock-syntax-3: #a5d6ff;
+    --codeblock-syntax-4: #d2a8ff;
+    --codeblock-syntax-5: #79c0ff;
+
+    --scrollbar-color: var(--gray-300);
+
+    --avatar-group-cutout-color: var(--gray-25);
   }
 }
