@@ -291,51 +291,6 @@ function AssistantMessageContent({
               </svg>
             )}
           </button>
-
-          {/* Export PDF button */}
-          <button
-            className={`chatkit-action-button ${exportingFormat === 'pdf' ? 'exporting' : ''}`}
-            onClick={handleExportPdf}
-            disabled={exportingFormat !== null}
-            title={t('chatkit.export.pdf')}
-          >
-            {exportingFormat === 'pdf' ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="chatkit-spinner">
-                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10"></circle>
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <path d="M9 15h6"></path>
-                <path d="M9 11h6"></path>
-              </svg>
-            )}
-            <span className="chatkit-action-label">PDF</span>
-          </button>
-
-          {/* Export DOCX button */}
-          <button
-            className={`chatkit-action-button ${exportingFormat === 'docx' ? 'exporting' : ''}`}
-            onClick={handleExportDocx}
-            disabled={exportingFormat !== null}
-            title={t('chatkit.export.docx')}
-          >
-            {exportingFormat === 'docx' ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="chatkit-spinner">
-                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10"></circle>
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <path d="M16 13H8"></path>
-                <path d="M16 17H8"></path>
-                <path d="M10 9H8"></path>
-              </svg>
-            )}
-            <span className="chatkit-action-label">DOCX</span>
-          </button>
         </div>
       )}
       {/* Cost tracking for admins */}
