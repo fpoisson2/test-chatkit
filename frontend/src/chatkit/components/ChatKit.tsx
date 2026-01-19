@@ -581,6 +581,7 @@ function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): 
   const isLoadingCurrentThread =
     thread && loadingThreadIds.has(thread.id);
   const lastItemIsUserMessage = lastItem?.type === 'user_message';
+  const isWaitingForUserInput = Boolean(thread?.metadata?.workflow_wait_for_user_input);
 
   // Show indicator if:
   // 1. Thread is actively being loaded (streaming) AND thread is active
@@ -588,6 +589,7 @@ function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): 
   const isWaitingForAssistant =
     thread &&
     isThreadActive &&
+    !isWaitingForUserInput &&
     (isLoadingCurrentThread || (hasMessages && lastItemIsUserMessage));
 
   // Debug logging
@@ -602,6 +604,7 @@ function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): 
     isThreadActive,
     isLoadingCurrentThread,
     lastItemIsUserMessage,
+    isWaitingForUserInput,
     isWaitingForAssistant,
   });
 

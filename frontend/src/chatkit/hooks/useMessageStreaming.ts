@@ -67,6 +67,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
 
       let updatedThread: Thread | null = null;
       const streamThreadKeyRef = { current: threadKey };
+      let currentStreamThreadId = targetThreadId;
 
       try {
         await streamChatKitEvents({
@@ -77,6 +78,9 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
           signal: controller.signal,
           onEvent: (event: ThreadStreamEvent) => {
             onLog?.({ name: `event.${event.type}`, data: { event } });
+            if (event.type === 'awaiting_action') {
+              setThreadLoading(currentStreamThreadId, false);
+            }
           },
           onThreadUpdate: (newThread: Thread) => {
             updatedThread = newThread;
@@ -92,6 +96,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
               setThreadLoading(newThread.id, true);
               streamThreadKeyRef.current = getThreadKey(newThread.id);
             }
+            currentStreamThreadId = newThread.id;
 
             if (shouldUpdateThreadState) {
               setThread(newThread);
