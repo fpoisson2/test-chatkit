@@ -567,6 +567,7 @@ async def start_test_browser(
             "user_id": current_user.id,
             "browser": browser,
             "driver": driver,
+            "created_at": time.time(),
         }
 
         logger.info(

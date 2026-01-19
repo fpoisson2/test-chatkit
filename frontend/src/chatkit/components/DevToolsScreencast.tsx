@@ -612,97 +612,99 @@ export function DevToolsScreencast({
     sendCdpCommand(command);
   };
 
-  // Don't render the component if the token has a fatal error
-  if (fatalErrorTokens.has(debugUrlToken)) {
-    return null;
-  }
+  // Check if the token has a fatal error and show error message
+  const hasFatalError = fatalErrorTokens.has(debugUrlToken);
 
   return (
     <div className={`chatkit-devtools-screencast ${className}`}>
-      {error && (
+      {(error || hasFatalError) && (
         <div className="chatkit-screencast-error">
-          ⚠️ {error}
+          ⚠️ {hasFatalError ? 'Connection failed. The browser session may have expired or been closed.' : error}
         </div>
       )}
 
-      <div className="chatkit-browser-toolbar">
-        <div className="chatkit-browser-controls">
-          <button
-            type="button"
-            onClick={goBack}
-            disabled={!isConnected || !canGoBack}
-            className="chatkit-browser-button"
-            title="Page précédente"
-            aria-label="Page précédente"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M10 12L6 8l4-4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={goForward}
-            disabled={!isConnected || !canGoForward}
-            className="chatkit-browser-button"
-            title="Page suivante"
-            aria-label="Page suivante"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 12l4-4-4-4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={!isConnected}
-            className="chatkit-browser-button"
-            title="Actualiser"
-            aria-label="Actualiser"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M13 4L13 7L10 7M3 12L3 9L6 9M13 7C12.5 5.5 11.5 4 9.5 3.5C6.5 2.5 3.5 4 2.5 7M3 9C3.5 10.5 4.5 12 6.5 12.5C9.5 13.5 12.5 12 13.5 9" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
+      {!hasFatalError && (
+        <>
+          <div className="chatkit-browser-toolbar">
+            <div className="chatkit-browser-controls">
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={!isConnected || !canGoBack}
+                className="chatkit-browser-button"
+                title="Page précédente"
+                aria-label="Page précédente"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M10 12L6 8l4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={goForward}
+                disabled={!isConnected || !canGoForward}
+                className="chatkit-browser-button"
+                title="Page suivante"
+                aria-label="Page suivante"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 12l4-4-4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={!isConnected}
+                className="chatkit-browser-button"
+                title="Actualiser"
+                aria-label="Actualiser"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M13 4L13 7L10 7M3 12L3 9L6 9M13 7C12.5 5.5 11.5 4 9.5 3.5C6.5 2.5 3.5 4 2.5 7M3 9C3.5 10.5 4.5 12 6.5 12.5C9.5 13.5 12.5 12 13.5 9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
 
-        <form onSubmit={handleUrlSubmit} className="chatkit-address-bar">
-          <input
-            type="text"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            disabled={!isConnected}
-            className="chatkit-address-input"
-            placeholder="Entrez une URL..."
-            aria-label="Barre d'adresse"
-          />
-        </form>
+            <form onSubmit={handleUrlSubmit} className="chatkit-address-bar">
+              <input
+                type="text"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                disabled={!isConnected}
+                className="chatkit-address-input"
+                placeholder="Entrez une URL..."
+                aria-label="Barre d'adresse"
+              />
+            </form>
 
-        <div className="chatkit-browser-status">
-          {isConnected ? (
-            <span className="chatkit-status-badge chatkit-status-live" title={`${frameCount} frames reçues`}>
-              Live
-            </span>
-          ) : (
-            <span className="chatkit-status-badge chatkit-status-connecting">
-              Connexion...
-            </span>
-          )}
-        </div>
-      </div>
+            <div className="chatkit-browser-status">
+              {isConnected ? (
+                <span className="chatkit-status-badge chatkit-status-live" title={`${frameCount} frames reçues`}>
+                  Live
+                </span>
+              ) : (
+                <span className="chatkit-status-badge chatkit-status-connecting">
+                  Connexion...
+                </span>
+              )}
+            </div>
+          </div>
 
-      <div className="chatkit-screencast-canvas-container">
-        <canvas
-          ref={canvasRef}
-          className="chatkit-screencast-canvas"
-          tabIndex={enableInput ? 0 : -1}
-          onMouseDown={(e) => handleMouseEvent('mousePressed', e)}
-          onMouseUp={(e) => handleMouseEvent('mouseReleased', e)}
-          onMouseMove={(e) => handleMouseEvent('mouseMoved', e)}
-          onWheel={handleWheel}
-          onKeyDown={(e) => handleKeyEvent('keyDown', e)}
-          onKeyUp={(e) => handleKeyEvent('keyUp', e)}
-        />
-      </div>
+          <div className="chatkit-screencast-canvas-container">
+            <canvas
+              ref={canvasRef}
+              className="chatkit-screencast-canvas"
+              tabIndex={enableInput ? 0 : -1}
+              onMouseDown={(e) => handleMouseEvent('mousePressed', e)}
+              onMouseUp={(e) => handleMouseEvent('mouseReleased', e)}
+              onMouseMove={(e) => handleMouseEvent('mouseMoved', e)}
+              onWheel={handleWheel}
+              onKeyDown={(e) => handleKeyEvent('keyDown', e)}
+              onKeyUp={(e) => handleKeyEvent('keyUp', e)}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import { DevToolsScreencast } from "../chatkit/components/DevToolsScreencast";
+import { DevToolsScreencast, clearFatalErrorForToken } from "../chatkit/components/DevToolsScreencast";
 import { FormSection } from "../components";
 import { makeApiEndpointCandidates } from "../utils/backend";
 
@@ -93,6 +93,8 @@ export const AdminBrowserTestPage = () => {
       }
 
       const data = await response.json();
+      // Clear any previous fatal errors for this token
+      clearFatalErrorForToken(data.token);
       setBrowserSession(data);
       setSuccess(t("admin.browserTest.success.started"));
     } catch (err) {
