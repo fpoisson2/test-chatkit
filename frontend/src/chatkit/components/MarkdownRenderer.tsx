@@ -185,7 +185,7 @@ export function MarkdownRenderer({ content, theme = 'light', isStreaming = false
           th: ({ children }) => <th className="chatkit-markdown-th">{children}</th>,
           td: ({ children }) => <td className="chatkit-markdown-td">{children}</td>,
         }}
-        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: true }]]}
         rehypePlugins={[rehypeRaw, rehypeKatex]}
       >
         {content}
