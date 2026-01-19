@@ -7,7 +7,7 @@ import type {
   ThreadListResponse,
   ItemListResponse,
 } from '../../types';
-import { normalizeThreadItems } from './normalizers';
+import { normalizeThreadItems, normalizeThreadItemsWithPagination } from './normalizers';
 
 export interface FetchThreadOptions {
   url: string;
@@ -112,10 +112,13 @@ export async function fetchThread(options: FetchThreadOptions): Promise<Thread> 
 
   const data = await response.json();
   const thread = data.thread || data;
+  const { items, has_more, pagination_cursor } = normalizeThreadItemsWithPagination(thread.items);
 
   return {
     ...thread,
-    items: normalizeThreadItems(thread.items),
+    items,
+    has_more_items: has_more,
+    pagination_cursor,
   };
 }
 
@@ -391,4 +394,44 @@ export async function listItems(options: ListItemsOptions): Promise<ItemListResp
 
   const data = await response.json();
   return data;
+}
+
+export interface LoadOlderItemsOptions {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+  cursor: string;
+  limit?: number;
+}
+
+export interface LoadOlderItemsResponse {
+  items: ThreadItem[];
+  has_more: boolean;
+  cursor?: string;
+}
+
+/**
+ * Charge les messages plus anciens d'un thread
+ */
+export async function loadOlderItems(options: LoadOlderItemsOptions): Promise<LoadOlderItemsResponse> {
+  const { url, headers = {}, threadId, cursor, limit = 50 } = options;
+
+  const response = await listItems({
+    url,
+    headers,
+    threadId,
+    limit,
+    order: 'desc',
+    after: cursor,
+  });
+
+  // Les items sont retournés du plus récent au plus ancien (desc)
+  // On les inverse pour avoir l'ordre chronologique
+  const items = [...response.data].reverse();
+
+  return {
+    items,
+    has_more: response.has_more,
+    cursor: response.after,
+  };
 }

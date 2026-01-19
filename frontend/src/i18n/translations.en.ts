@@ -1543,5 +1543,7 @@ export const en: TranslationDictionary = {
   "landing.tech.title": "Modern Tech Stack",
   "landing.tech.subtitle": "Built on a robust, open-source stack designed for performance and scalability. Started with AgentKit, evolved into a complete platform.",
   "landing.footer.tagline": "Built for fun. Shared in case it helps others.",
+  "chat.loading": "Loading...",
+  "chat.loadOlderMessages": "Load older messages",
 };
   

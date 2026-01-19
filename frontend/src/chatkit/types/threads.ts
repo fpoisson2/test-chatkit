@@ -79,6 +79,10 @@ export interface Thread {
   items: ThreadItem[];
   metadata?: Record<string, unknown>;
   status?: ThreadStatus;
+  /** Indicates if there are older messages that can be loaded */
+  has_more_items?: boolean;
+  /** Cursor for loading older messages */
+  pagination_cursor?: string;
 }
 
 // ===== Types pour les listes paginées =====

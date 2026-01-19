@@ -1602,5 +1602,7 @@ export const fr: TranslationDictionary = {
   "landing.tech.title": "Stack Technique Moderne",
   "landing.tech.subtitle": "Construit sur une stack robuste et open-source, conçue pour la performance et l'évolutivité. Parti d'AgentKit, évolué en plateforme complète.",
   "landing.footer.tagline": "Créé pour le plaisir. Partagé au cas où ça puisse aider.",
+  "chat.loading": "Chargement...",
+  "chat.loadOlderMessages": "Charger les messages précédents",
 };
   

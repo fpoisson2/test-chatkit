@@ -287,7 +287,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             onPromptClick={handlePromptClick}
           />
         ) : (
-          <MessageList
+          <>
+            {/* Load older messages button */}
+            {control.hasMoreItems && (
+              <div className="chatkit-load-older">
+                <button
+                  className="chatkit-load-older-button"
+                  onClick={control.loadOlderItems}
+                  disabled={control.isLoadingOlderItems}
+                >
+                  {control.isLoadingOlderItems ? (
+                    <span className="chatkit-load-older-loading">
+                      <span className="chatkit-typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </span>
+                    </span>
+                  ) : (
+                    t('chat.loadOlderMessages')
+                  )}
+                </button>
+              </div>
+            )}
+            <MessageList
             items={control.thread?.items || []}
             theme={theme?.colorScheme}
             copiedMessageId={copiedMessageId}
@@ -310,6 +333,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             inlineVoiceWidget={inlineVoiceWidget}
             inlineOutboundCallWidget={inlineOutboundCallWidget}
           />
+          </>
         )}
 
         {/* Loading indicator */}

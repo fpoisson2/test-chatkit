@@ -76,7 +76,7 @@ from .types import (
 from .version import __version__
 from .widgets import Markdown, Text, WidgetComponent, WidgetComponentBase, WidgetRoot
 
-DEFAULT_PAGE_SIZE = 20
+DEFAULT_PAGE_SIZE = 100
 DEFAULT_ERROR_MESSAGE = "An error occurred when generating a response."
 
 
@@ -847,13 +847,16 @@ class ChatKitServer(ABC, Generic[TContext]):
 
     async def _load_full_thread(self, thread_id: str, context: TContext) -> Thread:
         thread_meta = await self.store.load_thread(thread_id, context=context)
+        # Load most recent messages first (desc), then reverse for display order
         thread_items = await self.store.load_thread_items(
             thread_id,
             after=None,
             limit=DEFAULT_PAGE_SIZE,
-            order="asc",
+            order="desc",
             context=context,
         )
+        # Reverse to get chronological order (oldest first) for display
+        thread_items.data = list(reversed(thread_items.data))
         return Thread(**thread_meta.model_dump(), items=thread_items)
 
     async def _paginate_thread_items_reverse(

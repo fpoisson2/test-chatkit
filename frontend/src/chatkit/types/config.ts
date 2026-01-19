@@ -155,4 +155,10 @@ export interface ChatKitControl {
   updateThreadMetadata: (metadata: Record<string, unknown>) => Promise<void>;
   /** Clear any displayed error */
   clearError: () => void;
+  /** Whether there are older messages that can be loaded */
+  hasMoreItems: boolean;
+  /** Whether older items are currently being loaded */
+  isLoadingOlderItems: boolean;
+  /** Load older messages */
+  loadOlderItems: () => Promise<void>;
 }
