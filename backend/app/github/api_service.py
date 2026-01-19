@@ -7,6 +7,7 @@ import fnmatch
 import logging
 import secrets
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -16,6 +17,21 @@ from ..secret_utils import decrypt_secret, encrypt_secret
 logger = logging.getLogger("chatkit.github.api")
 
 GITHUB_API_URL = "https://api.github.com"
+
+
+def _encode_path(path: str) -> str:
+    """Encode a file path for use in GitHub API URLs.
+
+    Encodes each path segment individually to preserve forward slashes
+    while properly encoding spaces and special characters.
+
+    Args:
+        path: File path (e.g., "workflows/Labo 2 - Test.json")
+
+    Returns:
+        URL-encoded path (e.g., "workflows/Labo%202%20-%20Test.json")
+    """
+    return "/".join(quote(segment, safe="") for segment in path.split("/"))
 
 
 class GitHubAPIError(Exception):
@@ -177,7 +193,7 @@ class GitHubAPIService:
 
         return await self._request(
             "GET",
-            f"/repos/{repo_full_name}/contents/{path}",
+            f"/repos/{repo_full_name}/contents/{_encode_path(path)}",
             params=params if params else None,
         )
 
@@ -204,7 +220,7 @@ class GitHubAPIService:
 
         result = await self._request(
             "GET",
-            f"/repos/{repo_full_name}/contents/{file_path}",
+            f"/repos/{repo_full_name}/contents/{_encode_path(file_path)}",
             params=params if params else None,
         )
 
@@ -256,7 +272,7 @@ class GitHubAPIService:
 
         return await self._request(
             "PUT",
-            f"/repos/{repo_full_name}/contents/{file_path}",
+            f"/repos/{repo_full_name}/contents/{_encode_path(file_path)}",
             json=data,
         )
 
@@ -291,7 +307,7 @@ class GitHubAPIService:
 
         return await self._request(
             "DELETE",
-            f"/repos/{repo_full_name}/contents/{file_path}",
+            f"/repos/{repo_full_name}/contents/{_encode_path(file_path)}",
             json=data,
         )
 
