@@ -1,6 +1,7 @@
 services:
   backend:
     image: chatkit-backend:latest
+    pull_policy: build
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -117,6 +118,7 @@ services:
   #     - app-network
   celery-worker:
     image: chatkit-backend:latest
+    pull_policy: never
     working_dir: /workspace/backend
     command: >-
       celery -A app.celery_app worker --loglevel=info --concurrency=2
