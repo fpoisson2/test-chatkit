@@ -47,11 +47,6 @@ export function DevToolsScreencast({
   const [isConnected, setIsConnected] = useState(false);
   // Initialize error state based on whether the token has a fatal error
   const [error, setError] = useState<string | null>(null);
-
-  // Don't render the component if the token has a fatal error
-  if (fatalErrorTokens.has(debugUrlToken)) {
-    return null;
-  }
   const [frameCount, setFrameCount] = useState(0);
   const [currentUrl, setCurrentUrl] = useState('');
   const [urlInput, setUrlInput] = useState('');
@@ -616,6 +611,11 @@ export function DevToolsScreencast({
 
     sendCdpCommand(command);
   };
+
+  // Don't render the component if the token has a fatal error
+  if (fatalErrorTokens.has(debugUrlToken)) {
+    return null;
+  }
 
   return (
     <div className={`chatkit-devtools-screencast ${className}`}>
