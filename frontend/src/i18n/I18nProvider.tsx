@@ -111,8 +111,12 @@ const fetchAvailableLanguages = async () => {
       return;
     }
     const data = await response.json();
-    if (data.languages && Array.isArray(data.languages)) {
-      updateAvailableLanguages(data.languages);
+    if (Array.isArray(data.languages) && data.languages.length > 0) {
+      const normalized = data.languages.map((item: { code: string; name?: string; label?: string }) => ({
+        code: item.code,
+        label: item.label ?? item.name ?? item.code,
+      }));
+      updateAvailableLanguages(normalized);
     }
   } catch (error) {
   }
