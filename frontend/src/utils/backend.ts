@@ -1442,6 +1442,22 @@ export type AvailableModel = {
   updated_at: string;
 };
 
+export type ModelInfoEntry = {
+  model_name: string;
+  litellm_params?: Record<string, unknown>;
+  model_info?: Record<string, unknown>;
+};
+
+export type ModelInfoResponse = {
+  data: ModelInfoEntry[];
+};
+
+export type ModelImportSummary = {
+  total_count: number;
+  created_count: number;
+  skipped_count: number;
+};
+
 export type WidgetTemplateCreatePayload = {
   slug: string;
   title?: string | null;
@@ -1516,6 +1532,32 @@ export const modelRegistryApi = {
       method: "DELETE",
       headers: withAuthHeaders(token),
     });
+  },
+
+  async listInfo(
+    token: string | null,
+    litellmModelId?: string | null,
+  ): Promise<ModelInfoResponse> {
+    const params = new URLSearchParams();
+    if (litellmModelId) {
+      params.set("litellm_model_id", litellmModelId);
+    }
+    const path =
+      params.toString().length > 0
+        ? `/api/admin/models/info?${params.toString()}`
+        : "/api/admin/models/info";
+    const response = await requestWithFallback(path, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async importLitellm(token: string | null): Promise<ModelImportSummary> {
+    const response = await requestWithFallback("/api/admin/models/import-litellm", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
   },
 };
 

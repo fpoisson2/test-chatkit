@@ -351,6 +351,59 @@ def _add_workflows_owner_id_column(connection) -> None:
     )
 
 
+def _lti_registrations_unique_constraint_is_correct(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("lti_registrations"):
+        return True
+    if connection.dialect.name == "sqlite":
+        return True
+
+    constraints = inspector.get_unique_constraints("lti_registrations")
+    has_composite = any(
+        set(constraint.get("column_names") or []) == {"issuer", "client_id"}
+        for constraint in constraints
+    )
+    has_issuer_only = any(
+        set(constraint.get("column_names") or []) == {"issuer"}
+        for constraint in constraints
+    )
+    return has_composite and not has_issuer_only
+
+
+def _ensure_lti_registrations_unique_constraint(connection) -> None:
+    inspector = inspect(connection)
+    if not inspector.has_table("lti_registrations"):
+        return
+    if connection.dialect.name == "sqlite":
+        return
+
+    constraints = inspector.get_unique_constraints("lti_registrations")
+    has_composite = any(
+        set(constraint.get("column_names") or []) == {"issuer", "client_id"}
+        for constraint in constraints
+    )
+
+    for constraint in constraints:
+        columns = set(constraint.get("column_names") or [])
+        if columns == {"issuer"}:
+            name = constraint.get("name")
+            if name:
+                connection.execute(
+                    text(
+                        f'ALTER TABLE lti_registrations DROP CONSTRAINT IF EXISTS "{name}"'
+                    )
+                )
+
+    if not has_composite:
+        connection.execute(
+            text(
+                "ALTER TABLE lti_registrations "
+                "ADD CONSTRAINT uq_lti_registrations_issuer_client "
+                "UNIQUE (issuer, client_id)"
+            )
+        )
+
+
 def _workflow_shares_table_exists(connection) -> bool:
     """Check if workflow_shares table exists."""
     inspector = inspect(connection)
@@ -505,6 +558,12 @@ def check_and_apply_migrations():
             "description": "Add appearance columns to app_settings",
             "check_fn": _app_settings_has_appearance_columns,
             "apply_fn": _add_app_settings_appearance_columns,
+        },
+        {
+            "id": "012_fix_lti_registration_unique_constraint",
+            "description": "Ensure LTI registrations allow multiple client IDs per issuer",
+            "check_fn": _lti_registrations_unique_constraint_is_correct,
+            "apply_fn": _ensure_lti_registrations_unique_constraint,
         },
     ]
 
