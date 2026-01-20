@@ -657,13 +657,16 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     ) -> AsyncIterator[ThreadStreamEvent]:
         if isinstance(request, ThreadsCreateReq):
             if context.lti_resource_link_id is None:
-                raise RuntimeError(
-                    "Aucun resource_link_id LTI dans le contexte. "
-                    "L'accès doit se faire via un lien LTI."
+                if getattr(context, "is_lti_user", False):
+                    raise RuntimeError(
+                        "Aucun resource_link_id LTI dans le contexte. "
+                        "L'accès doit se faire via un lien LTI."
+                    )
+                definition = self._workflow_service.get_current()
+            else:
+                definition = self._workflow_service.get_by_resource_link_id(
+                    context.lti_resource_link_id
                 )
-            definition = self._workflow_service.get_by_resource_link_id(
-                context.lti_resource_link_id
-            )
             workflow = getattr(definition, "workflow", None)
             workflow_id = getattr(workflow, "id", None)
             if workflow_id is None:
@@ -750,15 +753,21 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
 
     def _resolve_auto_start_configuration(
-        self, resource_link_id: int | None
+        self,
+        resource_link_id: int | None,
+        *,
+        is_lti_user: bool,
     ) -> AutoStartConfiguration:
         try:
             if resource_link_id is None:
-                logger.warning(
-                    "Aucun resource_link_id pour résoudre la configuration auto-start."
-                )
-                return AutoStartConfiguration.disabled()
-            definition = self._workflow_service.get_by_resource_link_id(resource_link_id)
+                if is_lti_user:
+                    logger.warning(
+                        "Aucun resource_link_id pour résoudre la configuration auto-start."
+                    )
+                    return AutoStartConfiguration.disabled()
+                definition = self._workflow_service.get_current()
+            else:
+                definition = self._workflow_service.get_by_resource_link_id(resource_link_id)
         except Exception as exc:  # pragma: no cover - devrait rester exceptionnel
             logger.exception(
                 "Impossible de vérifier l'option de démarrage automatique du workflow.",
@@ -898,7 +907,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         source_item_id = getattr(input_user_message, "id", None)
 
         if not user_text:
-            config = self._resolve_auto_start_configuration(context.lti_resource_link_id)
+            config = self._resolve_auto_start_configuration(
+                context.lti_resource_link_id,
+                is_lti_user=getattr(context, "is_lti_user", False),
+            )
             if not config.enabled:
                 yield ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
