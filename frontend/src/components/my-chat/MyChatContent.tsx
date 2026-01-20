@@ -218,7 +218,7 @@ export function MyChatContent() {
   // Sidebar actions (uses context internally)
   const { handleSidebarThreadSelect, handleSidebarThreadDeleted, handleNewConversation, handleWorkflowSelectorChange } = useSidebarActions({
     sessionOwner, persistenceSlug, mode, workflows, token, isAdmin: user?.is_admin ?? false,
-    setManagedWorkflowSelection, setSelectedWorkflowId,
+    setManagedWorkflowSelection, setSelectedWorkflowId, onWorkflowActivated: handleWorkflowActivated,
   });
 
   // ChatKit callbacks (uses context internally)

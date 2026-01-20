@@ -18,6 +18,7 @@ export type UseSidebarActionsOptions = {
   isAdmin: boolean;
   setManagedWorkflowSelection: React.Dispatch<React.SetStateAction<WorkflowActivation>>;
   setSelectedWorkflowId: (id: number | null) => void;
+  onWorkflowActivated?: (selection: WorkflowActivation, options: { reason: "initial" | "user" }) => void;
 };
 
 export type SidebarActions = {
@@ -36,6 +37,7 @@ export function useSidebarActions({
   isAdmin,
   setManagedWorkflowSelection,
   setSelectedWorkflowId,
+  onWorkflowActivated,
 }: UseSidebarActionsOptions): SidebarActions {
   const navigate = useNavigate();
 
@@ -185,15 +187,18 @@ export function useSidebarActions({
       const targetWorkflow = workflows.find((w) => w.id === workflowId);
       if (targetWorkflow) {
         setSelectedWorkflowId(workflowId);
-        setManagedWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+        if (onWorkflowActivated) {
+          onWorkflowActivated({ kind: "local", workflow: targetWorkflow }, { reason: "user" });
+        } else {
+          setManagedWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+          clearStoredThreadId(sessionOwner, persistenceSlug);
+          setInitialThreadId(null);
+          setChatInstanceKey((v) => v + 1);
+        }
 
         if (isAdmin && token) {
           await workflowsApi.setChatkitWorkflow(token, workflowId).catch(() => {});
         }
-
-        clearStoredThreadId(sessionOwner, persistenceSlug);
-        setInitialThreadId(null);
-        setChatInstanceKey((v) => v + 1);
       }
     },
     [
@@ -206,6 +211,7 @@ export function useSidebarActions({
       setManagedWorkflowSelection,
       setInitialThreadId,
       setChatInstanceKey,
+      onWorkflowActivated,
     ],
   );
 
