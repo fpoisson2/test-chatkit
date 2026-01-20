@@ -1452,6 +1452,12 @@ export type ModelInfoResponse = {
   data: ModelInfoEntry[];
 };
 
+export type ModelImportSummary = {
+  total_count: number;
+  created_count: number;
+  skipped_count: number;
+};
+
 export type WidgetTemplateCreatePayload = {
   slug: string;
   title?: string | null;
@@ -1541,6 +1547,14 @@ export const modelRegistryApi = {
         ? `/api/admin/models/info?${params.toString()}`
         : "/api/admin/models/info";
     const response = await requestWithFallback(path, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async importLitellm(token: string | null): Promise<ModelImportSummary> {
+    const response = await requestWithFallback("/api/admin/models/import-litellm", {
+      method: "POST",
       headers: withAuthHeaders(token),
     });
     return response.json();

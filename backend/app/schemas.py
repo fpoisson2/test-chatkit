@@ -988,6 +988,12 @@ class ModelInfoResponse(BaseModel):
     data: list[ModelInfoEntry] = Field(default_factory=list)
 
 
+class ModelImportSummary(BaseModel):
+    total_count: int
+    created_count: int
+    skipped_count: int
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

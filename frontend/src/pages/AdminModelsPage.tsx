@@ -156,7 +156,12 @@ export const AdminModelsPage = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   // React Query hooks
-  const { data: modelsData = [], isLoading: isLoadingModels, error: modelsError } = useModelsAdmin(token);
+  const {
+    data: modelsData = [],
+    isLoading: isLoadingModels,
+    error: modelsError,
+    refetch: refetchModels,
+  } = useModelsAdmin(token);
   const { data: settings, isLoading: isLoadingProviders } = useAppSettings(token);
   const createModel = useCreateModel();
   const updateModel = useUpdateModel();
@@ -182,6 +187,7 @@ export const AdminModelsPage = () => {
   const [modelInfoEntries, setModelInfoEntries] = useState<ModelInfoEntry[]>([]);
   const [modelInfoError, setModelInfoError] = useState<string | null>(null);
   const [isLoadingModelInfo, setIsLoadingModelInfo] = useState(false);
+  const [isImportingModelInfo, setIsImportingModelInfo] = useState(false);
   const [selectedModelInfo, setSelectedModelInfo] = useState<string>("");
 
   // Watch form values
@@ -252,6 +258,7 @@ export const AdminModelsPage = () => {
       setSelectedModelInfo("");
       setModelInfoError(null);
       setIsLoadingModelInfo(false);
+      setIsImportingModelInfo(false);
     }
   }, [showCreateModal]);
 
@@ -343,6 +350,37 @@ export const AdminModelsPage = () => {
       }
     } finally {
       setIsLoadingModelInfo(false);
+    }
+  };
+
+  const handleImportModelInfo = async () => {
+    if (!token) {
+      setModelInfoError("Authentification requise pour importer les modèles.");
+      return;
+    }
+    setIsImportingModelInfo(true);
+    setModelInfoError(null);
+    setSuccess(null);
+    try {
+      const summary = await modelRegistryApi.importLitellm(token);
+      await refetchModels();
+      setSuccess(
+        `Modèles LiteLLM importés: ${summary.created_count} ajoutés, ` +
+          `${summary.skipped_count} ignorés.`,
+      );
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setModelInfoError("Session expirée, veuillez vous reconnecter.");
+      } else {
+        setModelInfoError(
+          err instanceof Error
+            ? err.message
+            : "Impossible d'importer les modèles LiteLLM.",
+        );
+      }
+    } finally {
+      setIsImportingModelInfo(false);
     }
   };
 
@@ -756,7 +794,7 @@ export const AdminModelsPage = () => {
                   type="button"
                   className="btn btn-ghost"
                   onClick={handleFetchModelInfo}
-                  disabled={isLoadingModelInfo || isBusy}
+                  disabled={isLoadingModelInfo || isImportingModelInfo || isBusy}
                 >
                   {isLoadingModelInfo ? "Chargement…" : "Charger les modèles"}
                 </button>
@@ -788,6 +826,22 @@ export const AdminModelsPage = () => {
                     );
                   })}
                 </select>
+              </FormField>
+            </div>
+
+            <div className="admin-form__row">
+              <FormField
+                label="Ajouter tous les modèles LiteLLM"
+                hint="Crée une entrée pour chaque modèle disponible via LiteLLM."
+              >
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleImportModelInfo}
+                  disabled={isImportingModelInfo || isBusy}
+                >
+                  {isImportingModelInfo ? "Import en cours…" : "Tout importer"}
+                </button>
               </FormField>
             </div>
 
