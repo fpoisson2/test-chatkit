@@ -23,6 +23,7 @@ from ..models import (
     AvailableModel,
     HostedWorkflow,
     LTIRegistration,
+    LTIResourceLink,
     Workflow,
     WorkflowAppearance,
     WorkflowDefinition,
@@ -1902,6 +1903,53 @@ class WorkflowService:
                 definition = self._backfill_legacy_definition(definition, db)
                 self._set_active_definition(workflow, definition, db)
                 db.commit()
+            return definition
+        finally:
+            if owns_session:
+                db.close()
+
+    def get_by_resource_link_id(
+        self, resource_link_id: int, session: Session | None = None
+    ) -> WorkflowDefinition:
+        """Load the workflow definition associated with an LTI resource link."""
+        db, owns_session = self._get_session(session)
+        try:
+            resource_link = db.scalar(
+                select(LTIResourceLink).where(LTIResourceLink.id == resource_link_id)
+            )
+            if resource_link is None:
+                raise WorkflowValidationError(
+                    f"Resource link {resource_link_id} introuvable."
+                )
+            if resource_link.workflow_id is None:
+                raise WorkflowValidationError(
+                    f"Aucun workflow associé au resource link {resource_link_id}."
+                )
+
+            workflow = db.scalar(
+                select(Workflow).where(Workflow.id == resource_link.workflow_id)
+            )
+            if workflow is None:
+                raise WorkflowValidationError(
+                    f"Workflow {resource_link.workflow_id} introuvable."
+                )
+
+            definition = self._load_active_definition(workflow, db)
+            if definition is None:
+                raise WorkflowValidationError(
+                    f"Aucune version active pour le workflow {workflow.slug}."
+                )
+
+            definition = self._fully_load_definition(definition)
+            if self._needs_graph_backfill(definition):
+                logger.info(
+                    "Legacy workflow detected, backfilling default graph with existing "
+                    "agent configuration",
+                )
+                definition = self._backfill_legacy_definition(definition, db)
+                self._set_active_definition(workflow, definition, db)
+                db.commit()
+
             return definition
         finally:
             if owns_session:

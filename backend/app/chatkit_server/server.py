@@ -656,7 +656,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
         if isinstance(request, ThreadsCreateReq):
-            definition = self._workflow_service.get_current()
+            if context.lti_resource_link_id is None:
+                raise RuntimeError(
+                    "Aucun resource_link_id LTI dans le contexte. "
+                    "L'accès doit se faire via un lien LTI."
+                )
+            definition = self._workflow_service.get_by_resource_link_id(
+                context.lti_resource_link_id
+            )
             workflow = getattr(definition, "workflow", None)
             workflow_id = getattr(workflow, "id", None)
             if workflow_id is None:
@@ -742,9 +749,16 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             payload=sanitized,
         )
 
-    def _resolve_auto_start_configuration(self) -> AutoStartConfiguration:
+    def _resolve_auto_start_configuration(
+        self, resource_link_id: int | None
+    ) -> AutoStartConfiguration:
         try:
-            definition = self._workflow_service.get_current()
+            if resource_link_id is None:
+                logger.warning(
+                    "Aucun resource_link_id pour résoudre la configuration auto-start."
+                )
+                return AutoStartConfiguration.disabled()
+            definition = self._workflow_service.get_by_resource_link_id(resource_link_id)
         except Exception as exc:  # pragma: no cover - devrait rester exceptionnel
             logger.exception(
                 "Impossible de vérifier l'option de démarrage automatique du workflow.",
@@ -884,7 +898,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         source_item_id = getattr(input_user_message, "id", None)
 
         if not user_text:
-            config = self._resolve_auto_start_configuration()
+            config = self._resolve_auto_start_configuration(context.lti_resource_link_id)
             if not config.enabled:
                 yield ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
@@ -1915,7 +1929,16 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                             workflow_slug = candidate
 
             if workflow_slug is None:
-                workflow_definition = self._workflow_service.get_current()
+                request_ctx = getattr(agent_context, "request_context", None)
+                resource_link_id = getattr(request_ctx, "lti_resource_link_id", None)
+                if resource_link_id is None:
+                    raise RuntimeError(
+                        "Aucun resource_link_id LTI dans le contexte. "
+                        "L'accès doit se faire via un lien LTI."
+                    )
+                workflow_definition = self._workflow_service.get_by_resource_link_id(
+                    resource_link_id
+                )
 
             summary = await self._run_workflow(
                 workflow_input,
