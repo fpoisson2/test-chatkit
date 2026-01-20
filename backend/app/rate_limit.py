@@ -76,7 +76,7 @@ if _SLOWAPI_AVAILABLE:
         key_func=_get_rate_limit_key,
         default_limits=[],  # No default limits, we'll apply per-route
         storage_uri=REDIS_URL,
-        enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true",
+        enabled=False,
     )
 else:
     # Create a dummy limiter when slowapi is not installed
