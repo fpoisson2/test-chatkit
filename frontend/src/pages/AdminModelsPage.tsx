@@ -24,7 +24,9 @@ import {
   AvailableModel,
   AvailableModelPayload,
   AvailableModelUpdatePayload,
+  ModelInfoEntry,
   isUnauthorizedError,
+  modelRegistryApi,
 } from "../utils/backend";
 import {
   useAppSettings,
@@ -37,6 +39,32 @@ import { adminModelSchema, type AdminModelFormData } from "../schemas/admin";
 
 const sortModels = (models: AvailableModel[]): AvailableModel[] =>
   [...models].sort((a, b) => a.name.localeCompare(b.name, "fr"));
+
+const resolveModelInfoName = (entry: ModelInfoEntry): string => {
+  if (typeof entry.model_name === "string" && entry.model_name.trim()) {
+    return entry.model_name.trim();
+  }
+  const fallback = entry.litellm_params?.model;
+  if (typeof fallback === "string") {
+    return fallback.trim();
+  }
+  return "";
+};
+
+const resolveModelInfoProviderSlug = (entry: ModelInfoEntry): string => {
+  const candidate =
+    entry.litellm_params?.custom_llm_provider ??
+    entry.litellm_params?.provider ??
+    entry.model_info?.litellm_provider;
+  if (typeof candidate === "string") {
+    const normalized = candidate.trim().toLowerCase();
+    return normalized || "";
+  }
+  return "";
+};
+
+const resolveModelInfoSupportsReasoning = (entry: ModelInfoEntry): boolean =>
+  Boolean(entry.model_info?.supports_reasoning);
 
 type ProviderOption = {
   id: string | null;
@@ -151,6 +179,10 @@ export const AdminModelsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editingModelId, setEditingModelId] = useState<number | null>(null);
+  const [modelInfoEntries, setModelInfoEntries] = useState<ModelInfoEntry[]>([]);
+  const [modelInfoError, setModelInfoError] = useState<string | null>(null);
+  const [isLoadingModelInfo, setIsLoadingModelInfo] = useState(false);
+  const [selectedModelInfo, setSelectedModelInfo] = useState<string>("");
 
   // Watch form values
   const formValues = watch();
@@ -182,10 +214,22 @@ export const AdminModelsPage = () => {
         });
       }
     }
+    for (const entry of modelInfoEntries) {
+      const slug = resolveModelInfoProviderSlug(entry);
+      if (!slug || options.has(slug)) {
+        continue;
+      }
+      options.set(slug, {
+        id: null,
+        slug,
+        name: slug,
+        isDefault: false,
+      });
+    }
     return Array.from(options.values()).sort((a, b) =>
       (a.name || a.slug).localeCompare(b.name || b.slug, "fr"),
     );
-  }, [models, providerOptions]);
+  }, [modelInfoEntries, models, providerOptions]);
 
   // Handle React Query errors
   useEffect(() => {
@@ -202,6 +246,14 @@ export const AdminModelsPage = () => {
       }
     }
   }, [modelsError, logout]);
+
+  useEffect(() => {
+    if (!showCreateModal) {
+      setSelectedModelInfo("");
+      setModelInfoError(null);
+      setIsLoadingModelInfo(false);
+    }
+  }, [showCreateModal]);
 
   const resetForm = useCallback((overrides: Partial<AdminModelFormData> = {}) => {
     reset(buildDefaultFormState(overrides));
@@ -247,6 +299,74 @@ export const AdminModelsPage = () => {
       });
     }
     return baseLabel;
+  };
+
+  const modelInfoOptions = useMemo(() => {
+    return [...modelInfoEntries]
+      .map((entry) => {
+        const name = resolveModelInfoName(entry);
+        return {
+          entry,
+          name,
+          providerSlug: resolveModelInfoProviderSlug(entry),
+          supportsReasoning: resolveModelInfoSupportsReasoning(entry),
+        };
+      })
+      .filter((option) => option.name.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  }, [modelInfoEntries]);
+
+  const handleFetchModelInfo = async () => {
+    if (!token) {
+      setModelInfoError("Authentification requise pour charger les modèles.");
+      return;
+    }
+    setIsLoadingModelInfo(true);
+    setModelInfoError(null);
+    try {
+      const payload = await modelRegistryApi.listInfo(token);
+      const entries = Array.isArray(payload?.data) ? payload.data : [];
+      setModelInfoEntries(entries);
+      if (entries.length === 0) {
+        setModelInfoError("Aucun modèle trouvé dans LiteLLM.");
+      }
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setModelInfoError("Session expirée, veuillez vous reconnecter.");
+      } else {
+        setModelInfoError(
+          err instanceof Error
+            ? err.message
+            : "Impossible de charger les modèles LiteLLM.",
+        );
+      }
+    } finally {
+      setIsLoadingModelInfo(false);
+    }
+  };
+
+  const handleSelectModelInfo = (event: ChangeEvent<HTMLSelectElement>) => {
+    const selected = event.target.value;
+    setSelectedModelInfo(selected);
+    const option = modelInfoOptions.find((item) => item.name === selected);
+    if (!option) {
+      return;
+    }
+    setValue("name", option.name, { shouldDirty: true });
+    setValue("supports_reasoning", option.supportsReasoning, {
+      shouldDirty: true,
+    });
+    if (option.providerSlug) {
+      const providerOption = mergedProviderOptions.find(
+        (candidate) => candidate.slug === option.providerSlug,
+      );
+      setValue("provider_slug", option.providerSlug, { shouldDirty: true });
+      setValue("provider_id", providerOption?.id ?? "", { shouldDirty: true });
+    } else {
+      setValue("provider_slug", "", { shouldDirty: true });
+      setValue("provider_id", "", { shouldDirty: true });
+    }
   };
 
   const handleSubmit = async (data: AdminModelFormData) => {
@@ -627,6 +747,56 @@ export const AdminModelsPage = () => {
           }
         >
           <form id="create-model-form" className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+            <div className="admin-form__row">
+              <FormField
+                label="Importer depuis LiteLLM (optionnel)"
+                hint="Charge la liste des modèles disponibles sur le proxy LiteLLM."
+              >
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={handleFetchModelInfo}
+                  disabled={isLoadingModelInfo || isBusy}
+                >
+                  {isLoadingModelInfo ? "Chargement…" : "Charger les modèles"}
+                </button>
+              </FormField>
+
+              <FormField label="Modèle LiteLLM (optionnel)">
+                <select
+                  className="input"
+                  value={selectedModelInfo}
+                  onChange={handleSelectModelInfo}
+                  disabled={isLoadingModelInfo || modelInfoOptions.length === 0}
+                >
+                  <option value="">
+                    {modelInfoOptions.length > 0
+                      ? "Sélectionnez un modèle"
+                      : "Aucun modèle chargé"}
+                  </option>
+                  {modelInfoOptions.map((option) => {
+                    const providerLabel = option.providerSlug
+                      ? ` — ${option.providerSlug}`
+                      : "";
+                    const reasoningLabel = option.supportsReasoning
+                      ? " (raisonnement)"
+                      : "";
+                    return (
+                      <option key={option.name} value={option.name}>
+                        {`${option.name}${providerLabel}${reasoningLabel}`}
+                      </option>
+                    );
+                  })}
+                </select>
+              </FormField>
+            </div>
+
+            {modelInfoError && (
+              <div className="alert alert--warning" role="status">
+                {modelInfoError}
+              </div>
+            )}
+
             <div className="admin-form__row">
               <FormField
                 label={t("admin.models.form.modelIdLabel")}

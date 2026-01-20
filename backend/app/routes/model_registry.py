@@ -1,9 +1,12 @@
 import datetime
+import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..database import get_session
 from ..dependencies import get_current_user, require_admin
 from ..models import AvailableModel, User
@@ -11,9 +14,11 @@ from ..schemas import (
     AvailableModelCreateRequest,
     AvailableModelResponse,
     AvailableModelUpdateRequest,
+    ModelInfoResponse,
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/api/models", response_model=list[AvailableModelResponse])
@@ -156,3 +161,75 @@ async def delete_model(
     session.delete(model)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/api/admin/models/info", response_model=ModelInfoResponse)
+async def list_model_info(
+    litellm_model_id: str | None = None,
+    _: User = Depends(require_admin),
+) -> dict:
+    settings = get_settings()
+    if settings.model_provider != "litellm":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le fournisseur de modèles actif n'est pas LiteLLM.",
+        )
+    if not settings.model_api_base:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MODEL_API_BASE n'est pas configuré.",
+        )
+    if not settings.model_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Clé API LiteLLM manquante.",
+        )
+
+    params: dict[str, str] = {}
+    if litellm_model_id:
+        params["litellm_model_id"] = litellm_model_id
+
+    headers = {
+        "accept": "application/json",
+        "x-litellm-api-key": settings.model_api_key,
+        "Authorization": f"Bearer {settings.model_api_key}",
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            base_url=settings.model_api_base, timeout=httpx.Timeout(10.0)
+        ) as client:
+            response = await client.get(
+                "/v1/model/info",
+                headers=headers,
+                params=params or None,
+            )
+    except httpx.RequestError as exc:
+        logger.error("LiteLLM model info request failed", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Impossible de joindre le proxy LiteLLM.",
+        ) from exc
+
+    if response.status_code >= 400:
+        try:
+            detail = response.json()
+        except ValueError:
+            detail = response.text
+        raise HTTPException(status_code=response.status_code, detail=detail)
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Réponse LiteLLM invalide.",
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Réponse LiteLLM inattendue.",
+        )
+
+    return payload

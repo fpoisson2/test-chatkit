@@ -978,6 +978,16 @@ class AvailableModelResponse(AvailableModelBase):
         from_attributes = True
 
 
+class ModelInfoEntry(BaseModel):
+    model_name: str
+    litellm_params: dict[str, Any] = Field(default_factory=dict)
+    model_info: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelInfoResponse(BaseModel):
+    data: list[ModelInfoEntry] = Field(default_factory=list)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

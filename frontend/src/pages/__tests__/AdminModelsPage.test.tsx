@@ -12,6 +12,7 @@ const {
   createMock,
   updateMock,
   deleteMock,
+  listInfoMock,
   getSettingsMock,
   logoutMock,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   createMock: vi.fn(),
   updateMock: vi.fn(),
   deleteMock: vi.fn(),
+  listInfoMock: vi.fn(),
   getSettingsMock: vi.fn(),
   logoutMock: vi.fn(),
 }));
@@ -54,6 +56,7 @@ vi.mock("../../utils/backend", () => ({
     create: createMock,
     update: updateMock,
     delete: deleteMock,
+    listInfo: listInfoMock,
   },
   appSettingsApi: {
     get: getSettingsMock,
