@@ -155,11 +155,23 @@ def get_chatkit_server():
 
 @router.get("/api/chatkit/workflow", response_model=ChatKitWorkflowResponse)
 async def get_chatkit_workflow(
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> ChatKitWorkflowResponse:
     service = WorkflowService()
-    definition = service.get_current(session)
+    context = build_chatkit_request_context(
+        current_user,
+        request=request,
+        session=session,
+    )
+    if context.lti_resource_link_id is not None:
+        definition = service.get_by_resource_link_id(
+            context.lti_resource_link_id,
+            session=session,
+        )
+    else:
+        definition = service.get_current(session)
     workflow = definition.workflow
     user_message = resolve_start_auto_start_message(definition)
     assistant_message = resolve_start_auto_start_assistant_message(definition)
