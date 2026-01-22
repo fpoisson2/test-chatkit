@@ -43,6 +43,7 @@ export const useChatkitWorkflowSync = ({
   const fetchUpdatesRef = useRef<(() => Promise<void>) | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousThreadIdRef = useRef<string | null>(initialThreadId);
+  const previousWorkflowIdRef = useRef<number | null>(null);
   const isStreamingRef = useRef(isStreaming);
 
   // Keep isStreamingRef in sync
@@ -126,8 +127,10 @@ export const useChatkitWorkflowSync = ({
     // Detect transition from existing thread to no thread (null)
     const isTransitionToNewThread = previousThreadIdRef.current !== null && initialThreadId === null;
 
-    // Detect workflow change
-    const previousWorkflowIdRef = useRef<number | null>(activeWorkflow?.id ?? null);
+    // Detect workflow change - initialize previousWorkflowIdRef if null
+    if (previousWorkflowIdRef.current === null) {
+      previousWorkflowIdRef.current = activeWorkflow?.id ?? null;
+    }
     const isWorkflowChanged = previousWorkflowIdRef.current !== (activeWorkflow?.id ?? null);
     previousWorkflowIdRef.current = activeWorkflow?.id ?? null;
 
