@@ -16,6 +16,7 @@ type WorkflowChatInstanceProps = {
   isActive: boolean;
   onRequestRefreshReady?: (requestRefresh: () => Promise<void>) => void;
   autoStartEnabled?: boolean;
+  workflowsCount?: number;
 };
 
 export const WorkflowChatInstance = ({
@@ -29,6 +30,7 @@ export const WorkflowChatInstance = ({
   isActive,
   onRequestRefreshReady,
   autoStartEnabled = true,
+  workflowsCount = 0,
 }: WorkflowChatInstanceProps) => {
   // Use the activeWorkflow prop directly to reflect workflow changes from the builder
   const { control, requestRefresh } = useWorkflowChatSession({
@@ -39,6 +41,7 @@ export const WorkflowChatInstance = ({
     reportError,
     mode,
     autoStartEnabled,
+    workflowsCount,
   });
 
   const requestRefreshRef = useRef(requestRefresh);

@@ -314,6 +314,7 @@ export function MyChatContent() {
             <WorkflowChatInstance key={instanceId === currentWorkflowId ? `${instanceId}-${chatInstanceKey}` : instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
               token={token} activeWorkflow={instance.workflow} initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
               reportError={reportError} mode={instance.mode} isActive={instanceId === currentWorkflowId} autoStartEnabled={!hasVoiceAgent && (initialThreadId !== null || workflows.length <= 1 || activeWorkflow !== null)}
+              workflowsCount={workflows.length}
               onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined} />
           ))}
         </div>

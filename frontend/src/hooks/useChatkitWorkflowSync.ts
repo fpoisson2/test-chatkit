@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { WorkflowSummary } from "../types/workflows";
 import { chatkitApi, type ChatKitWorkflowInfo } from "../utils/backend";
+import { getStartAutoRun, getStartAutoRunMessage } from "../utils/workflows";
 
 type UseChatkitWorkflowSyncParams = {
   token: string | null;
@@ -14,6 +15,8 @@ type UseChatkitWorkflowSyncParams = {
   autoStartEnabled?: boolean;
   /** Si true, ne pas appeler fetchUpdates lors du retour de focus (streaming en cours) */
   isStreaming?: boolean;
+  /** Number of available workflows - used to prevent auto-start when workflow selection is required */
+  workflowsCount?: number;
 };
 
 type UseChatkitWorkflowSyncResult = {
@@ -33,6 +36,7 @@ export const useChatkitWorkflowSync = ({
   enabled = true,
   autoStartEnabled = true,
   isStreaming = false,
+  workflowsCount = 0,
 }: UseChatkitWorkflowSyncParams): UseChatkitWorkflowSyncResult => {
   const [chatkitWorkflowInfo, setChatkitWorkflowInfo] = useState<ChatKitWorkflowInfo | null>(null);
   const autoStartAttemptRef = useRef(false);
@@ -122,16 +126,22 @@ export const useChatkitWorkflowSync = ({
     // Detect transition from existing thread to no thread (null)
     const isTransitionToNewThread = previousThreadIdRef.current !== null && initialThreadId === null;
 
-    // Reset auto-start flag when transitioning to a new thread
-    if (isTransitionToNewThread) {
+    // Detect workflow change
+    const previousWorkflowIdRef = useRef<number | null>(activeWorkflow?.id ?? null);
+    const isWorkflowChanged = previousWorkflowIdRef.current !== (activeWorkflow?.id ?? null);
+    previousWorkflowIdRef.current = activeWorkflow?.id ?? null;
+
+    // Reset auto-start flag when transitioning to a new thread or when workflow changes
+    if (isTransitionToNewThread || isWorkflowChanged) {
       autoStartAttemptRef.current = false;
     }
 
     // Update previous thread ref for next comparison
     previousThreadIdRef.current = initialThreadId;
 
-    // Auto-start conditions
-    if (!chatkitWorkflowInfo || !chatkitWorkflowInfo.auto_start) {
+    // Auto-start conditions - use active workflow parameters, fallback to chatkit workflow
+    const workflowAutoStart = activeWorkflow ? getStartAutoRun(activeWorkflow.parameters) : (chatkitWorkflowInfo?.auto_start ?? false);
+    if (!workflowAutoStart) {
       if (autoStartAttemptRef.current) {
         autoStartAttemptRef.current = false;
       }
@@ -148,10 +158,16 @@ export const useChatkitWorkflowSync = ({
       return;
     }
 
+    // Don't auto-start if workflow selection is required (multiple workflows, none selected)
+    // This prevents conversations from starting with the default workflow when user should choose
+    if (workflowsCount > 1 && !activeWorkflow) {
+      return;
+    }
+
     // Trigger auto-start
     autoStartAttemptRef.current = true;
 
-    const configuredMessage = chatkitWorkflowInfo.auto_start_user_message ?? "";
+    const configuredMessage = activeWorkflow ? getStartAutoRunMessage(activeWorkflow.parameters) : (chatkitWorkflowInfo?.auto_start_user_message ?? "");
     const payloadText = configuredMessage.trim() ? configuredMessage : AUTO_START_TRIGGER_MESSAGE;
 
     sendUserMessage(payloadText)
@@ -173,6 +189,8 @@ export const useChatkitWorkflowSync = ({
     reportError,
     requestRefresh,
     sendUserMessage,
+    workflowsCount,
+    activeWorkflow,
   ]);
 
   useEffect(() => {
