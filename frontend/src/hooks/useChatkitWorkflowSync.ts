@@ -156,7 +156,7 @@ export const useChatkitWorkflowSync = ({
 
     sendUserMessage(payloadText)
       .then(() => {
-        return requestRefresh("[ChatKit] Rafraîchissement après démarrage automatique impossible");
+        return undefined;
       })
       .catch((err: unknown) => {
         autoStartAttemptRef.current = false;

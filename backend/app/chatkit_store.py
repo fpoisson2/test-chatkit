@@ -68,6 +68,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         Errors are logged but don't propagate to the caller.
         """
         import logging
+
         logger = logging.getLogger(__name__)
 
         async def _background_task() -> None:
@@ -96,13 +97,23 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         # BUT preserve intentional HTML (tags with style attributes, divs, lists, etc.)
         if "<" in normalized and ">" in normalized:
             # Check if this contains intentional styled HTML that should be preserved
-            has_styled_html = re.search(r'<[^>]+\s+style\s*=', normalized, re.IGNORECASE)
+            has_styled_html = re.search(
+                r"<[^>]+\s+style\s*=", normalized, re.IGNORECASE
+            )
             if has_styled_html:
                 # Preserve the HTML as-is, only convert <br> tags
-                normalized = normalized.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+                normalized = (
+                    normalized.replace("<br />", "\n")
+                    .replace("<br/>", "\n")
+                    .replace("<br>", "\n")
+                )
                 return normalized
 
-            normalized = normalized.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+            normalized = (
+                normalized.replace("<br />", "\n")
+                .replace("<br/>", "\n")
+                .replace("<br>", "\n")
+            )
 
             def _replace_code_block(match: re.Match[str]) -> str:
                 language = match.group(1) or ""
@@ -127,7 +138,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         return normalized
 
-    def _normalize_thread_item_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+    def _normalize_thread_item_payload(
+        self, payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
         updated = False
         normalized_payload = deepcopy(payload)
         content_blocks = normalized_payload.get("content")
@@ -213,8 +226,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                         b64_json = image.get("b64_json") or ""
 
                         has_large_data = (
-                            len(data_url) > _IMAGE_BASE64_THRESHOLD or
-                            len(b64_json) > _IMAGE_BASE64_THRESHOLD
+                            len(data_url) > _IMAGE_BASE64_THRESHOLD
+                            or len(b64_json) > _IMAGE_BASE64_THRESHOLD
                         )
 
                         if has_large_data:
@@ -253,8 +266,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                         b64_image = screenshot.get("b64_image") or ""
 
                         has_large_data = (
-                            len(data_url) > _IMAGE_BASE64_THRESHOLD or
-                            len(b64_image) > _IMAGE_BASE64_THRESHOLD
+                            len(data_url) > _IMAGE_BASE64_THRESHOLD
+                            or len(b64_image) > _IMAGE_BASE64_THRESHOLD
                         )
 
                         if has_large_data:
@@ -446,9 +459,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         )
 
     @staticmethod
-    def _workflow_matches(
-        metadata: Any, expected: Mapping[str, Any]
-    ) -> bool:
+    def _workflow_matches(metadata: Any, expected: Mapping[str, Any]) -> bool:
         return (
             isinstance(metadata, Mapping)
             and metadata.get("slug") == expected.get("slug")
@@ -474,10 +485,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         workflow_metadata = metadata.get("workflow")
         matches = self._workflow_matches(workflow_metadata, expected_workflow)
         if not matches:
-            if (
-                isinstance(workflow_metadata, Mapping)
-                and workflow_metadata.get("slug") == expected_workflow.get("slug")
-            ):
+            if isinstance(workflow_metadata, Mapping) and workflow_metadata.get(
+                "slug"
+            ) == expected_workflow.get("slug"):
                 # Le workflow a été mis à jour (nouveau definition_id) mais le slug
                 # reste le même : conserver le fil en l'alignant sur la version active
                 metadata["workflow"] = dict(expected_workflow)
@@ -535,13 +545,33 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _load(session: Session) -> ThreadMetadata:
-            expected = self._current_workflow_metadata(lti_resource_link_id)
-            _record, payload = self._require_thread_record(
-                session,
-                thread_id,
-                owner_id,
-                expected,
+            stmt = select(ChatThread).where(
+                ChatThread.id == thread_id, ChatThread.owner_id == owner_id
             )
+            record = session.execute(stmt).scalar_one_or_none()
+            if record is None:
+                raise NotFoundError(f"Thread {thread_id} introuvable")
+
+            payload = dict(record.payload)
+            metadata = dict(payload.get("metadata") or {})
+
+            if metadata.get("owner_id") != owner_id:
+                metadata["owner_id"] = owner_id
+                payload["metadata"] = metadata
+                record.payload = payload
+                session.add(record)
+                session.commit()
+
+            workflow_metadata = metadata.get("workflow")
+
+            if not self._has_complete_workflow_metadata(workflow_metadata):
+                expected = self._current_workflow_metadata(lti_resource_link_id)
+                metadata["workflow"] = dict(expected)
+                payload["metadata"] = metadata
+                record.payload = payload
+                session.add(record)
+                session.commit()
+
             return ThreadMetadata.model_validate(payload)
 
         return await self._run(_load)
@@ -565,14 +595,14 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             else:
                 metadata = dict(payload.get("metadata") or {})
             metadata.setdefault("owner_id", owner_id)
-            expected_workflow = self._current_workflow_metadata(lti_resource_link_id)
             workflow_metadata = metadata.get("workflow")
-            if self._has_complete_workflow_metadata(workflow_metadata):
-                # Garder les métadonnées de workflow existantes
-                # Permet aux threads de différents workflows de coexister (cache frontend)
-                pass
-            else:
-                # Assigner le workflow actuel si pas de métadonnées complètes
+
+            # Ne jamais écraser les métadonnées de workflow existantes
+            # Cela permet aux threads de différents workflows de coexister en mode non-LTI
+            if not self._has_complete_workflow_metadata(workflow_metadata):
+                expected_workflow = self._current_workflow_metadata(
+                    lti_resource_link_id
+                )
                 metadata["workflow"] = dict(expected_workflow)
             thread.metadata = metadata
             payload["metadata"] = metadata
@@ -691,7 +721,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 response_payload = self._strip_image_data_for_response(
                     payload, thread_id, record.id
                 )
-                items.append(self._thread_item_adapter.validate_python(response_payload))
+                items.append(
+                    self._thread_item_adapter.validate_python(response_payload)
+                )
 
             if changed_records:
                 session.add_all(changed_records)
@@ -864,9 +896,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             effective_limit = limit or max(len(filtered_records) - start_index, 0)
             sliced_pairs = matching[start_index : start_index + effective_limit]
             has_more = start_index + effective_limit < len(filtered_records)
-            next_after = (
-                sliced_pairs[-1][0].id if has_more and sliced_pairs else None
-            )
+            next_after = sliced_pairs[-1][0].id if has_more and sliced_pairs else None
             data = [
                 ThreadMetadata.model_validate(payload)
                 for _record, payload in sliced_pairs
