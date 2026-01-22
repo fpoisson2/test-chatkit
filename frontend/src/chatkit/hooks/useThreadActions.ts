@@ -83,6 +83,13 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
           setThread(updatedThread);
           threadCacheRef.current.set(updatedThread.id, updatedThread);
         }
+
+        // Fallback refresh to ensure UI catches up even if streaming misses updates.
+        window.setTimeout(() => {
+          fetchUpdates().catch(() => {
+            // Refresh errors ignored
+          });
+        }, 600);
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.({ error });

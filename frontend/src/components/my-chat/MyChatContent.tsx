@@ -59,6 +59,7 @@ export function MyChatContent() {
     streamingThreadIds,
     chatInstanceKey,
     workflowSelection,
+    isThreadLoading,
   } = state;
   const { setWorkflowSelection, setInitialThreadId } = setters;
   const {
@@ -169,7 +170,7 @@ export function MyChatContent() {
 
   // LTI context
   const isLtiUser = user?.is_lti ?? false;
-  const { shouldShowLoadingOverlay } = useLtiContext({ isLtiUser, activeWorkflow, workflowsLoading, setHideSidebar });
+  const { shouldShowLoadingOverlay } = useLtiContext({ isLtiUser, activeWorkflow, workflowsLoading, setHideSidebar, isThreadLoading });
 
   // Theme
   const themeConfig = useChatTheme({ appearanceSettings, preferredColorScheme });

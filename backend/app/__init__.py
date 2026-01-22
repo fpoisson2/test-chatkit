@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from types import SimpleNamespace
 
 __all__ = ["app"]
@@ -24,12 +25,21 @@ if _SKIP_BOOTSTRAP:  # pragma: no cover - test helper
     app = _build_stub_app()
 else:
     try:
+        import time
+
         from fastapi import FastAPI, Request
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
         from starlette.middleware.base import BaseHTTPMiddleware
+        import structlog
 
         from .config import get_settings
+        from .database import (
+            clear_request_stats,
+            get_request_stats,
+            reset_request_stats,
+            set_request_id,
+        )
 
         # Paths that are allowed to be embedded in iframes (LTI integration)
         LTI_IFRAME_PATHS = (
@@ -103,6 +113,64 @@ else:
         settings = get_settings()
 
         app = FastAPI()
+
+        request_logger = structlog.get_logger("chatkit.request")
+        disable_tracing = os.getenv("CHATKIT_DISABLE_TRACING", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if disable_tracing:
+            try:
+                from agents.tracing import set_tracing_disabled
+
+                set_tracing_disabled(True)
+                request_logger.info("tracing.disabled")
+            except Exception:
+                request_logger.warning("tracing.disable.failed", exc_info=True)
+        slow_request_threshold_ms = float(os.getenv("REQUEST_LOG_SLOW_MS", "200"))
+        log_every_request = os.getenv("REQUEST_LOG_EACH", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        query_count_threshold = float(
+            os.getenv("REQUEST_LOG_QUERY_COUNT", "50")
+        )
+
+        @app.middleware("http")
+        async def log_slow_requests(request: Request, call_next):
+            start = time.perf_counter()
+            request_id = str(uuid.uuid4())
+            request.state.request_id = request_id
+            set_request_id(request_id)
+            reset_request_stats(request_id)
+            response = await call_next(request)
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            db_stats = get_request_stats(request_id)
+            query_count = int(db_stats.get("count", 0.0))
+            db_total_ms = round(db_stats.get("total_ms", 0.0), 2)
+            db_max_ms = round(db_stats.get("max_ms", 0.0), 2)
+            should_log = (
+                log_every_request
+                or duration_ms >= slow_request_threshold_ms
+                or query_count >= query_count_threshold
+            )
+            if should_log:
+                request_logger.info(
+                    "slow_request",
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=response.status_code,
+                    duration_ms=round(duration_ms, 2),
+                    client=request.client.host if request.client else None,
+                    db_query_count=query_count,
+                    db_total_ms=db_total_ms,
+                    db_max_ms=db_max_ms,
+                )
+            clear_request_stats(request_id)
+            set_request_id(None)
+            return response
 
         # Add rate limiter state to app (if available)
         if _RATE_LIMITING_AVAILABLE:

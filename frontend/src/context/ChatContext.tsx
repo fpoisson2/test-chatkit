@@ -8,6 +8,7 @@ export type ChatState = {
   isNewConversationStreaming: boolean;
   chatInstanceKey: number;
   workflowSelection: WorkflowActivation;
+  isThreadLoading: boolean;
 };
 
 export type ChatStateSetters = {
@@ -17,6 +18,7 @@ export type ChatStateSetters = {
   setIsNewConversationStreaming: React.Dispatch<React.SetStateAction<boolean>>;
   setChatInstanceKey: React.Dispatch<React.SetStateAction<number>>;
   setWorkflowSelection: React.Dispatch<React.SetStateAction<WorkflowActivation>>;
+  setIsThreadLoading: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 export type ChatStateRefs = {
@@ -52,6 +54,7 @@ export function ChatProvider({ children, initialThreadId: propsInitialThreadId =
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(new Set());
   const [isNewConversationStreaming, setIsNewConversationStreaming] = useState(false);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
+  const [isThreadLoading, setIsThreadLoading] = useState(!!propsInitialThreadId);
 
   const setInitialThreadId = setInitialThreadIdRaw;
 
@@ -80,6 +83,7 @@ export function ChatProvider({ children, initialThreadId: propsInitialThreadId =
       isNewConversationStreaming,
       chatInstanceKey,
       workflowSelection,
+      isThreadLoading,
     },
     setters: {
       setCurrentThread,
@@ -88,6 +92,7 @@ export function ChatProvider({ children, initialThreadId: propsInitialThreadId =
       setIsNewConversationStreaming,
       setChatInstanceKey,
       setWorkflowSelection,
+      setIsThreadLoading,
     },
     refs: {
       lastThreadSnapshotRef,

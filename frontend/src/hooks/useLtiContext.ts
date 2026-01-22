@@ -6,6 +6,7 @@ export type LtiContextOptions = {
   activeWorkflow: WorkflowSummary | null;
   workflowsLoading: boolean;
   setHideSidebar: (hide: boolean) => void;
+  isThreadLoading: boolean;
 };
 
 export type LtiContextReturn = {
@@ -19,6 +20,7 @@ export function useLtiContext({
   activeWorkflow,
   workflowsLoading,
   setHideSidebar,
+  isThreadLoading,
 }: LtiContextOptions): LtiContextReturn {
   // Detect LTI context even before user is loaded (for early loading overlay)
   // This checks if we're coming from an LTI launch by looking for the workflow ID in localStorage
@@ -50,7 +52,7 @@ export function useLtiContext({
     };
   }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, isLtiUser, setHideSidebar]);
 
-  // Show loading overlay for LTI users until workflow is loaded and ChatKit has rendered
+  // Show loading overlay for LTI users until workflow and thread are fully loaded
   useEffect(() => {
     // If not in LTI context, mark as ready immediately
     if (!isLtiContext) {
@@ -68,22 +70,18 @@ export function useLtiContext({
       setLtiReady(true);
     }, 3000);
 
-    // If workflow is still loading, wait for it
-    if (!activeWorkflow || workflowsLoading) {
+    // Wait for workflow to load AND thread to finish loading
+    if (!activeWorkflow || workflowsLoading || isThreadLoading) {
       return () => clearTimeout(safetyTimer);
     }
 
-
-    // Give ChatKit time to initialize and render (covers all app.init phases)
-    const timer = setTimeout(() => {
-      setLtiReady(true);
-    }, 500);
+    // All conditions met, mark as ready
+    setLtiReady(true);
 
     return () => {
-      clearTimeout(timer);
       clearTimeout(safetyTimer);
     };
-  }, [ltiReady, isLtiContext, activeWorkflow, workflowsLoading]);
+  }, [ltiReady, isLtiContext, activeWorkflow, workflowsLoading, isThreadLoading]);
 
   const shouldShowLoadingOverlay = isLtiContext && !ltiReady;
 

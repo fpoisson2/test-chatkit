@@ -243,6 +243,48 @@ def _build_provider(
 
 # All providers now use the unified _build_provider function with LiteLLM auto-routing
 
+# Mapping from common provider slugs to LiteLLM-recognized prefixes
+# LiteLLM uses specific prefixes for routing - see https://docs.litellm.ai/docs/providers
+LITELLM_PROVIDER_PREFIX_MAP: dict[str, str] = {
+    "google": "gemini",
+    "google-ai": "gemini",
+    "google_ai": "gemini",
+    "googleai": "gemini",
+    "vertex": "vertex_ai",
+    "vertex-ai": "vertex_ai",
+    "gcp": "vertex_ai",
+    "azure": "azure",
+    "azure-openai": "azure",
+    "aws": "bedrock",
+    "bedrock": "bedrock",
+    "amazon": "bedrock",
+    "together": "together_ai",
+    "together-ai": "together_ai",
+    "togetherai": "together_ai",
+    "deepseek": "deepseek",
+    "mistral": "mistral",
+    "cohere": "cohere",
+    "ai21": "ai21",
+    "replicate": "replicate",
+    "huggingface": "huggingface",
+    "ollama": "ollama",
+    "lmstudio": "openai",  # LMStudio uses OpenAI-compatible API
+    "openrouter": "openrouter",
+    # These are already correct LiteLLM prefixes
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "groq": "groq",
+    "gemini": "gemini",
+    "vertex_ai": "vertex_ai",
+    "together_ai": "together_ai",
+}
+
+
+def _get_litellm_prefix(provider_slug: str) -> str:
+    """Get the LiteLLM-recognized prefix for a provider slug."""
+    normalized = provider_slug.lower().strip()
+    return LITELLM_PROVIDER_PREFIX_MAP.get(normalized, normalized)
+
 
 def create_litellm_model(
     model_name: str,
@@ -285,12 +327,15 @@ def create_litellm_model(
             # Ajouter le préfixe du provider si nécessaire pour le routage LiteLLM
             effective_model_name = model_name
             if provider_slug and "/" not in model_name:
-                # Le nom du modèle n'a pas de préfixe, ajouter le provider_slug
-                effective_model_name = f"{provider_slug}/{model_name}"
+                # Le nom du modèle n'a pas de préfixe, ajouter le préfixe LiteLLM mappé
+                litellm_prefix = _get_litellm_prefix(provider_slug)
+                effective_model_name = f"{litellm_prefix}/{model_name}"
                 logger.debug(
-                    "Ajout du préfixe provider au nom du modèle: %s -> %s",
+                    "Ajout du préfixe LiteLLM au nom du modèle: %s -> %s (provider_slug=%s, litellm_prefix=%s)",
                     model_name,
                     effective_model_name,
+                    provider_slug,
+                    litellm_prefix,
                 )
 
             # Create LitellmModel with API key only - auto-routing based on model name

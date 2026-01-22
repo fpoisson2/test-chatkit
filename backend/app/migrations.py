@@ -473,6 +473,40 @@ def _add_workflow_shares_permission_column(connection) -> None:
     )
 
 
+def _has_thread_indexes(connection) -> bool:
+    """Check if thread pagination indexes exist."""
+    indexes = (
+        "ix_chat_threads_owner_updated_id",
+        "ix_chat_thread_items_thread_owner_created_id",
+    )
+    for index_name in indexes:
+        result = connection.execute(
+            text(
+                "SELECT to_regclass(:index_name) IS NOT NULL"
+            ),
+            {"index_name": f"public.{index_name}"},
+        )
+        if not result.scalar():
+            return False
+    return True
+
+
+def _add_thread_indexes(connection) -> None:
+    """Add indexes to speed up thread and item pagination."""
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_chat_threads_owner_updated_id "
+            "ON chat_threads (owner_id, updated_at, id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_chat_thread_items_thread_owner_created_id "
+            "ON chat_thread_items (thread_id, owner_id, created_at, id)"
+        )
+    )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -564,6 +598,12 @@ def check_and_apply_migrations():
             "description": "Ensure LTI registrations allow multiple client IDs per issuer",
             "check_fn": _lti_registrations_unique_constraint_is_correct,
             "apply_fn": _ensure_lti_registrations_unique_constraint,
+        },
+        {
+            "id": "013_add_thread_pagination_indexes",
+            "description": "Add indexes for chat thread pagination",
+            "check_fn": _has_thread_indexes,
+            "apply_fn": _add_thread_indexes,
         },
     ]
 

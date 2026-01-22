@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from typing import Any
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
+from ..cache import cache_key, get_cached, set_cached
 from ..database import get_session
 from ..dependencies import (
     get_current_user,
@@ -99,13 +101,28 @@ async def list_workflows(
         get_workflow_persistence_service
     ),
 ) -> list[WorkflowSummaryResponse]:
+    cache_ttl = int(os.getenv("WORKFLOW_LIST_CACHE_TTL", "10"))
+    role_key = "admin" if current_user.is_admin else ("lti" if current_user.is_lti else "user")
+    cache_key_value = cache_key("workflows_list", current_user.id, role_key)
+    cached = get_cached(cache_key_value)
+    if cached:
+        return [
+            WorkflowSummaryResponse.model_validate(entry)
+            for entry in cached
+        ]
     # Admin users can see all workflows
     if current_user.is_admin:
         workflows = service.list_workflows(session)
-        return [
+        response = [
             WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
             for w in workflows
         ]
+        set_cached(
+            cache_key_value,
+            [entry.model_dump(mode="json") for entry in response],
+            ttl=cache_ttl,
+        )
+        return response
 
     # LTI users can only see workflows from their LTI resource links
     # They should only access the specific workflow assigned via deeplink
@@ -128,15 +145,23 @@ async def list_workflows(
 
         if not latest_session or not latest_session.resource_link:
             # No active LTI session found
+            set_cached(cache_key_value, [], ttl=cache_ttl)
             return []
 
         # Return only the workflow from the current resource link
         workflow = latest_session.resource_link.workflow
         if workflow and workflow.active_version_id is not None:
-            return [
+            response = [
                 WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
             ]
+            set_cached(
+                cache_key_value,
+                [entry.model_dump(mode="json") for entry in response],
+                ttl=cache_ttl,
+            )
+            return response
 
+        set_cached(cache_key_value, [], ttl=cache_ttl)
         return []
 
     # Regular users can see their own workflows and workflows shared with them
@@ -158,10 +183,16 @@ async def list_workflows(
     )
     workflows = list(session.scalars(stmt).unique().all())
 
-    return [
+    response = [
         WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
         for w in workflows
     ]
+    set_cached(
+        cache_key_value,
+        [entry.model_dump(mode="json") for entry in response],
+        ttl=cache_ttl,
+    )
+    return response
 
 
 @router.get(
@@ -453,6 +484,18 @@ async def get_workflow_version(
         get_workflow_persistence_service
     ),
 ) -> WorkflowDefinitionResponse:
+    cache_ttl = int(os.getenv("WORKFLOW_VERSION_CACHE_TTL", "15"))
+    role_key = "admin" if current_user.is_admin else ("lti" if current_user.is_lti else "user")
+    cache_key_value = cache_key(
+        "workflow_version",
+        role_key,
+        current_user.id,
+        workflow_id,
+        version_id,
+    )
+    cached = get_cached(cache_key_value)
+    if cached:
+        return WorkflowDefinitionResponse.model_validate(cached)
     # Admin users can access all workflows
     if current_user.is_admin:
         try:
@@ -461,7 +504,9 @@ async def get_workflow_version(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
             ) from exc
-        return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+        response = WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+        set_cached(cache_key_value, response.model_dump(mode="json"), ttl=cache_ttl)
+        return response
 
     # LTI users can only access workflows from their LTI resource links
     if current_user.is_lti:
@@ -499,7 +544,9 @@ async def get_workflow_version(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
             ) from exc
-        return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+        response = WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+        set_cached(cache_key_value, response.model_dump(mode="json"), ttl=cache_ttl)
+        return response
 
     # Regular users - check ownership or shares
     _ensure_admin(current_user)
@@ -509,7 +556,9 @@ async def get_workflow_version(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
-    return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+    response = WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+    set_cached(cache_key_value, response.model_dump(mode="json"), ttl=cache_ttl)
+    return response
 
 
 @router.get("/api/workflows/{workflow_id}/versions/{version_id}/export")

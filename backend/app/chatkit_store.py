@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import datetime as dt
 import html
 import re
@@ -9,7 +10,7 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import TypeAdapter
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from chatkit.store import NotFoundError, Store
@@ -57,7 +58,26 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         return context.user_id
 
     async def _run(self, func: Callable[[Session], _T]) -> _T:
-        return await asyncio.to_thread(self._run_sync, func)
+        ctx = contextvars.copy_context()
+        return await asyncio.to_thread(ctx.run, self._run_sync, func)
+
+    def _run_background(self, func: Callable[[Session], Any]) -> None:
+        """Run a database operation in the background without blocking.
+
+        Use this for non-critical saves where we don't need to wait for the result.
+        Errors are logged but don't propagate to the caller.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        async def _background_task() -> None:
+            try:
+                ctx = contextvars.copy_context()
+                await asyncio.to_thread(ctx.run, self._run_sync, func)
+            except Exception as e:
+                logger.warning(f"Background save failed: {e}")
+
+        asyncio.create_task(_background_task())
 
     def _run_sync(self, func: Callable[[Session], _T]) -> _T:
         with self._session_factory() as session:
@@ -280,9 +300,10 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         Retourne un tuple (données, mime_type) ou None si non trouvé.
         """
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _load(session: Session) -> tuple[bytes, str] | None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -388,8 +409,20 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         return None
 
-    def _current_workflow_metadata(self) -> dict[str, Any]:
-        definition = self._workflow_service.get_current()
+    def _current_workflow_metadata(
+        self, lti_resource_link_id: int | None = None
+    ) -> dict[str, Any]:
+        """Get the current workflow metadata.
+
+        If lti_resource_link_id is provided, use the workflow associated with
+        that LTI resource link. Otherwise, use the default ChatKit workflow.
+        """
+        if lti_resource_link_id is not None:
+            definition = self._workflow_service.get_by_resource_link_id(
+                lti_resource_link_id
+            )
+        else:
+            definition = self._workflow_service.get_current()
         workflow = getattr(definition, "workflow", None)
         workflow_id = getattr(workflow, "id", getattr(definition, "workflow_id", None))
         workflow_slug = getattr(workflow, "slug", None)
@@ -499,9 +532,10 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         self, thread_id: str, context: ChatKitRequestContext
     ) -> ThreadMetadata:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _load(session: Session) -> ThreadMetadata:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
             _record, payload = self._require_thread_record(
                 session,
                 thread_id,
@@ -513,9 +547,14 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         return await self._run(_load)
 
     async def save_thread(
-        self, thread: ThreadMetadata, context: ChatKitRequestContext
+        self,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+        *,
+        blocking: bool = False,
     ) -> None:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _save(session: Session) -> None:
             payload = thread.model_dump(mode="json")
@@ -526,7 +565,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             else:
                 metadata = dict(payload.get("metadata") or {})
             metadata.setdefault("owner_id", owner_id)
-            expected_workflow = self._current_workflow_metadata()
+            expected_workflow = self._current_workflow_metadata(lti_resource_link_id)
             workflow_metadata = metadata.get("workflow")
             if self._has_complete_workflow_metadata(workflow_metadata):
                 # Garder les métadonnées de workflow existantes
@@ -559,7 +598,10 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 existing.updated_at = now
             session.commit()
 
-        await self._run(_save)
+        if blocking:
+            await self._run(_save)
+        else:
+            self._run_background(_save)
 
     async def load_thread_items(
         self,
@@ -570,9 +612,10 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         context: ChatKitRequestContext,
     ) -> Page[ThreadItem]:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _load(session: Session) -> Page[ThreadItem]:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -592,19 +635,48 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 stmt = stmt.order_by(
                     ChatThreadItem.created_at.asc(), ChatThreadItem.id.asc()
                 )
+            if after:
+                cursor = session.execute(
+                    select(ChatThreadItem.id, ChatThreadItem.created_at).where(
+                        ChatThreadItem.id == after,
+                        ChatThreadItem.thread_id == thread_id,
+                        ChatThreadItem.owner_id == owner_id,
+                    )
+                ).first()
+                if cursor:
+                    cursor_id, cursor_created_at = cursor
+                    if order == "desc":
+                        stmt = stmt.where(
+                            or_(
+                                ChatThreadItem.created_at < cursor_created_at,
+                                and_(
+                                    ChatThreadItem.created_at == cursor_created_at,
+                                    ChatThreadItem.id < cursor_id,
+                                ),
+                            )
+                        )
+                    else:
+                        stmt = stmt.where(
+                            or_(
+                                ChatThreadItem.created_at > cursor_created_at,
+                                and_(
+                                    ChatThreadItem.created_at == cursor_created_at,
+                                    ChatThreadItem.id > cursor_id,
+                                ),
+                            )
+                        )
+
+            limit_value = limit if limit and limit > 0 else None
+            if limit_value:
+                stmt = stmt.limit(limit_value + 1)
             records = session.execute(stmt).scalars().all()
 
-            start_index = 0
-            if after:
-                for idx, record in enumerate(records):
-                    if record.id == after:
-                        start_index = idx + 1
-                        break
-
-            effective_limit = limit or max(len(records) - start_index, 0)
-            sliced = records[start_index : start_index + effective_limit]
-            has_more = start_index + effective_limit < len(records)
-            next_after = sliced[-1].id if has_more and sliced else None
+            has_more = False
+            if limit_value and len(records) > limit_value:
+                has_more = True
+                records = records[:limit_value]
+            next_after = records[-1].id if has_more and records else None
+            sliced = records
             items: list[ThreadItem] = []
             changed_records: list[ChatThreadItem] = []
 
@@ -696,9 +768,71 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         all_workflows: bool = True,
     ) -> Page[ThreadMetadata]:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _load(session: Session) -> Page[ThreadMetadata]:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
+            if all_workflows:
+                stmt = select(ChatThread).where(ChatThread.owner_id == owner_id)
+                if order == "desc":
+                    stmt = stmt.order_by(
+                        ChatThread.updated_at.desc(), ChatThread.id.desc()
+                    )
+                else:
+                    stmt = stmt.order_by(
+                        ChatThread.updated_at.asc(), ChatThread.id.asc()
+                    )
+                if after:
+                    cursor = session.execute(
+                        select(ChatThread.id, ChatThread.updated_at).where(
+                            ChatThread.id == after,
+                            ChatThread.owner_id == owner_id,
+                        )
+                    ).first()
+                    if cursor:
+                        cursor_id, cursor_updated_at = cursor
+                        if order == "desc":
+                            stmt = stmt.where(
+                                or_(
+                                    ChatThread.updated_at < cursor_updated_at,
+                                    and_(
+                                        ChatThread.updated_at == cursor_updated_at,
+                                        ChatThread.id < cursor_id,
+                                    ),
+                                )
+                            )
+                        else:
+                            stmt = stmt.where(
+                                or_(
+                                    ChatThread.updated_at > cursor_updated_at,
+                                    and_(
+                                        ChatThread.updated_at == cursor_updated_at,
+                                        ChatThread.id > cursor_id,
+                                    ),
+                                )
+                            )
+
+                limit_value = limit if limit and limit > 0 else None
+                if limit_value:
+                    stmt = stmt.limit(limit_value + 1)
+                records = session.execute(stmt).scalars().all()
+
+                has_more = False
+                if limit_value and len(records) > limit_value:
+                    has_more = True
+                    records = records[:limit_value]
+                next_after = records[-1].id if has_more and records else None
+
+                data = []
+                for record in records:
+                    payload, _matches = self._normalize_thread_record(
+                        record,
+                        owner_id=owner_id,
+                        session=session,
+                        expected_workflow=expected,
+                    )
+                    data.append(ThreadMetadata.model_validate(payload))
+                return Page(data=data, has_more=has_more, after=next_after)
 
             stmt = select(ChatThread).where(ChatThread.owner_id == owner_id)
             if order == "desc":
@@ -715,8 +849,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                     session=session,
                     expected_workflow=expected,
                 )
-                # When all_workflows is True, include all threads regardless of workflow match
-                if all_workflows or matches:
+                if matches:
                     matching.append((record, payload))
 
             filtered_records = [record for record, _payload in matching]
@@ -746,9 +879,10 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         self, thread_id: str, item: ThreadItem, context: ChatKitRequestContext
     ) -> None:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _add(session: Session) -> None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -781,12 +915,18 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         await self._run(_add)
 
     async def save_item(
-        self, thread_id: str, item: ThreadItem, context: ChatKitRequestContext
+        self,
+        thread_id: str,
+        item: ThreadItem,
+        context: ChatKitRequestContext,
+        *,
+        blocking: bool = False,
     ) -> None:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _save(session: Session) -> None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -808,15 +948,19 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             record.created_at = _ensure_timezone(getattr(item, "created_at", None))
             session.commit()
 
-        await self._run(_save)
+        if blocking:
+            await self._run(_save)
+        else:
+            self._run_background(_save)
 
     async def load_item(
         self, thread_id: str, item_id: str, context: ChatKitRequestContext
     ) -> ThreadItem:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _load(session: Session) -> ThreadItem:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -851,9 +995,10 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         self, thread_id: str, context: ChatKitRequestContext
     ) -> None:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _delete(session: Session) -> None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -873,9 +1018,10 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         self, thread_id: str, item_id: str, context: ChatKitRequestContext
     ) -> None:
         owner_id = self._require_user_id(context)
+        lti_resource_link_id = getattr(context, "lti_resource_link_id", None)
 
         def _delete(session: Session) -> None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(lti_resource_link_id)
             self._require_thread_record(
                 session,
                 thread_id,

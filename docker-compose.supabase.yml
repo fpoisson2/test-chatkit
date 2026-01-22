@@ -1,0 +1,33 @@
+# Docker Compose override for Supabase PostgreSQL
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.supabase.yml up -d
+#
+# This removes the local PostgreSQL and configures the app for Supabase.
+# Required environment variables:
+#   - SUPABASE_DATABASE_URL: Supabase pooler connection string
+#   - DATABASE_USE_SUPABASE_POOLER: true
+#
+# Example .env:
+#   SUPABASE_DATABASE_URL=postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[REGION].pooler.supabase.co:6543/postgres?sslmode=require
+#   DATABASE_USE_SUPABASE_POOLER=true
+
+services:
+  backend:
+    environment:
+      DATABASE_URL: "${SUPABASE_DATABASE_URL:?SUPABASE_DATABASE_URL is required}"
+      DATABASE_USE_SUPABASE_POOLER: "true"
+    depends_on:
+      - redis
+      # Remove db dependency
+
+  celery-worker:
+    environment:
+      DATABASE_URL: "${SUPABASE_DATABASE_URL:?SUPABASE_DATABASE_URL is required}"
+      DATABASE_USE_SUPABASE_POOLER: "true"
+    depends_on:
+      - redis
+      # Remove db dependency
+
+  # Disable local PostgreSQL - using Supabase instead
+  db:
+    deploy:
+      replicas: 0

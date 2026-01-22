@@ -234,6 +234,84 @@ def convert_docx_to_pdf_sync(
             )
 
 
+async def convert_docx_to_pdf_bytes(
+    docx_content: bytes,
+    timeout: int = 60,
+) -> bytes:
+    """
+    Convertit un contenu DOCX (bytes) en PDF (bytes) en utilisant LibreOffice.
+
+    Cette fonction est utile pour les backends de stockage cloud où on ne veut
+    pas écrire de fichiers temporaires sur le système de fichiers local.
+
+    Args:
+        docx_content: Contenu binaire du fichier DOCX
+        timeout: Timeout en secondes pour la conversion
+
+    Returns:
+        Contenu binaire du fichier PDF généré
+
+    Raises:
+        RuntimeError: Si LibreOffice n'est pas installé ou si la conversion échoue
+    """
+    libreoffice_path = get_libreoffice_path()
+    if not libreoffice_path:
+        raise RuntimeError(
+            "LibreOffice n'est pas installé. "
+            "Installez libreoffice-writer-nogui pour la conversion DOCX vers PDF."
+        )
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        input_path = temp_dir_path / "input.docx"
+        output_path = temp_dir_path / "input.pdf"
+
+        # Écrire le contenu DOCX dans un fichier temporaire
+        input_path.write_bytes(docx_content)
+
+        # Commande LibreOffice pour conversion
+        cmd = [
+            libreoffice_path,
+            "--headless",
+            "--convert-to", "pdf",
+            "--outdir", str(temp_dir_path),
+            str(input_path),
+        ]
+
+        logger.info("Conversion DOCX bytes vers PDF bytes")
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout,
+            )
+
+            if process.returncode != 0:
+                error_msg = stderr.decode() if stderr else "Erreur inconnue"
+                raise RuntimeError(
+                    f"Échec de la conversion DOCX vers PDF: {error_msg}"
+                )
+
+            if not output_path.exists():
+                raise RuntimeError("Le fichier PDF n'a pas été généré")
+
+            pdf_content = output_path.read_bytes()
+            logger.info(f"Conversion réussie: {len(pdf_content)} bytes")
+            return pdf_content
+
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                f"Timeout lors de la conversion DOCX vers PDF "
+                f"(limite: {timeout}s)"
+            )
+
+
 def get_pdf_filename(original_filename: str) -> str:
     """
     Génère le nom du fichier PDF à partir du nom du fichier DOCX.

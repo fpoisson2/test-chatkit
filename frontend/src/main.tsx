@@ -14,17 +14,15 @@ import "./styles/index.css";
 enableDevMocks();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <I18nProvider>
-        <AuthProvider>
-          <AppearanceSettingsProvider>
-            <TooltipProvider>
-              <App />
-            </TooltipProvider>
-          </AppearanceSettingsProvider>
-        </AuthProvider>
-      </I18nProvider>
-    </BrowserRouter>
-  </React.StrictMode>,
+  <BrowserRouter>
+    <I18nProvider>
+      <AuthProvider>
+        <AppearanceSettingsProvider>
+          <TooltipProvider>
+            <App />
+          </TooltipProvider>
+        </AppearanceSettingsProvider>
+      </AuthProvider>
+    </I18nProvider>
+  </BrowserRouter>
 );

@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import os
 import re
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import datetime
@@ -75,6 +77,7 @@ from openai.types.responses import (
 from openai.types.responses.response_input_item_param import Message
 
 from ..attachment_store import LocalAttachmentStore
+from ..cache import cache_key, delete_cached, set_cached
 from ..chatkit_store import PostgresChatKitStore
 from ..config import Settings
 from ..database import SessionLocal
@@ -723,6 +726,76 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
+    async def _process_new_thread_item_respond(
+        self,
+        thread: ThreadMetadata,
+        item: UserMessageItem,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        optimistic_enabled = os.getenv("CHATKIT_OPTIMISTIC_USER_MESSAGE", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        cache_enabled = os.getenv("CHATKIT_MESSAGE_CACHE", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+
+        if not optimistic_enabled:
+            async for event in super()._process_new_thread_item_respond(thread, item, context):
+                yield event
+            return
+
+        temp_id = f"__tmp_{uuid.uuid4().hex}"
+        temp_item = item.model_copy(update={"id": temp_id})
+
+        if cache_enabled:
+            try:
+                ttl = int(os.getenv("CHATKIT_MESSAGE_CACHE_TTL", "300") or "300")
+            except ValueError:
+                ttl = 300
+            set_cached(
+                cache_key("thread_temp_item", thread.id, temp_id),
+                temp_item.model_dump(),
+                ttl=ttl,
+            )
+
+        # Emit immediately so the UI shows the user message without waiting on DB.
+        yield ThreadItemAddedEvent(item=temp_item)
+        yield ThreadItemDoneEvent(item=temp_item)
+
+        persisted = True
+        try:
+            await self.store.add_thread_item(thread.id, item, context=context)
+        except Exception:
+            persisted = False
+            logger.warning(
+                "Failed to persist user message %s for thread %s",
+                item.id,
+                thread.id,
+                exc_info=True,
+            )
+
+        await self._cleanup_pending_client_tool_call(thread, context)
+
+        if persisted:
+            # Replace the temporary item with the real DB-backed item before assistant output.
+            yield ThreadItemRemovedEvent(item_id=temp_id)
+            yield ThreadItemAddedEvent(item=item)
+            yield ThreadItemDoneEvent(item=item)
+
+            if cache_enabled:
+                delete_cached(cache_key("thread_temp_item", thread.id, temp_id))
+
+        async for event in self._process_events(
+            thread,
+            context,
+            lambda: self.respond(thread, item, context),
+        ):
+            yield event
+
     async def _wait_for_widget_action(
         self,
         *,
@@ -873,7 +946,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         # Start title generation in background, but keep a reference to ensure it runs
         title_task: asyncio.Task[None] | None = None
-        if input_user_message is not None:
+        disable_title_gen = os.getenv("CHATKIT_DISABLE_TITLE_GENERATION", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if input_user_message is not None and not disable_title_gen:
             title_task = asyncio.create_task(
                 self._maybe_update_thread_title(
                     thread,
@@ -1816,6 +1894,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         step_progress_text: dict[str, str] = {}
         step_progress_headers: dict[str, str] = {}
         most_recent_widget_item_id: str | None = None
+        profiling_enabled = os.getenv("CHATKIT_WORKFLOW_PROFILING", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        step_start_times: dict[str, float] = {}
 
         # Set thread_id in context for browser caching
         from ..tool_builders.computer_use import set_current_thread_id
@@ -1836,6 +1920,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 streamed_step_keys.add(step_summary.key)
                 step_progress_text.pop(step_summary.key, None)
                 header = step_progress_headers.pop(step_summary.key, None)
+                if profiling_enabled:
+                    start_time = step_start_times.pop(step_summary.key, None)
+                    if start_time is not None:
+                        duration_ms = (time.perf_counter() - start_time) * 1000
+                        logger.info(
+                            "[WORKFLOW_PROFILE] thread=%s step=%s title=%r duration_ms=%.2f",
+                            thread.id,
+                            step_summary.key,
+                            step_summary.title,
+                            duration_ms,
+                        )
                 if header:
                     await on_stream_event(
                         ProgressUpdateEvent(text=f"{header}\n\nTerminé.")
@@ -1857,6 +1952,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             async def on_step_stream(
                 update: WorkflowStepStreamUpdate,
             ) -> None:
+                current_time = time.perf_counter()
+                if profiling_enabled and update.key not in step_start_times:
+                    step_start_times[update.key] = current_time
                 header = f"{update.title}"
 
                 # Persist current step to metadata if it changed

@@ -1,7 +1,7 @@
 /**
  * Hook pour charger et rafraîchir les threads
  */
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import type { Thread, ChatKitAPIConfig } from '../types';
 import { fetchThread } from '../api/streaming/api';
 
@@ -45,6 +45,8 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
     onError,
     onLog,
   } = options;
+
+  const lastFetchRef = useRef(0);
 
   // Reset thread when initialThread becomes null
   useEffect(() => {
@@ -119,6 +121,12 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
     if (!targetThreadId || isTempThreadId(targetThreadId)) {
       return;
     }
+
+    const now = Date.now();
+    if (now - lastFetchRef.current < 500) {
+      return;
+    }
+    lastFetchRef.current = now;
 
     try {
       setThreadLoading(targetThreadId, true);

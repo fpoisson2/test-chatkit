@@ -11,7 +11,7 @@ services:
         BUILDKIT_INLINE_CACHE: 1
     working_dir: /workspace/backend
     command: >-
-      uvicorn server:app --host 0.0.0.0 --port 8000 --reload --log-level warning --no-access-log
+      uvicorn server:app --host 0.0.0.0 --port 8000 --workers 1 --log-level warning --no-access-log
     volumes:
       - .:/workspace
     environment:
@@ -35,6 +35,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-console}
       LITELLM_LOG_LEVEL: ${LITELLM_LOG_LEVEL:-INFO}
+      CHATKIT_DISABLE_TRACING: ${CHATKIT_DISABLE_TRACING:-true}
+      CHATKIT_DISABLE_TITLE_GENERATION: ${CHATKIT_DISABLE_TITLE_GENERATION:-false}
+      CHATKIT_OPTIMISTIC_USER_MESSAGE: ${CHATKIT_OPTIMISTIC_USER_MESSAGE:-false}
+      CHATKIT_MESSAGE_CACHE: ${CHATKIT_MESSAGE_CACHE:-false}
+      CHATKIT_MESSAGE_CACHE_TTL: ${CHATKIT_MESSAGE_CACHE_TTL:-300}
+      CHATKIT_WORKFLOW_PROFILING: ${CHATKIT_WORKFLOW_PROFILING:-false}
       CHATKIT_HOSTED_BROWSER_HEADLESS: ${CHATKIT_HOSTED_BROWSER_HEADLESS:-}
       CHATKIT_HOSTED_BROWSER_DEBUG_HOST: ${CHATKIT_HOSTED_BROWSER_DEBUG_HOST:-127.0.0.1}
       CHATKIT_HOSTED_BROWSER_DEBUG_PORT: ${CHATKIT_HOSTED_BROWSER_DEBUG_PORT:-}
@@ -47,7 +53,6 @@ services:
     networks:
       - app-network
     depends_on:
-      - db
       - redis
   frontend:
     image: node:20
@@ -93,16 +98,7 @@ services:
     depends_on:
       - backend
       - frontend
-  db:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-chatkit}
-      POSTGRES_USER: ${POSTGRES_USER:-chatkit}
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - app-network
+  # PostgreSQL removed - using Supabase
   redis:
     image: redis:7-alpine
     command: redis-server --port 6380
@@ -110,12 +106,12 @@ services:
       - redis-data:/data
     networks:
       - app-network
-  # cloudflared:
-  #   image: cloudflare/cloudflared:latest
-  #   command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:?CLOUDFLARED_TOKEN is required}
-  #   restart: unless-stopped
-  #   networks:
-  #     - app-network
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:?CLOUDFLARED_TOKEN is required}
+    restart: unless-stopped
+    networks:
+      - app-network
   celery-worker:
     image: chatkit-backend:latest
     pull_policy: never
@@ -148,6 +144,12 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5183}
       # Logging
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      CHATKIT_DISABLE_TRACING: ${CHATKIT_DISABLE_TRACING:-true}
+      CHATKIT_DISABLE_TITLE_GENERATION: ${CHATKIT_DISABLE_TITLE_GENERATION:-false}
+      CHATKIT_OPTIMISTIC_USER_MESSAGE: ${CHATKIT_OPTIMISTIC_USER_MESSAGE:-false}
+      CHATKIT_MESSAGE_CACHE: ${CHATKIT_MESSAGE_CACHE:-false}
+      CHATKIT_MESSAGE_CACHE_TTL: ${CHATKIT_MESSAGE_CACHE_TTL:-300}
+      CHATKIT_WORKFLOW_PROFILING: ${CHATKIT_WORKFLOW_PROFILING:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-console}
       LITELLM_LOG_LEVEL: ${LITELLM_LOG_LEVEL:-INFO}
@@ -165,7 +167,6 @@ services:
     networks:
       - app-network
     depends_on:
-      - db
       - redis
 
 networks:
@@ -174,5 +175,4 @@ networks:
 
 volumes:
   frontend-node_modules:
-  postgres-data:
   redis-data:

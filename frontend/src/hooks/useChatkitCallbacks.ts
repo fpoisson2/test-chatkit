@@ -40,6 +40,7 @@ export function useChatkitCallbacks({
     setInitialThreadId,
     setChatInstanceKey,
     setWorkflowSelection,
+    setIsThreadLoading,
   } = setters;
   const {
     lastThreadSnapshotRef,
@@ -182,10 +183,12 @@ export function useChatkitCallbacks({
   );
 
   const onThreadLoadStart = useCallback(({ threadId }: { threadId: string }) => {
-  }, []);
+    setIsThreadLoading(true);
+  }, [setIsThreadLoading]);
 
   const onThreadLoadEnd = useCallback(({ threadId }: { threadId: string }) => {
-  }, []);
+    setIsThreadLoading(false);
+  }, [setIsThreadLoading]);
 
   const onThreadNotFound = useCallback(
     ({ threadId }: { threadId: string }) => {

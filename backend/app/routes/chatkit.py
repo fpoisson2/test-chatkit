@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +62,7 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - fallback sans S
         pass
 
 from ..admin_settings import resolve_appearance_settings
+from ..cache import cache_key, get_cached, set_cached
 from ..attachment_store import AttachmentUploadError
 from ..chatkit_server.context import (
     _get_wait_state_metadata,
@@ -128,7 +130,13 @@ async def get_public_appearance_settings(
     workflow_id: str | None = None,
     session: Session = Depends(get_session),
 ):
+    cache_ttl = int(os.getenv("APPEARANCE_SETTINGS_CACHE_TTL", "15"))
+    cache_key_value = cache_key("appearance", workflow_id or "default")
+    cached = get_cached(cache_key_value)
+    if cached:
+        return AppearanceSettingsResponse.model_validate(cached)
     payload = resolve_appearance_settings(session, workflow_reference=workflow_id)
+    set_cached(cache_key_value, payload, ttl=cache_ttl)
     return AppearanceSettingsResponse.model_validate(payload)
 
 
@@ -159,12 +167,21 @@ async def get_chatkit_workflow(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> ChatKitWorkflowResponse:
+    cache_ttl = int(os.getenv("CHATKIT_WORKFLOW_CACHE_TTL", "10"))
     service = WorkflowService()
     context = build_chatkit_request_context(
         current_user,
         request=request,
         session=session,
     )
+    cache_key_value = cache_key(
+        "chatkit_workflow",
+        current_user.id,
+        context.lti_resource_link_id or "default",
+    )
+    cached = get_cached(cache_key_value)
+    if cached:
+        return ChatKitWorkflowResponse.model_validate(cached)
     if context.lti_resource_link_id is not None:
         definition = service.get_by_resource_link_id(
             context.lti_resource_link_id,
@@ -178,7 +195,7 @@ async def get_chatkit_workflow(
     if user_message:
         assistant_message = ""
 
-    return ChatKitWorkflowResponse(
+    response = ChatKitWorkflowResponse(
         workflow_id=workflow.id if workflow else definition.workflow_id,
         workflow_slug=workflow.slug if workflow else None,
         workflow_display_name=workflow.display_name if workflow else None,
@@ -191,6 +208,8 @@ async def get_chatkit_workflow(
         ),
         updated_at=definition.updated_at,
     )
+    set_cached(cache_key_value, response.model_dump(mode="json"), ttl=cache_ttl)
+    return response
 
 
 def _collect_hosted_configs(

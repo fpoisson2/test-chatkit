@@ -3,9 +3,12 @@ from __future__ import annotations
 import datetime
 import logging
 import math
+import os
 import re
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+import time
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -16,6 +19,13 @@ from ..admin_settings import (
     apply_appearance_update,
     get_thread_title_prompt_override,
     serialize_appearance_settings,
+)
+from ..cache import (
+    cache_key,
+    delete_cached,
+    get_cached,
+    invalidate_pattern,
+    set_cached,
 )
 from ..config import Settings, WorkflowDefaults, get_settings
 from ..database import SessionLocal
@@ -37,6 +47,30 @@ logger = logging.getLogger(__name__)
 
 _TRUTHY_AUTO_START_VALUES = {"true", "1", "yes", "on"}
 _FALSY_AUTO_START_VALUES = {"false", "0", "no", "off"}
+
+_WORKFLOW_SERVICE_PROFILING = os.getenv("CHATKIT_WORKFLOW_PROFILING", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
+
+@contextmanager
+def _profile_scope(label: str) -> Iterator[None]:
+    """Log timing for workflow operations when profiling is enabled."""
+    if not _WORKFLOW_SERVICE_PROFILING:
+        yield
+        return
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "[WORKFLOW_SERVICE_PROFILE] %s duration_ms=%.2f",
+            label,
+            duration_ms,
+        )
 
 _LEGACY_AGENT_KEYS = frozenset(
     {
@@ -68,6 +102,222 @@ _APPEARANCE_ATTRIBUTE_NAMES = (
     "appearance_input_placeholder",
     "appearance_disclaimer",
 )
+
+# Cache keys and TTL for workflow definitions
+_WORKFLOW_DEF_CACHE_PREFIX = "wf_def"
+_WORKFLOW_DEF_CACHE_TTL = 300  # 5 minutes
+
+
+@dataclass(slots=True)
+class CachedWorkflowStep:
+    """Lightweight cached representation of a WorkflowStep."""
+
+    id: int
+    slug: str
+    kind: str
+    display_name: str | None
+    agent_key: str | None
+    parent_slug: str | None
+    position: int
+    is_enabled: bool
+    parameters: dict[str, Any]
+    ui_metadata: dict[str, Any]
+    created_at: datetime.datetime | None = None
+    updated_at: datetime.datetime | None = None
+
+
+@dataclass(slots=True)
+class CachedWorkflow:
+    """Lightweight cached representation of a Workflow."""
+
+    id: int
+    slug: str
+    display_name: str | None
+    is_chatkit_default: bool
+
+
+@dataclass(slots=True)
+class CachedWorkflowTransition:
+    """Lightweight cached representation of a WorkflowTransition."""
+
+    id: int
+    source_step_slug: str
+    target_step_slug: str
+
+
+@dataclass(slots=True)
+class CachedWorkflowDefinition:
+    """Lightweight cached representation of a WorkflowDefinition.
+
+    This class mimics the SQLAlchemy model interface so it can be used
+    interchangeably in code that accesses definition properties.
+    """
+
+    id: int
+    workflow_id: int
+    name: str | None
+    version: int
+    is_active: bool
+    sip_account_id: int | None
+    created_at: datetime.datetime | None
+    updated_at: datetime.datetime | None
+    workflow: CachedWorkflow | None
+    steps: list[CachedWorkflowStep] = field(default_factory=list)
+    transitions: list[CachedWorkflowTransition] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CachedWorkflowDefinition":
+        """Reconstruct a CachedWorkflowDefinition from a cached dict."""
+        workflow_data = data.get("workflow")
+        workflow = None
+        if workflow_data:
+            workflow = CachedWorkflow(
+                id=workflow_data["id"],
+                slug=workflow_data["slug"],
+                display_name=workflow_data.get("display_name"),
+                is_chatkit_default=workflow_data.get("is_chatkit_default", False),
+            )
+
+        steps = []
+        for step_data in data.get("steps", []):
+            steps.append(
+                CachedWorkflowStep(
+                    id=step_data["id"],
+                    slug=step_data["slug"],
+                    kind=step_data["kind"],
+                    display_name=step_data.get("display_name"),
+                    agent_key=step_data.get("agent_key"),
+                    parent_slug=step_data.get("parent_slug"),
+                    position=step_data.get("position", 0),
+                    is_enabled=step_data.get("is_enabled", True),
+                    parameters=step_data.get("parameters", {}),
+                    ui_metadata=step_data.get("ui_metadata", {}),
+                )
+            )
+
+        transitions = []
+        for trans_data in data.get("transitions", []):
+            transitions.append(
+                CachedWorkflowTransition(
+                    id=trans_data["id"],
+                    source_step_slug=trans_data["source_step_slug"],
+                    target_step_slug=trans_data["target_step_slug"],
+                )
+            )
+
+        return cls(
+            id=data["id"],
+            workflow_id=data["workflow_id"],
+            name=data.get("name"),
+            version=data["version"],
+            is_active=data.get("is_active", False),
+            sip_account_id=data.get("sip_account_id"),
+            created_at=data.get("created_at"),
+            updated_at=data.get("updated_at"),
+            workflow=workflow,
+            steps=steps,
+            transitions=transitions,
+        )
+
+
+def _serialize_definition_for_cache(definition: WorkflowDefinition) -> dict[str, Any]:
+    """Serialize a WorkflowDefinition for Redis caching."""
+    workflow = definition.workflow
+    workflow_data = None
+    if workflow:
+        workflow_data = {
+            "id": workflow.id,
+            "slug": workflow.slug,
+            "display_name": workflow.display_name,
+            "is_chatkit_default": workflow.is_chatkit_default,
+        }
+
+    steps_data = []
+    for step in definition.steps:
+        steps_data.append({
+            "id": step.id,
+            "slug": step.slug,
+            "kind": step.kind,
+            "display_name": step.display_name,
+            "agent_key": step.agent_key,
+            "parent_slug": step.parent_slug,
+            "position": step.position,
+            "is_enabled": step.is_enabled,
+            "parameters": dict(step.parameters) if step.parameters else {},
+            "ui_metadata": dict(step.ui_metadata) if step.ui_metadata else {},
+        })
+
+    transitions_data = []
+    for trans in definition.transitions:
+        transitions_data.append({
+            "id": trans.id,
+            "source_step_slug": trans.source_step.slug if trans.source_step else None,
+            "target_step_slug": trans.target_step.slug if trans.target_step else None,
+        })
+
+    return {
+        "id": definition.id,
+        "workflow_id": definition.workflow_id,
+        "name": definition.name,
+        "version": definition.version,
+        "is_active": definition.is_active,
+        "sip_account_id": definition.sip_account_id,
+        "created_at": definition.created_at.isoformat() if definition.created_at else None,
+        "updated_at": definition.updated_at.isoformat() if definition.updated_at else None,
+        "workflow": workflow_data,
+        "steps": steps_data,
+        "transitions": transitions_data,
+    }
+
+
+def _get_cached_definition(
+    cache_key_value: str,
+) -> CachedWorkflowDefinition | None:
+    """Get a cached workflow definition."""
+    cached = get_cached(cache_key_value)
+    if cached:
+        try:
+            return CachedWorkflowDefinition.from_dict(cached)
+        except (KeyError, TypeError) as e:
+            logger.debug(f"Failed to deserialize cached definition: {e}")
+            delete_cached(cache_key_value)
+    return None
+
+
+def _cache_definition(
+    cache_key_value: str,
+    definition: WorkflowDefinition,
+    ttl: int = _WORKFLOW_DEF_CACHE_TTL,
+) -> None:
+    """Cache a workflow definition."""
+    try:
+        data = _serialize_definition_for_cache(definition)
+        set_cached(cache_key_value, data, ttl)
+    except Exception as e:
+        logger.debug(f"Failed to cache definition: {e}")
+
+
+def invalidate_definition_cache(
+    workflow_id: int | None = None,
+    definition_id: int | None = None,
+) -> None:
+    """Invalidate cached workflow definitions.
+
+    Called when a definition is created, updated, or activated.
+    """
+    if definition_id:
+        # Invalidate specific definition cache
+        delete_cached(cache_key(_WORKFLOW_DEF_CACHE_PREFIX, "id", definition_id))
+
+    if workflow_id:
+        # Invalidate the "current" cache for this workflow
+        delete_cached(cache_key(_WORKFLOW_DEF_CACHE_PREFIX, "current", workflow_id))
+
+    # Also invalidate the default chatkit workflow cache
+    delete_cached(cache_key(_WORKFLOW_DEF_CACHE_PREFIX, "chatkit_default"))
+
+    # Invalidate resource link caches (pattern-based)
+    invalidate_pattern(f"{_WORKFLOW_DEF_CACHE_PREFIX}:resource_link:*")
 
 
 def _sanitize_workflow_reference_for_serialization(
@@ -1544,21 +1794,22 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         """Charge toutes les relations nécessaires avant fermeture de session."""
 
-        steps = list(definition.steps)
-        transitions = list(definition.transitions)
-        for transition in transitions:
-            _ = transition.source_step  # Force le chargement du nœud source
-            _ = transition.target_step  # Force le chargement du nœud cible
-        _ = definition.workflow  # Charge le workflow parent avant fermeture
+        with _profile_scope("fully_load_definition"):
+            steps = list(definition.steps)
+            transitions = list(definition.transitions)
+            for transition in transitions:
+                _ = transition.source_step  # Force le chargement du nœud source
+                _ = transition.target_step  # Force le chargement du nœud cible
+            _ = definition.workflow  # Charge le workflow parent avant fermeture
 
-        # Sanitize model_settings in all loaded steps
-        for step in steps:
-            if step.parameters and isinstance(step.parameters, dict):
-                model_settings = step.parameters.get("model_settings")
-                if model_settings:
-                    sanitized, _removed = sanitize_value(model_settings)
-                    if isinstance(sanitized, dict):
-                        step.parameters["model_settings"] = sanitized
+            # Sanitize model_settings in all loaded steps
+            for step in steps:
+                if step.parameters and isinstance(step.parameters, dict):
+                    model_settings = step.parameters.get("model_settings")
+                    if model_settings:
+                        sanitized, _removed = sanitize_value(model_settings)
+                        if isinstance(sanitized, dict):
+                            step.parameters["model_settings"] = sanitized
 
         return definition
 
@@ -1747,21 +1998,22 @@ class WorkflowService:
     def _load_active_definition(
         self, workflow: Workflow, session: Session
     ) -> WorkflowDefinition | None:
-        definition = session.scalar(
-            select(WorkflowDefinition)
-            .where(
-                WorkflowDefinition.workflow_id == workflow.id,
-                WorkflowDefinition.is_active.is_(True),
+        with _profile_scope("load_active_definition"):
+            definition = session.scalar(
+                select(WorkflowDefinition)
+                .where(
+                    WorkflowDefinition.workflow_id == workflow.id,
+                    WorkflowDefinition.is_active.is_(True),
+                )
+                .order_by(WorkflowDefinition.updated_at.desc())
             )
-            .order_by(WorkflowDefinition.updated_at.desc())
-        )
-        if definition is not None:
-            return definition
-        return session.scalar(
-            select(WorkflowDefinition)
-            .where(WorkflowDefinition.workflow_id == workflow.id)
-            .order_by(WorkflowDefinition.updated_at.desc())
-        )
+            if definition is not None:
+                return definition
+            return session.scalar(
+                select(WorkflowDefinition)
+                .where(WorkflowDefinition.workflow_id == workflow.id)
+                .order_by(WorkflowDefinition.updated_at.desc())
+            )
 
     def _get_next_version(self, workflow: Workflow, session: Session) -> int:
         current = session.scalar(
@@ -1885,72 +2137,127 @@ class WorkflowService:
 
         return definition
 
-    def get_current(self, session: Session | None = None) -> WorkflowDefinition:
+    def get_current(
+        self, session: Session | None = None, *, use_cache: bool = True
+    ) -> WorkflowDefinition | CachedWorkflowDefinition:
+        """Get the current active workflow definition.
+
+        Args:
+            session: Database session (optional)
+            use_cache: Whether to use Redis cache (default True)
+
+        Returns:
+            The active workflow definition (cached or from database)
+        """
+        # Check cache first
+        cache_key_value = cache_key(_WORKFLOW_DEF_CACHE_PREFIX, "chatkit_default")
+        if use_cache:
+            cached = _get_cached_definition(cache_key_value)
+            if cached:
+                logger.debug("Cache hit for get_current")
+                return cached
+
         db, owns_session = self._get_session(session)
         try:
-            workflow = self._get_chatkit_workflow(db)
-            definition = self._load_active_definition(workflow, db)
-            if definition is None:
-                definition = self._create_default_definition(db, workflow)
-                db.commit()
-                db.refresh(definition)
-            definition = self._fully_load_definition(definition)
-            if self._needs_graph_backfill(definition):
-                logger.info(
-                    "Legacy workflow detected, backfilling default graph with existing "
-                    "agent configuration",
-                )
-                definition = self._backfill_legacy_definition(definition, db)
-                self._set_active_definition(workflow, definition, db)
-                db.commit()
-            return definition
+            with _profile_scope("get_current"):
+                workflow = self._get_chatkit_workflow(db)
+                definition = self._load_active_definition(workflow, db)
+                if definition is None:
+                    definition = self._create_default_definition(db, workflow)
+                    db.commit()
+                    db.refresh(definition)
+                definition = self._fully_load_definition(definition)
+                if self._needs_graph_backfill(definition):
+                    logger.info(
+                        "Legacy workflow detected, backfilling default graph with existing "
+                        "agent configuration",
+                    )
+                    definition = self._backfill_legacy_definition(definition, db)
+                    self._set_active_definition(workflow, definition, db)
+                    db.commit()
+
+                # Cache the result
+                if use_cache:
+                    _cache_definition(cache_key_value, definition)
+
+                return definition
         finally:
             if owns_session:
                 db.close()
 
     def get_by_resource_link_id(
-        self, resource_link_id: int, session: Session | None = None
-    ) -> WorkflowDefinition:
-        """Load the workflow definition associated with an LTI resource link."""
+        self,
+        resource_link_id: int,
+        session: Session | None = None,
+        *,
+        use_cache: bool = True,
+    ) -> WorkflowDefinition | CachedWorkflowDefinition:
+        """Load the workflow definition associated with an LTI resource link.
+
+        Args:
+            resource_link_id: LTI resource link ID
+            session: Database session (optional)
+            use_cache: Whether to use Redis cache (default True)
+
+        Returns:
+            The active workflow definition for this resource link
+        """
+        # Check cache first
+        cache_key_value = cache_key(
+            _WORKFLOW_DEF_CACHE_PREFIX, "resource_link", resource_link_id
+        )
+        if use_cache:
+            cached = _get_cached_definition(cache_key_value)
+            if cached:
+                logger.debug(f"Cache hit for resource_link {resource_link_id}")
+                return cached
+
         db, owns_session = self._get_session(session)
         try:
-            resource_link = db.scalar(
-                select(LTIResourceLink).where(LTIResourceLink.id == resource_link_id)
-            )
-            if resource_link is None:
-                raise WorkflowValidationError(
-                    f"Resource link {resource_link_id} introuvable."
+            with _profile_scope("get_by_resource_link_id"):
+                resource_link = db.scalar(
+                    select(LTIResourceLink).where(
+                        LTIResourceLink.id == resource_link_id
+                    )
                 )
-            if resource_link.workflow_id is None:
-                raise WorkflowValidationError(
-                    f"Aucun workflow associé au resource link {resource_link_id}."
-                )
+                if resource_link is None:
+                    raise WorkflowValidationError(
+                        f"Resource link {resource_link_id} introuvable."
+                    )
+                if resource_link.workflow_id is None:
+                    raise WorkflowValidationError(
+                        f"Aucun workflow associé au resource link {resource_link_id}."
+                    )
 
-            workflow = db.scalar(
-                select(Workflow).where(Workflow.id == resource_link.workflow_id)
-            )
-            if workflow is None:
-                raise WorkflowValidationError(
-                    f"Workflow {resource_link.workflow_id} introuvable."
+                workflow = db.scalar(
+                    select(Workflow).where(Workflow.id == resource_link.workflow_id)
                 )
+                if workflow is None:
+                    raise WorkflowValidationError(
+                        f"Workflow {resource_link.workflow_id} introuvable."
+                    )
 
-            definition = self._load_active_definition(workflow, db)
-            if definition is None:
-                raise WorkflowValidationError(
-                    f"Aucune version active pour le workflow {workflow.slug}."
-                )
+                definition = self._load_active_definition(workflow, db)
+                if definition is None:
+                    raise WorkflowValidationError(
+                        f"Aucune version active pour le workflow {workflow.slug}."
+                    )
 
-            definition = self._fully_load_definition(definition)
-            if self._needs_graph_backfill(definition):
-                logger.info(
-                    "Legacy workflow detected, backfilling default graph with existing "
-                    "agent configuration",
-                )
-                definition = self._backfill_legacy_definition(definition, db)
-                self._set_active_definition(workflow, definition, db)
-                db.commit()
+                definition = self._fully_load_definition(definition)
+                if self._needs_graph_backfill(definition):
+                    logger.info(
+                        "Legacy workflow detected, backfilling default graph with existing "
+                        "agent configuration",
+                    )
+                    definition = self._backfill_legacy_definition(definition, db)
+                    self._set_active_definition(workflow, definition, db)
+                    db.commit()
 
-            return definition
+                # Cache the result
+                if use_cache:
+                    _cache_definition(cache_key_value, definition)
+
+                return definition
         finally:
             if owns_session:
                 db.close()
@@ -1960,41 +2267,42 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         db, owns_session = self._get_session(session)
         try:
-            normalized_slug = slug.strip()
-            if not normalized_slug:
-                raise WorkflowValidationError(
-                    "Le slug du workflow ne peut pas être vide."
-                )
-
-            defaults = self._workflow_defaults
-            if normalized_slug == defaults.default_workflow_slug:
-                workflow = self._ensure_default_workflow(db)
-            else:
-                workflow = db.scalar(
-                    select(Workflow).where(Workflow.slug == normalized_slug)
-                )
-                if workflow is None:
+            with _profile_scope("get_definition_by_slug"):
+                normalized_slug = slug.strip()
+                if not normalized_slug:
                     raise WorkflowValidationError(
-                        f"Workflow introuvable pour le slug {normalized_slug!r}."
+                        "Le slug du workflow ne peut pas être vide."
                     )
 
-            definition = self._load_active_definition(workflow, db)
-            if definition is None:
-                raise WorkflowValidationError(
-                    "Aucune version active n'est disponible pour ce workflow."
-                )
+                defaults = self._workflow_defaults
+                if normalized_slug == defaults.default_workflow_slug:
+                    workflow = self._ensure_default_workflow(db)
+                else:
+                    workflow = db.scalar(
+                        select(Workflow).where(Workflow.slug == normalized_slug)
+                    )
+                    if workflow is None:
+                        raise WorkflowValidationError(
+                            f"Workflow introuvable pour le slug {normalized_slug!r}."
+                        )
 
-            definition = self._fully_load_definition(definition)
-            if self._needs_graph_backfill(definition):
-                logger.info(
-                    "Legacy workflow detected, backfilling default graph for slug %s",
-                    normalized_slug,
-                )
-                definition = self._backfill_legacy_definition(definition, db)
-                self._set_active_definition(workflow, definition, db)
-                db.commit()
+                definition = self._load_active_definition(workflow, db)
+                if definition is None:
+                    raise WorkflowValidationError(
+                        "Aucune version active n'est disponible pour ce workflow."
+                    )
 
-            return definition
+                definition = self._fully_load_definition(definition)
+                if self._needs_graph_backfill(definition):
+                    logger.info(
+                        "Legacy workflow detected, backfilling default graph for slug %s",
+                        normalized_slug,
+                    )
+                    definition = self._backfill_legacy_definition(definition, db)
+                    self._set_active_definition(workflow, definition, db)
+                    db.commit()
+
+                return definition
         finally:
             if owns_session:
                 db.close()
@@ -2134,11 +2442,14 @@ class WorkflowService:
         db, owns_session = self._get_session(session)
         try:
             self._ensure_default_workflow(db)
+            # Use selectinload to load versions in a single additional query
+            # instead of N+1 queries (one per workflow)
+            from sqlalchemy.orm import selectinload
             workflows = db.scalars(
-                select(Workflow).order_by(Workflow.created_at.asc())
+                select(Workflow)
+                .options(selectinload(Workflow.versions))
+                .order_by(Workflow.created_at.asc())
             ).all()
-            for workflow in workflows:
-                _ = workflow.versions  # force le chargement des versions
             return workflows
         finally:
             if owns_session:
@@ -2181,10 +2492,14 @@ class WorkflowService:
     ) -> Workflow:
         db, owns_session = self._get_session(session)
         try:
-            workflow = db.get(Workflow, workflow_id)
+            from sqlalchemy.orm import selectinload
+            workflow = db.scalars(
+                select(Workflow)
+                .options(selectinload(Workflow.versions))
+                .where(Workflow.id == workflow_id)
+            ).first()
             if workflow is None:
                 raise WorkflowNotFoundError(workflow_id)
-            _ = workflow.versions
             return workflow
         finally:
             if owns_session:
@@ -2198,13 +2513,13 @@ class WorkflowService:
             workflow = db.get(Workflow, workflow_id)
             if workflow is None:
                 raise WorkflowNotFoundError(workflow_id)
+            from sqlalchemy.orm import selectinload
             definitions = db.scalars(
                 select(WorkflowDefinition)
+                .options(selectinload(WorkflowDefinition.steps))
                 .where(WorkflowDefinition.workflow_id == workflow_id)
                 .order_by(WorkflowDefinition.version.desc())
             ).all()
-            for definition in definitions:
-                _ = definition.steps
             return definitions
         finally:
             if owns_session:
@@ -2826,6 +3141,13 @@ class WorkflowService:
             )
             db.commit()
             db.refresh(definition)
+
+            # Invalidate cache if this became the active version
+            if mark_as_active:
+                invalidate_definition_cache(
+                    workflow_id=workflow_id, definition_id=definition.id
+                )
+
             return self._fully_load_definition(definition)
         finally:
             if owns_session:
@@ -2879,6 +3201,12 @@ class WorkflowService:
             )
             db.commit()
             db.refresh(definition)
+
+            # Invalidate cache for modified definition
+            invalidate_definition_cache(
+                workflow_id=workflow_id, definition_id=definition.id
+            )
+
             return self._fully_load_definition(definition)
         finally:
             if owns_session:
@@ -2907,6 +3235,12 @@ class WorkflowService:
             self._set_active_definition(workflow, definition, db)
             db.commit()
             db.refresh(definition)
+
+            # Invalidate cache - active version changed
+            invalidate_definition_cache(
+                workflow_id=workflow_id, definition_id=definition.id
+            )
+
             return self._fully_load_definition(definition)
         finally:
             if owns_session:

@@ -9,6 +9,8 @@ import type {
 } from '../../types';
 import { normalizeThreadItems, normalizeThreadItemsWithPagination } from './normalizers';
 
+const inflightThreadRequests = new Map<string, Promise<Thread>>();
+
 export interface FetchThreadOptions {
   url: string;
   headers?: Record<string, string>;
@@ -89,6 +91,11 @@ export interface ListItemsOptions {
 export async function fetchThread(options: FetchThreadOptions): Promise<Thread> {
   const { url, headers = {}, threadId } = options;
 
+  const inflight = inflightThreadRequests.get(threadId);
+  if (inflight) {
+    return inflight;
+  }
+
   const payload = {
     type: 'threads.get_by_id',
     params: {
@@ -96,30 +103,41 @@ export async function fetchThread(options: FetchThreadOptions): Promise<Thread> 
     },
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
-    body: JSON.stringify(payload),
-  });
+  const requestPromise = (async () => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP ${response.status}: ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    const thread = data.thread || data;
+    const { items, has_more, pagination_cursor } = normalizeThreadItemsWithPagination(thread.items);
+
+    const normalizedThread = {
+      ...thread,
+      items,
+      has_more_items: has_more,
+      pagination_cursor,
+    };
+
+    return normalizedThread;
+  })();
+
+  inflightThreadRequests.set(threadId, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    inflightThreadRequests.delete(threadId);
   }
-
-  const data = await response.json();
-  const thread = data.thread || data;
-  const { items, has_more, pagination_cursor } = normalizeThreadItemsWithPagination(thread.items);
-
-  return {
-    ...thread,
-    items,
-    has_more_items: has_more,
-    pagination_cursor,
-  };
 }
 
 /**
