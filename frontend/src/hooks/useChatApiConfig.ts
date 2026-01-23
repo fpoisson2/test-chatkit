@@ -80,6 +80,7 @@ export const useChatApiConfig = ({
   hostedFlowEnabled,
   getClientSecret,
   missingDomainKeyWarningShownRef,
+  workflowId,
 }: UseChatApiConfigParams) =>
   useMemo<{
     apiConfig: ChatKitOptions["api"];
@@ -372,6 +373,9 @@ export const useChatApiConfig = ({
     const headers: Record<string, string> = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+    if (workflowId) {
+      headers['X-ChatKit-Workflow-Id'] = workflowId;
     }
 
     const customApiConfig = uploadStrategy
