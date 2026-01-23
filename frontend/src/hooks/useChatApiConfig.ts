@@ -72,6 +72,7 @@ type UseChatApiConfigParams = {
   hostedFlowEnabled: boolean;
   getClientSecret: () => Promise<string>;
   missingDomainKeyWarningShownRef: MutableRefObject<boolean>;
+  workflowId: string | null;
 };
 
 export const useChatApiConfig = ({
@@ -277,6 +278,9 @@ export const useChatApiConfig = ({
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
       }
+      if (workflowId) {
+        headers.set("X-ChatKit-Workflow-Id", workflowId);
+      }
 
       const normalizedResource = normalizeFetchResource(resource);
 
@@ -402,4 +406,5 @@ export const useChatApiConfig = ({
     hostedFlowEnabled,
     missingDomainKeyWarningShownRef,
     token,
+    workflowId,
   ]);

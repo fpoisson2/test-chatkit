@@ -20,6 +20,7 @@ _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
     """Retourne l'état d'attente stocké dans les métadonnées du fil."""
     import logging
+
     logger = logging.getLogger("chatkit.server")
 
     # Pour les threads ChatKit en mémoire (SDK), utiliser thread.metadata
@@ -58,6 +59,7 @@ def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
 def _set_wait_state_metadata(thread: Any, state: Mapping[str, Any] | None) -> None:
     """Met à jour l'état d'attente dans les métadonnées du fil."""
     import logging
+
     logger = logging.getLogger("chatkit.server")
 
     metadata = getattr(thread, "metadata", None)
@@ -88,9 +90,7 @@ def _set_wait_state_metadata(thread: Any, state: Mapping[str, Any] | None) -> No
             )
         else:
             metadata[_WAIT_STATE_METADATA_KEY] = dict(state)
-            logger.info(
-                "[WAIT_STATE_DEBUG] Set wait key in metadata dict in place"
-            )
+            logger.info("[WAIT_STATE_DEBUG] Set wait key in metadata dict in place")
         return
 
     # Fallback: build updated dict and try to assign
@@ -168,6 +168,7 @@ class ChatKitRequestContext:
     ags_scopes: tuple[str, ...] | None = None
     ags_default_score_maximum: float | None = None
     ags_default_label: str | None = None
+    workflow_id: str | None = None
 
     def trace_metadata(self) -> dict[str, str]:
         """Retourne des métadonnées de trace compatibles avec l'Agents SDK."""

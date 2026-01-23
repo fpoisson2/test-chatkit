@@ -20,12 +20,46 @@ def build_chatkit_request_context(
     authorization: str | None = None,
     session: Session | None = None,
 ) -> ChatKitRequestContext:
-    """Construct a :class:`ChatKitRequestContext` for the given user."""
+    """Construct a :class:`ChatKitRequestContext` for given user."""
 
     base_url = (
         public_base_url
         if public_base_url is not None
         else (resolve_public_base_url_from_request(request) if request else None)
+    )
+    if authorization is None and request is not None:
+        authorization = request.headers.get("Authorization")
+
+    workflow_id: str | None = None
+    if request is not None:
+        workflow_id = request.headers.get("X-ChatKit-Workflow-Id")
+
+    lti_context = _resolve_lti_context(current_user, session=session)
+    lti_kwargs: dict[str, Any] = {}
+    if lti_context:
+        lti_kwargs = {
+            "lti_session_id": lti_context.get("session_id"),
+            "lti_registration_id": lti_context.get("registration_id"),
+            "lti_deployment_id": lti_context.get("deployment_id"),
+            "lti_resource_link_id": lti_context.get("resource_link_id"),
+            "lti_resource_link_ref": lti_context.get("resource_link_ref"),
+            "lti_platform_user_id": lti_context.get("platform_user_id"),
+            "lti_platform_context_id": lti_context.get("platform_context_id"),
+            "ags_line_items_endpoint": lti_context.get("line_items_endpoint"),
+            "ags_line_item_endpoint": lti_context.get("line_item_endpoint"),
+            "ags_scopes": lti_context.get("scopes"),
+            "ags_default_score_maximum": lti_context.get("default_score_maximum"),
+            "ags_default_label": lti_context.get("default_label"),
+        }
+
+    return ChatKitRequestContext(
+        user_id=str(getattr(current_user, "id", None) or ""),
+        email=getattr(current_user, "email", None),
+        is_lti_user=bool(getattr(current_user, "is_lti", False)),
+        authorization=authorization,
+        public_base_url=base_url,
+        workflow_id=workflow_id,
+        **lti_kwargs,
     )
     if authorization is None and request is not None:
         authorization = request.headers.get("Authorization")

@@ -193,7 +193,9 @@ class StreamProcessor:
 
     def start(self, workflow_task: asyncio.Task[None]) -> None:
         if self._task is not None:
-            logger.debug("StreamProcessor already started for thread %s", self.thread.id)
+            logger.debug(
+                "StreamProcessor already started for thread %s", self.thread.id
+            )
             return
         logger.info("Starting StreamProcessor loop for thread %s", self.thread.id)
         self._workflow_task = workflow_task
@@ -214,7 +216,9 @@ class StreamProcessor:
         return queue
 
     async def remove_listener(self, queue: asyncio.Queue[Any]) -> None:
-        logger.info("Removing listener from StreamProcessor for thread %s", self.thread.id)
+        logger.info(
+            "Removing listener from StreamProcessor for thread %s", self.thread.id
+        )
         async with self._lock:
             if queue in self.listeners:
                 self.listeners.remove(queue)
@@ -231,7 +235,10 @@ class StreamProcessor:
                 event = await self.event_queue.get()
 
                 if event is _STREAM_DONE:
-                    logger.info("StreamProcessor received _STREAM_DONE for thread %s", self.thread.id)
+                    logger.info(
+                        "StreamProcessor received _STREAM_DONE for thread %s",
+                        self.thread.id,
+                    )
                     # Broadcast done to all listeners
                     async with self._lock:
                         for listener in self.listeners:
@@ -268,21 +275,33 @@ class StreamProcessor:
                     if item:
                         # Update the in-memory item
                         if isinstance(item, AssistantMessageItem):
-                            if isinstance(event.update, AssistantMessageContentPartTextDelta):
+                            if isinstance(
+                                event.update, AssistantMessageContentPartTextDelta
+                            ):
                                 content_index = event.update.content_index
                                 delta = event.update.delta
                                 if 0 <= content_index < len(item.content):
                                     content = item.content[content_index]
                                     if hasattr(content, "text"):
                                         content.text += delta
-                            elif hasattr(event.update, "type") and event.update.type == "assistant_message.content_part.added":
+                            elif (
+                                hasattr(event.update, "type")
+                                and event.update.type
+                                == "assistant_message.content_part.added"
+                            ):
                                 # Handle new content part
-                                content_index = getattr(event.update, "content_index", -1)
+                                content_index = getattr(
+                                    event.update, "content_index", -1
+                                )
                                 new_content = getattr(event.update, "content", None)
                                 if new_content and content_index >= 0:
                                     # IMPORTANT: Create a deep copy to avoid modifying the event's content object
                                     # when we later apply text deltas to item.content
-                                    content_copy = new_content.model_copy(deep=True) if hasattr(new_content, "model_copy") else new_content
+                                    content_copy = (
+                                        new_content.model_copy(deep=True)
+                                        if hasattr(new_content, "model_copy")
+                                        else new_content
+                                    )
                                     if content_index >= len(item.content):
                                         item.content.append(content_copy)
                                     else:
@@ -292,12 +311,14 @@ class StreamProcessor:
                             hasattr(event.update, "type")
                             and event.update.type == "widget.root.updated"
                         ):
-                             if hasattr(item, "widget") and hasattr(event.update, "widget"):
-                                 item.widget = event.update.widget
+                            if hasattr(item, "widget") and hasattr(
+                                event.update, "widget"
+                            ):
+                                item.widget = event.update.widget
 
-                        elif (
-                            hasattr(event.update, "type")
-                            and event.update.type in ("workflow.task.added", "workflow.task.updated")
+                        elif hasattr(event.update, "type") and event.update.type in (
+                            "workflow.task.added",
+                            "workflow.task.updated",
                         ):
                             # Handle workflow task updates
                             if hasattr(item, "workflow") and item.workflow:
@@ -308,7 +329,9 @@ class StreamProcessor:
                                         tasks.append(event.update.task)
                                 elif event.update.type == "workflow.task.updated":
                                     if 0 <= event.update.task_index < len(tasks):
-                                        tasks[event.update.task_index] = event.update.task
+                                        tasks[event.update.task_index] = (
+                                            event.update.task
+                                        )
 
                         # Persist updates periodically (ALWAYS)
                         # Skip temporary IDs (like __fake_id__) - they shouldn't be persisted
@@ -317,11 +340,12 @@ class StreamProcessor:
 
                         now = time.time()
                         if (
-                            now - last_save_time.get(event.item_id, 0)
-                            > SAVE_INTERVAL
+                            now - last_save_time.get(event.item_id, 0) > SAVE_INTERVAL
                         ) and self._context:
                             try:
-                                logger.debug("Persistence: Saving item update %s", event.item_id)
+                                logger.debug(
+                                    "Persistence: Saving item update %s", event.item_id
+                                )
                                 await self.store.save_item(
                                     self.thread.id, item, context=self._context
                                 )
@@ -340,7 +364,9 @@ class StreamProcessor:
                     item = event.item
                     if item.id.startswith("__"):
                         # Skip temporary IDs - they shouldn't be persisted
-                        logger.debug("Skipping persistence for temporary item %s", item.id)
+                        logger.debug(
+                            "Skipping persistence for temporary item %s", item.id
+                        )
                     elif self._context:
                         try:
                             logger.debug("Persistence: Final save for item %s", item.id)
@@ -665,7 +691,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         "Aucun resource_link_id LTI dans le contexte. "
                         "L'accès doit se faire via un lien LTI."
                     )
-                definition = self._workflow_service.get_current()
+                workflow_id = context.workflow_id
+                if workflow_id:
+                    definition = self._workflow_service.get_by_id(workflow_id)
+                else:
+                    definition = self._workflow_service.get_current()
             else:
                 definition = self._workflow_service.get_by_resource_link_id(
                     context.lti_resource_link_id
@@ -717,7 +747,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         except NotFoundError as exc:
             thread_id = getattr(request, "thread_id", None)
             logger.warning(
-                "Thread introuvable pour la requête en streaming : %s", thread_id, exc_info=exc
+                "Thread introuvable pour la requête en streaming : %s",
+                thread_id,
+                exc_info=exc,
             )
             yield ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
@@ -732,7 +764,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         item: UserMessageItem,
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
-        optimistic_enabled = os.getenv("CHATKIT_OPTIMISTIC_USER_MESSAGE", "false").lower() in (
+        optimistic_enabled = os.getenv(
+            "CHATKIT_OPTIMISTIC_USER_MESSAGE", "false"
+        ).lower() in (
             "1",
             "true",
             "yes",
@@ -744,7 +778,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
 
         if not optimistic_enabled:
-            async for event in super()._process_new_thread_item_respond(thread, item, context):
+            async for event in super()._process_new_thread_item_respond(
+                thread, item, context
+            ):
                 yield event
             return
 
@@ -840,7 +876,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     return AutoStartConfiguration.disabled()
                 definition = self._workflow_service.get_current()
             else:
-                definition = self._workflow_service.get_by_resource_link_id(resource_link_id)
+                definition = self._workflow_service.get_by_resource_link_id(
+                    resource_link_id
+                )
         except Exception as exc:  # pragma: no cover - devrait rester exceptionnel
             logger.exception(
                 "Impossible de vérifier l'option de démarrage automatique du workflow.",
@@ -946,7 +984,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         # Start title generation in background, but keep a reference to ensure it runs
         title_task: asyncio.Task[None] | None = None
-        disable_title_gen = os.getenv("CHATKIT_DISABLE_TITLE_GENERATION", "false").lower() in (
+        disable_title_gen = os.getenv(
+            "CHATKIT_DISABLE_TITLE_GENERATION", "false"
+        ).lower() in (
             "1",
             "true",
             "yes",
@@ -1017,13 +1057,21 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
             # Set initial title for auto-start workflows (no user message to generate title from)
             if not thread.title:
-                thread_metadata = thread.metadata if isinstance(thread.metadata, Mapping) else {}
+                thread_metadata = (
+                    thread.metadata if isinstance(thread.metadata, Mapping) else {}
+                )
                 workflow_meta = thread_metadata.get("workflow", {})
-                workflow_display_name = workflow_meta.get("display_name") or workflow_meta.get("slug")
+                workflow_display_name = workflow_meta.get(
+                    "display_name"
+                ) or workflow_meta.get("slug")
                 if workflow_display_name:
                     thread.title = workflow_display_name
                     await self.store.save_thread(thread, context=context)
-                    logger.info("🔤 Auto-start: Set thread %s title to %r", thread.id, thread.title)
+                    logger.info(
+                        "🔤 Auto-start: Set thread %s title to %r",
+                        thread.id,
+                        thread.title,
+                    )
 
             user_text = _normalize_user_text(config.user_message)
             assistant_stream_text = (
@@ -1069,7 +1117,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if inference_opts is not None:
                     model_override = getattr(inference_opts, "model", None)
                     if model_override:
-                        logger.debug("Model override from inference_options: %s", model_override)
+                        logger.debug(
+                            "Model override from inference_options: %s", model_override
+                        )
 
             workflow_input = WorkflowInput(
                 input_as_text=user_text,
@@ -1246,7 +1296,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             thread.title,
         )
         if thread.title:
-            logger.debug("🔤 Thread %s already has a title, skipping generation", thread.id)
+            logger.debug(
+                "🔤 Thread %s already has a title, skipping generation", thread.id
+            )
             return
 
         try:
@@ -1264,14 +1316,21 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             return
 
         if not agent_input:
-            logger.debug("🔤 Thread %s: agent_input is empty, skipping title generation", thread.id)
+            logger.debug(
+                "🔤 Thread %s: agent_input is empty, skipping title generation",
+                thread.id,
+            )
             return
 
         # For title generation, convert to a plain string because:
         # 1. Some LLMs (like Groq) don't support input_file/input_image
         # 2. The agents SDK's LiteLLM converter doesn't handle ResponseInputTextParam
         title_input = self._simplify_input_for_title(agent_input, input_item)
-        logger.debug("🔤 Thread %s: Starting title generation with input: %r", thread.id, title_input)
+        logger.debug(
+            "🔤 Thread %s: Starting title generation with input: %r",
+            thread.id,
+            title_input,
+        )
 
         metadata = {"__trace_source__": "thread-title", "thread_id": thread.id}
         try:
@@ -1280,9 +1339,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             pass
 
         run_config_kwargs: dict[str, Any] = {"trace_metadata": metadata}
-        provider_binding = getattr(
-            self._title_agent, "_chatkit_provider_binding", None
-        )
+        provider_binding = getattr(self._title_agent, "_chatkit_provider_binding", None)
         if provider_binding is not None:
             run_config_kwargs["model_provider"] = provider_binding.provider
 
@@ -1318,7 +1375,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         raw_title = getattr(run, "final_output", "")
         if isinstance(raw_title, str):
-            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip('''"'`"'"«»''')
+            normalized_title = (
+                re.sub(r"\s+", " ", raw_title).strip().strip(""""'`"'"«»""")
+            )
         else:
             try:
                 normalized_title = str(raw_title).strip()
@@ -1615,7 +1674,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         It performs the cleanup that would normally happen when resuming from a wait state,
         then continues the workflow to the next step.
         """
-        from ..tool_builders.computer_use import get_thread_browsers, cleanup_browser_cache
+        from ..tool_builders.computer_use import (
+            get_thread_browsers,
+            cleanup_browser_cache,
+        )
         from chatkit.agents import AgentContext
 
         logger.info("Handling continue_workflow action for thread %s", thread.id)
@@ -1642,7 +1704,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
         else:
             # No wait state (agent mode) - just capture screenshot and clean up
-            logger.info("No wait state (agent mode) - capturing screenshot and cleaning up")
+            logger.info(
+                "No wait state (agent mode) - capturing screenshot and cleaning up"
+            )
 
         # Get cached browsers for this thread
         browsers = get_thread_browsers(thread.id)
@@ -1653,7 +1717,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             for cache_key, browser in list(browsers.items()):
                 try:
                     if data_url is None:
-                        logger.info("Capturing final screenshot from browser %s", cache_key)
+                        logger.info(
+                            "Capturing final screenshot from browser %s", cache_key
+                        )
                         data_url = await browser.screenshot()
                         logger.info(
                             "Screenshot captured, length: %d",
@@ -1666,9 +1732,16 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         await asyncio.wait_for(browser.close(), timeout=5.0)
                         logger.info("Browser %s closed successfully", cache_key)
                     except asyncio.TimeoutError:
-                        logger.warning("Browser %s close timed out after 5s, continuing anyway", cache_key)
+                        logger.warning(
+                            "Browser %s close timed out after 5s, continuing anyway",
+                            cache_key,
+                        )
                     except Exception as close_error:
-                        logger.warning("Browser %s close failed: %s, continuing anyway", cache_key, close_error)
+                        logger.warning(
+                            "Browser %s close failed: %s, continuing anyway",
+                            cache_key,
+                            close_error,
+                        )
                 except Exception as e:
                     logger.error("Error with browser %s: %s", cache_key, e)
 
@@ -1702,7 +1775,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if item.type == "workflow":
                     workflow_item = item
                     for idx, task in enumerate(workflow_item.workflow.tasks):
-                        if isinstance(task, ComputerUseTask) or (hasattr(task, "type") and task.type == "computer_use"):
+                        if isinstance(task, ComputerUseTask) or (
+                            hasattr(task, "type") and task.type == "computer_use"
+                        ):
                             computer_use_item = workflow_item
                             computer_use_task_index = idx
                             break
@@ -1711,22 +1786,30 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
             if computer_use_item and computer_use_task_index >= 0:
                 # Get the existing ComputerUseTask
-                existing_task = computer_use_item.workflow.tasks[computer_use_task_index]
+                existing_task = computer_use_item.workflow.tasks[
+                    computer_use_task_index
+                ]
 
                 # Check if this is an SSH session (no screenshot needed)
-                is_ssh_session = hasattr(existing_task, "ssh_token") and existing_task.ssh_token
+                is_ssh_session = (
+                    hasattr(existing_task, "ssh_token") and existing_task.ssh_token
+                )
 
                 # 1. Update ComputerUseTask to complete status
                 updated_computer_task = ComputerUseTask(
                     type="computer_use",
-                    title=existing_task.title if hasattr(existing_task, "title") else "Session Computer Use",
+                    title=existing_task.title
+                    if hasattr(existing_task, "title")
+                    else "Session Computer Use",
                     status_indicator="complete",
                     debug_url_token=None,  # Clear the token
                     ssh_token=None,  # Clear SSH token too
                     vnc_token=None,  # Clear VNC token too
                     current_action="Session terminée",
                 )
-                computer_use_item.workflow.tasks[computer_use_task_index] = updated_computer_task
+                computer_use_item.workflow.tasks[computer_use_task_index] = (
+                    updated_computer_task
+                )
                 logger.info("ComputerUseTask marked as complete")
 
                 # 2. Create and add ImageTask with the screenshot (skip for SSH sessions)
@@ -1756,13 +1839,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 try:
                     if isinstance(computer_use_item.created_at, str):
                         from dateutil import parser
+
                         created_at = parser.parse(computer_use_item.created_at)
                     else:
                         created_at = computer_use_item.created_at
 
                     # Make both datetimes timezone-naive for comparison
                     now = datetime.now()
-                    if hasattr(created_at, 'tzinfo') and created_at.tzinfo is not None:
+                    if hasattr(created_at, "tzinfo") and created_at.tzinfo is not None:
                         created_at = created_at.replace(tzinfo=None)
 
                     delta = now - created_at
@@ -1773,19 +1857,32 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
                 computer_use_item.workflow.summary = DurationSummary(duration=duration)
                 computer_use_item.workflow.expanded = False
-                logger.info("Setting workflow summary: duration=%ds, expanded=%s", duration, computer_use_item.workflow.expanded)
+                logger.info(
+                    "Setting workflow summary: duration=%ds, expanded=%s",
+                    duration,
+                    computer_use_item.workflow.expanded,
+                )
 
                 # Save to store
-                await self.store.add_thread_item(thread.id, computer_use_item, context=context)
+                await self.store.add_thread_item(
+                    thread.id, computer_use_item, context=context
+                )
 
                 # Emit done event with full updated item
-                logger.info("Emitting ThreadItemDoneEvent with summary=%s", computer_use_item.workflow.summary)
+                logger.info(
+                    "Emitting ThreadItemDoneEvent with summary=%s",
+                    computer_use_item.workflow.summary,
+                )
                 yield ThreadItemDoneEvent(item=computer_use_item)
                 # Allow event loop to flush the event before continuing
                 await asyncio.sleep(0)
-                logger.info("Workflow completed with screenshot, duration=%ds", duration)
+                logger.info(
+                    "Workflow completed with screenshot, duration=%ds", duration
+                )
             else:
-                logger.warning("Could not find ComputerUseTask workflow to add screenshot")
+                logger.warning(
+                    "Could not find ComputerUseTask workflow to add screenshot"
+                )
 
         # Clear wait state (only if it exists - manual mode)
         if wait_state:
@@ -1795,7 +1892,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         # Continue workflow to next step if there is one (manual mode only)
         if not next_step_slug:
-            logger.info("No next step or agent mode, workflow complete for thread %s", thread.id)
+            logger.info(
+                "No next step or agent mode, workflow complete for thread %s", thread.id
+            )
             return
 
         logger.info(">>> Continuing workflow to: %s", next_step_slug)
@@ -1894,7 +1993,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         step_progress_text: dict[str, str] = {}
         step_progress_headers: dict[str, str] = {}
         most_recent_widget_item_id: str | None = None
-        profiling_enabled = os.getenv("CHATKIT_WORKFLOW_PROFILING", "false").lower() in (
+        profiling_enabled = os.getenv(
+            "CHATKIT_WORKFLOW_PROFILING", "false"
+        ).lower() in (
             "1",
             "true",
             "yes",
@@ -1904,6 +2005,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         # Set thread_id in context for browser caching
         from ..tool_builders.computer_use import set_current_thread_id
         import asyncio
+
         current_task = asyncio.current_task()
         logger.info(
             f"🎯 DÉBUT WORKFLOW: thread_id={thread.id}, task_id={id(current_task) if current_task else 'N/A'}"
@@ -1982,8 +2084,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                             thread.metadata = {"workflow": {}}
 
                     # Ensure workflow metadata has basic info if missing
-                    if not thread.metadata.get("workflow", {}).get("id") and workflow_slug:
-                         thread.metadata["workflow"]["slug"] = workflow_slug
+                    if (
+                        not thread.metadata.get("workflow", {}).get("id")
+                        and workflow_slug
+                    ):
+                        thread.metadata["workflow"]["slug"] = workflow_slug
 
                     thread.metadata["workflow"]["current_step"] = {
                         "slug": current_step_slug,
@@ -1993,13 +2098,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
                     # Persist thread
                     try:
-                        await self.store.save_thread(thread, context=agent_context.request_context)
+                        await self.store.save_thread(
+                            thread, context=agent_context.request_context
+                        )
                     except Exception:
                         logger.warning(
                             "Failed to persist current step %s for thread %s",
                             current_step_slug,
                             thread.id,
-                            exc_info=True
+                            exc_info=True,
                         )
 
                 waiting_text = step_progress_text.get(update.key)

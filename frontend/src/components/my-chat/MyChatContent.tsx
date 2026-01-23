@@ -235,7 +235,8 @@ export function MyChatContent() {
   });
 
   // API config
-  const { apiConfig, attachmentsEnabled, debugSnapshot } = useChatApiConfig({ token, hostedFlowEnabled, getClientSecret, missingDomainKeyWarningShownRef });
+  const workflowId = workflowSelection.kind === "local" ? (workflowSelection.workflow?.id ?? null) : activeWorkflow?.id ?? null;
+  const { apiConfig, attachmentsEnabled, debugSnapshot } = useChatApiConfig({ token, hostedFlowEnabled, getClientSecret, missingDomainKeyWarningShownRef, workflowId });
   const sidebarApiConfig = useMemo(() => token ? { url: debugSnapshot.apiUrl || "/api/chatkit", headers: { Authorization: `Bearer ${token}` } } : null, [token, debugSnapshot.apiUrl]);
 
   // Attachments config
