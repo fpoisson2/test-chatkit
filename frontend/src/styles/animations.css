@@ -99,8 +99,7 @@ button.btn-primary:not(:disabled):hover {
 }
 
 .loading-spinner,
-.loading-indicator,
-[class*="loading"] {
+.loading-indicator {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
