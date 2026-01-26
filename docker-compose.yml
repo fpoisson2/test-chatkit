@@ -110,12 +110,23 @@ services:
       - redis-data:/data
     networks:
       - app-network
-  # cloudflared:
-  #   image: cloudflare/cloudflared:latest
-  #   command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:?CLOUDFLARED_TOKEN is required}
-  #   restart: unless-stopped
-  #   networks:
-  #     - app-network
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: >
+      sh -c "
+      if [ -z \"$$CLOUDFLARED_TOKEN\" ]; then
+        echo 'CLOUDFLARED_TOKEN is not set. Cloudflare Tunnel is disabled. Entering idle mode...';
+        while true; do sleep 3600; done;
+      else
+        echo 'CLOUDFLARED_TOKEN found. Starting Cloudflare Tunnel...';
+        exec cloudflared tunnel --no-autoupdate run --token $$CLOUDFLARED_TOKEN;
+      fi
+      "
+    restart: unless-stopped
+    environment:
+      CLOUDFLARED_TOKEN: ${CLOUDFLARED_TOKEN:-}
+    networks:
+      - app-network
   celery-worker:
     image: chatkit-backend:latest
     pull_policy: never
