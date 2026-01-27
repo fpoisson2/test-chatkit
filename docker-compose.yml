@@ -112,16 +112,7 @@ services:
       - app-network
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: >
-      sh -c "
-      if [ -z \"$$CLOUDFLARED_TOKEN\" ]; then
-        echo 'CLOUDFLARED_TOKEN is not set. Cloudflare Tunnel is disabled. Entering idle mode...';
-        while true; do sleep 3600; done;
-      else
-        echo 'CLOUDFLARED_TOKEN found. Starting Cloudflare Tunnel...';
-        exec cloudflared tunnel --no-autoupdate run --token $$CLOUDFLARED_TOKEN;
-      fi
-      "
+    command: tunnel run --token ${CLOUDFLARED_TOKEN}
     restart: unless-stopped
     environment:
       CLOUDFLARED_TOKEN: ${CLOUDFLARED_TOKEN:-}
