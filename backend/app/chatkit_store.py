@@ -56,6 +56,22 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             raise NotFoundError("Thread introuvable")
         return context.user_id
 
+    def _resolve_owner_id_for_thread(
+        self,
+        session: Session,
+        thread_id: str,
+        context: ChatKitRequestContext,
+    ) -> str:
+        owner_id = self._require_user_id(context)
+        if not context.is_admin:
+            return owner_id
+
+        stmt = select(ChatThread.owner_id).where(ChatThread.id == thread_id)
+        record_owner = session.execute(stmt).scalar_one_or_none()
+        if record_owner is None:
+            raise NotFoundError(f"Thread {thread_id} introuvable")
+        return str(record_owner)
+
     async def _run(self, func: Callable[[Session], _T]) -> _T:
         return await asyncio.to_thread(self._run_sync, func)
 
@@ -279,9 +295,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         Retourne un tuple (données, mime_type) ou None si non trouvé.
         """
-        owner_id = self._require_user_id(context)
-
         def _load(session: Session) -> tuple[bytes, str] | None:
+            owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
             self._require_thread_record(
                 session,
@@ -498,9 +513,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
     async def load_thread(
         self, thread_id: str, context: ChatKitRequestContext
     ) -> ThreadMetadata:
-        owner_id = self._require_user_id(context)
-
         def _load(session: Session) -> ThreadMetadata:
+            owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
             _record, payload = self._require_thread_record(
                 session,
@@ -569,9 +583,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         order: str,
         context: ChatKitRequestContext,
     ) -> Page[ThreadItem]:
-        owner_id = self._require_user_id(context)
-
         def _load(session: Session) -> Page[ThreadItem]:
+            owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
             self._require_thread_record(
                 session,
@@ -658,13 +671,15 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
     async def load_attachment(
         self, attachment_id: str, context: ChatKitRequestContext
     ) -> Attachment:
-        owner_id = self._require_user_id(context)
-
         def _load(session: Session) -> Attachment:
-            stmt = select(ChatAttachment).where(
-                ChatAttachment.id == attachment_id,
-                ChatAttachment.owner_id == owner_id,
-            )
+            if context.is_admin:
+                stmt = select(ChatAttachment).where(ChatAttachment.id == attachment_id)
+            else:
+                owner_id = self._require_user_id(context)
+                stmt = select(ChatAttachment).where(
+                    ChatAttachment.id == attachment_id,
+                    ChatAttachment.owner_id == owner_id,
+                )
             record = session.execute(stmt).scalar_one_or_none()
             if record is None:
                 raise NotFoundError(f"Pièce jointe {attachment_id} introuvable")
@@ -813,9 +828,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
     async def load_item(
         self, thread_id: str, item_id: str, context: ChatKitRequestContext
     ) -> ThreadItem:
-        owner_id = self._require_user_id(context)
-
         def _load(session: Session) -> ThreadItem:
+            owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
             self._require_thread_record(
                 session,

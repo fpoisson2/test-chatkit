@@ -201,7 +201,7 @@ export const AdminWorkflowMonitorPage = () => {
 
   const handleViewThread = useCallback((threadId: string) => {
     // Ouvrir le thread dans un nouvel onglet
-    window.open(`/chat/${threadId}`, "_blank");
+    window.open(`/c/${threadId}`, "_blank");
   }, []);
 
   const handleCopyThreadId = useCallback((threadId: string) => {

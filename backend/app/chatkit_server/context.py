@@ -147,6 +147,7 @@ class ChatKitRequestContext:
 
     user_id: str | None
     email: str | None
+    is_admin: bool = False
     is_lti_user: bool = False
     authorization: str | None = None
     public_base_url: str | None = None

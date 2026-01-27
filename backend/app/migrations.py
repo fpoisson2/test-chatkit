@@ -12,6 +12,7 @@ from .models import (
     LTIRegistration,
     LTIResourceLink,
     LTIUserSession,
+    LTIWorkflowThread,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,18 @@ def _create_lti_tables(connection) -> None:
             LTIResourceLink.__table__,
             LTIUserSession.__table__,
         ],
+    )
+
+
+def _lti_workflow_threads_table_exists(connection) -> bool:
+    inspector = inspect(connection)
+    return inspector.has_table("lti_workflow_threads")
+
+
+def _create_lti_workflow_threads_table(connection) -> None:
+    Base.metadata.create_all(
+        bind=connection,
+        tables=[LTIWorkflowThread.__table__],
     )
 
 
@@ -564,6 +577,12 @@ def check_and_apply_migrations():
             "description": "Ensure LTI registrations allow multiple client IDs per issuer",
             "check_fn": _lti_registrations_unique_constraint_is_correct,
             "apply_fn": _ensure_lti_registrations_unique_constraint,
+        },
+        {
+            "id": "013_create_lti_workflow_threads_table",
+            "description": "Create LTI workflow thread mapping table",
+            "check_fn": _lti_workflow_threads_table_exists,
+            "apply_fn": _create_lti_workflow_threads_table,
         },
     ]
 

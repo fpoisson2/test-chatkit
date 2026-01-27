@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import secrets
+import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
@@ -23,10 +24,12 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
 from ..models import (
+    ChatThread,
     LTIDeployment,
     LTIRegistration,
     LTIResourceLink,
     LTIUserSession,
+    LTIWorkflowThread,
     User,
     Workflow,
 )
@@ -338,6 +341,10 @@ class LTIService:
 
         self.session.commit()
 
+        thread_id: str | None = None
+        if resource_link is not None:
+            thread_id = self._ensure_lti_thread(user=user, resource_link=resource_link, workflow=workflow)
+
         token = create_access_token(user)
 
         # Redirect to frontend LTI launch handler
@@ -366,6 +373,7 @@ class LTIService:
         launch_url = (
             f"{frontend_base}/lti/launch"
             f"?token={token_encoded}&user={user_json}&workflow={workflow.id}"
+            f"{'&thread_id=' + quote(thread_id) if thread_id else ''}"
         )
 
         logger.info(
@@ -375,6 +383,176 @@ class LTIService:
         )
 
         return RedirectResponse(url=launch_url, status_code=status.HTTP_302_FOUND)
+
+    def _ensure_lti_thread(
+        self,
+        *,
+        user: User,
+        resource_link: LTIResourceLink,
+        workflow: Workflow,
+    ) -> str:
+        """Retourne un thread_id stable pour (user, resource_link, workflow)."""
+
+        now = _now_utc()
+        desired_definition_id = workflow.active_version_id
+
+        mapping = self.session.scalar(
+            select(LTIWorkflowThread).where(
+                LTIWorkflowThread.user_id == user.id,
+                LTIWorkflowThread.resource_link_id == resource_link.id,
+                LTIWorkflowThread.workflow_id == workflow.id,
+            )
+        )
+
+        def _create_thread_record(new_thread_id: str) -> None:
+            metadata: dict[str, Any] = {
+                "owner_id": str(user.id),
+                "workflow": {
+                    "id": workflow.id,
+                    "slug": workflow.slug,
+                    "definition_id": desired_definition_id,
+                },
+                "lti": {
+                    "resource_link_id": resource_link.id,
+                    "resource_link_ref": resource_link.resource_link_id,
+                },
+            }
+            payload: dict[str, Any] = {
+                "id": new_thread_id,
+                "created_at": now.isoformat(),
+                "metadata": metadata,
+                "title": workflow.display_name,
+            }
+            self.session.add(
+                ChatThread(
+                    id=new_thread_id,
+                    owner_id=str(user.id),
+                    created_at=now,
+                    updated_at=now,
+                    payload=payload,
+                )
+            )
+
+        def _ensure_thread_metadata(existing_thread: ChatThread) -> None:
+            """Injecte/normalise metadata.workflow + metadata.lti sur un thread existant."""
+
+            payload = existing_thread.payload if isinstance(existing_thread.payload, dict) else {}
+            metadata = payload.get("metadata") if isinstance(payload, dict) else None
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            workflow_meta = metadata.get("workflow")
+            if not isinstance(workflow_meta, dict):
+                workflow_meta = {}
+
+            changed = False
+            if workflow_meta.get("id") != workflow.id:
+                workflow_meta["id"] = workflow.id
+                changed = True
+            if workflow_meta.get("slug") != workflow.slug:
+                workflow_meta["slug"] = workflow.slug
+                changed = True
+            if desired_definition_id is not None and workflow_meta.get("definition_id") != desired_definition_id:
+                workflow_meta["definition_id"] = desired_definition_id
+                changed = True
+
+            lti_meta = metadata.get("lti")
+            if not isinstance(lti_meta, dict):
+                lti_meta = {}
+            if lti_meta.get("resource_link_id") != resource_link.id:
+                lti_meta["resource_link_id"] = resource_link.id
+                changed = True
+            if lti_meta.get("resource_link_ref") != resource_link.resource_link_id:
+                lti_meta["resource_link_ref"] = resource_link.resource_link_id
+                changed = True
+
+            metadata["workflow"] = workflow_meta
+            metadata["lti"] = lti_meta
+            payload["metadata"] = metadata
+
+            if changed:
+                existing_thread.payload = payload
+                existing_thread.updated_at = now
+
+        if mapping is not None:
+            existing_thread = self.session.scalar(
+                select(ChatThread).where(ChatThread.id == mapping.thread_id)
+            )
+            if existing_thread is not None and existing_thread.owner_id == str(user.id):
+                _ensure_thread_metadata(existing_thread)
+                mapping.updated_at = now
+                self.session.commit()
+                return mapping.thread_id
+
+            # Mapping pointe vers un thread manquant / mauvais owner -> recréer
+            new_thread_id = uuid.uuid4().hex
+            _create_thread_record(new_thread_id)
+            mapping.thread_id = new_thread_id
+            mapping.updated_at = now
+            self.session.commit()
+            return new_thread_id
+
+        # Rétro-compat: si l'étudiant avait déjà un thread pour ce workflow,
+        # on le réutilise pour éviter de "perdre" le fil à la première mise à jour.
+        candidates = self.session.scalars(
+            select(ChatThread)
+            .where(ChatThread.owner_id == str(user.id))
+            .order_by(ChatThread.updated_at.desc())
+            .limit(200)
+        ).all()
+
+        best: ChatThread | None = None
+        best_score = -1
+        for candidate in candidates:
+            payload = candidate.payload if isinstance(candidate.payload, dict) else {}
+            metadata = payload.get("metadata") if isinstance(payload, dict) else None
+            if not isinstance(metadata, dict):
+                continue
+            wf_meta = metadata.get("workflow")
+            if not isinstance(wf_meta, dict):
+                continue
+            if wf_meta.get("id") != workflow.id:
+                continue
+            # Score plus haut si on retrouve déjà la trace LTI exacte
+            score = 1
+            lti_meta = metadata.get("lti")
+            if isinstance(lti_meta, dict):
+                if lti_meta.get("resource_link_id") == resource_link.id:
+                    score = 3
+                elif lti_meta.get("resource_link_ref") == resource_link.resource_link_id:
+                    score = 2
+            if score > best_score:
+                best = candidate
+                best_score = score
+                if best_score == 3:
+                    break
+
+        if best is not None and best.owner_id == str(user.id):
+            _ensure_thread_metadata(best)
+            self.session.add(
+                LTIWorkflowThread(
+                    user_id=user.id,
+                    resource_link_id=resource_link.id,
+                    workflow_id=workflow.id,
+                    thread_id=best.id,
+                )
+            )
+            self.session.commit()
+            return best.id
+
+        # Première fois (vraiment): créer le thread et le mapping
+        thread_id = uuid.uuid4().hex
+        _create_thread_record(thread_id)
+        self.session.add(
+            LTIWorkflowThread(
+                user_id=user.id,
+                resource_link_id=resource_link.id,
+                workflow_id=workflow.id,
+                thread_id=thread_id,
+            )
+        )
+        self.session.commit()
+        return thread_id
 
     def handle_deep_link(
         self,

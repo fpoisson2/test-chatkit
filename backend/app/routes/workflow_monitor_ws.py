@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Any
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
@@ -80,13 +80,13 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             # On devra les charger efficacement
         )
         # Filter for sessions updated in the last 2 hours (truly active sessions)
-        .where(ChatThread.updated_at >= datetime.utcnow() - timedelta(hours=2))
+        .where(ChatThread.updated_at >= datetime.now(timezone.utc) - timedelta(hours=2))
         .order_by(ChatThread.updated_at.desc())
         .limit(100) # Sécurité pour ne pas exploser la mémoire
     )
     
     all_threads = session.scalars(stmt).all()
-    active_sessions = []
+    active_sessions: list[dict[str, Any]] = []
 
     logger.info(f"[WS_MONITOR] Checking {len(all_threads)} threads for active workflow sessions")
 
@@ -227,8 +227,33 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             "status": "waiting_user" if wait_state else "active",
         })
 
-    logger.info(f"[WS_MONITOR] Found {len(active_sessions)} active workflow sessions")
-    return active_sessions
+    # Déduplication: un seul thread "actif" par (utilisateur, workflow) dans le monitoring.
+    # Raison: un étudiant peut ouvrir plusieurs onglets / relancer un workflow, créant plusieurs threads
+    # très similaires, ce qui donne des doublons dans l'UI d'admin.
+    deduped: dict[tuple[int, int], tuple[datetime, dict[str, Any]]] = {}
+    for sess in active_sessions:
+        key = (sess["user"]["id"], sess["workflow"]["id"])
+        try:
+            last_activity = datetime.fromisoformat(sess["last_activity"])
+            if last_activity.tzinfo is None:
+                last_activity = last_activity.replace(tzinfo=timezone.utc)
+        except Exception:
+            last_activity = datetime.min.replace(tzinfo=timezone.utc)
+
+        existing = deduped.get(key)
+        if existing is None or last_activity > existing[0]:
+            deduped[key] = (last_activity, sess)
+
+    deduped_sessions = [entry[1] for entry in sorted(deduped.values(), key=lambda x: x[0], reverse=True)]
+    if len(deduped_sessions) != len(active_sessions):
+        logger.info(
+            f"[WS_MONITOR] Deduped sessions: {len(active_sessions)} -> {len(deduped_sessions)} "
+            "(by user_id + workflow_id)"
+        )
+    else:
+        logger.info(f"[WS_MONITOR] Found {len(deduped_sessions)} active workflow sessions")
+
+    return deduped_sessions
 
 
 @router.websocket("/api/admin/workflows/monitor")

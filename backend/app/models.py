@@ -1177,6 +1177,60 @@ class LTIUserSession(Base):
     user: Mapped[User | None] = relationship("User")
 
 
+class LTIWorkflowThread(Base):
+    """Mapping persistant entre un lancement LTI et un thread ChatKit.
+
+    Un étudiant (user_id) dans un lien LTI (resource_link_id) pour un workflow
+    donné (workflow_id) doit revenir au même thread_id.
+    """
+
+    __tablename__ = "lti_workflow_threads"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "resource_link_id",
+            "workflow_id",
+            name="uq_lti_workflow_threads_user_resource_workflow",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    resource_link_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("lti_resource_links.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workflow_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    user: Mapped[User] = relationship("User")
+    resource_link: Mapped[LTIResourceLink] = relationship("LTIResourceLink")
+    workflow: Mapped[Workflow] = relationship("Workflow")
+
+
 class Language(Base):
     """Traductions de langues stockées en base de données."""
 

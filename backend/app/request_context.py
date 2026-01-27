@@ -51,6 +51,7 @@ def build_chatkit_request_context(
     return ChatKitRequestContext(
         user_id=str(getattr(current_user, "id", None) or ""),
         email=getattr(current_user, "email", None),
+        is_admin=bool(getattr(current_user, "is_admin", False)),
         is_lti_user=bool(getattr(current_user, "is_lti", False)),
         authorization=authorization,
         public_base_url=base_url,
