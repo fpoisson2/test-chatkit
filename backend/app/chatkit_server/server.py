@@ -2030,6 +2030,22 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         ),
                         cleaned_reason or "<aucune>",
                     )
+                    # CRITICAL: Persist thread with wait state metadata to database
+                    # Without this, the wait state set by wait.py handler is lost
+                    # and the workflow restarts from the beginning on next message
+                    try:
+                        await self.store.save_thread(
+                            thread, context=agent_context.request_context
+                        )
+                        logger.info(
+                            "Thread %s wait state persisted to store", thread.id
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to persist wait state for thread %s",
+                            thread.id,
+                            exc_info=True,
+                        )
                 else:
                     logger.info(
                         "Workflow terminé pour le fil %s via le nœud %s (statut=%s, "

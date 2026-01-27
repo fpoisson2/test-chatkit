@@ -32,3 +32,4 @@ backend-service.yaml
 .claude/settings.local.json
 *.yaml
 frontend/Dockerfile
+/backend/app/uploaded_attachments
