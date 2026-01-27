@@ -64,7 +64,29 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-def get_active_sessions(session: Session) -> list[dict[str, Any]]:
+DEFAULT_THREAD_SCAN_LIMIT = 500
+MAX_THREAD_SCAN_LIMIT = 2000
+DEFAULT_LOOKBACK_HOURS: int | None = None
+
+
+def _parse_int_query(value: str | None, *, default: int | None, min_value: int, max_value: int) -> int | None:
+    if value is None:
+        return default
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+
+    return max(min_value, min(max_value, parsed))
+
+
+def get_active_sessions(
+    session: Session,
+    *,
+    limit: int = DEFAULT_THREAD_SCAN_LIMIT,
+    lookback_hours: int | None = DEFAULT_LOOKBACK_HOURS,
+) -> list[dict[str, Any]]:
     """Récupère toutes les sessions actives (optimisé)."""
     # Optimisation: Filtrer directement en SQL si possible, sinon filtrer en Python mais avec eager loading
     # Note: Le filtrage JSONB dépend du dialecte DB, on reste générique ici mais on eager load
@@ -72,17 +94,20 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
     # On ne récupère que les threads qui ont potentiellement un workflow
     # Idéalement on filtrerait sur payload->'metadata'->'workflow' mais cela dépend de la DB
     # Pour l'instant on charge tout mais avec les relations nécessaires pour éviter le N+1
-    stmt = (
-        select(ChatThread)
-        .options(
-            # Eager load pour éviter les requêtes N+1
-            # Note: User et Workflow ne sont pas des relations directes sur ChatThread dans le modèle actuel
-            # On devra les charger efficacement
+    stmt = select(ChatThread).options(
+        # Eager load pour éviter les requêtes N+1
+        # Note: User et Workflow ne sont pas des relations directes sur ChatThread dans le modèle actuel
+        # On devra les charger efficacement
+    )
+
+    if lookback_hours is not None:
+        stmt = stmt.where(
+            ChatThread.updated_at >= datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         )
-        # Filter for sessions updated in the last 2 hours (truly active sessions)
-        .where(ChatThread.updated_at >= datetime.now(timezone.utc) - timedelta(hours=2))
-        .order_by(ChatThread.updated_at.desc())
-        .limit(100) # Sécurité pour ne pas exploser la mémoire
+
+    stmt = (
+        stmt.order_by(ChatThread.updated_at.desc())
+        .limit(limit)
     )
     
     all_threads = session.scalars(stmt).all()
@@ -296,9 +321,27 @@ async def workflow_monitor_websocket(
         """Fetch active sessions with a fresh DB session."""
         session = SessionLocal()
         try:
-            return get_active_sessions(session)
+            return get_active_sessions(
+                session,
+                limit=thread_scan_limit,
+                lookback_hours=lookback_hours,
+            )
         finally:
             session.close()
+
+    # Paramètres optionnels (ex: ?limit=500&lookback_hours=168)
+    thread_scan_limit = _parse_int_query(
+        websocket.query_params.get("limit"),
+        default=DEFAULT_THREAD_SCAN_LIMIT,
+        min_value=50,
+        max_value=MAX_THREAD_SCAN_LIMIT,
+    )
+    lookback_hours = _parse_int_query(
+        websocket.query_params.get("lookback_hours"),
+        default=DEFAULT_LOOKBACK_HOURS,
+        min_value=1,
+        max_value=24 * 365,
+    )
 
     try:
         await manager.connect(websocket)

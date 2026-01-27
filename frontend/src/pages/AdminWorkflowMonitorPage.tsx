@@ -60,6 +60,7 @@ export const AdminWorkflowMonitorPage = () => {
   const [filterWorkflowId, setFilterWorkflowId] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [lookbackHours, setLookbackHours] = useState<number | null>(null);
 
   // Confirmations pour actions destructives
   const [confirmAction, setConfirmAction] = useState<{
@@ -85,6 +86,7 @@ export const AdminWorkflowMonitorPage = () => {
   } = useWorkflowMonitorWebSocket({
     token,
     enabled: true,
+    lookbackHours,
     onUpdate: handleWebSocketUpdate,
     onError: handleWebSocketError,
   });
@@ -197,6 +199,7 @@ export const AdminWorkflowMonitorPage = () => {
     setFilterWorkflowId(null);
     setFilterStatus(null);
     setSearchTerm("");
+    setLookbackHours(null);
   }, []);
 
   const handleViewThread = useCallback((threadId: string) => {
@@ -460,7 +463,11 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
   const stuckSessionsCount = filteredSessions.filter(isStuckSession).length;
   // Only display WebSocket error if not connected - if connected, any error was transient
   const displayError = error || (!wsConnected && wsError);
-  const hasActiveFilters = filterWorkflowId !== null || filterStatus !== null || searchTerm.trim() !== "";
+  const hasActiveFilters =
+    filterWorkflowId !== null ||
+    filterStatus !== null ||
+    searchTerm.trim() !== "" ||
+    lookbackHours !== null;
 
   return (
     <>
@@ -550,6 +557,26 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
                       onChange={(e) => setSearchTerm(e.target.value)}
                       style={{ width: "100%", fontSize: "14px" }}
                     />
+                  </div>
+
+                  {/* Fenêtre temporelle */}
+                  <div style={{ flex: "1 1 140px", minWidth: "140px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>
+                      Fenêtre
+                    </label>
+                    <select
+                      className="input"
+                      value={lookbackHours ?? ""}
+                      onChange={(e) =>
+                        setLookbackHours(e.target.value ? Number(e.target.value) : null)
+                      }
+                      style={{ width: "100%", fontSize: "14px" }}
+                    >
+                      <option value="">Tout l'historique</option>
+                      <option value="24">24 heures</option>
+                      <option value="168">7 jours</option>
+                      <option value="720">30 jours</option>
+                    </select>
                   </div>
 
                   {/* Bouton réinitialiser */}

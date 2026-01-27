@@ -222,14 +222,18 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
     async def open_attachment(
         self, attachment_id: str, context: ChatKitRequestContext
     ) -> tuple[Path, str, str]:
-        if not context.user_id:
-            raise NotFoundError(f"Pièce jointe {attachment_id} introuvable")
-
         attachment = self._coerce_file_attachment(
             await self._store.load_attachment(attachment_id, context)
         )
 
-        user_dir = _user_directory(self._base_dir, context.user_id)
+        if context.is_admin:
+            owner_id = await self._store.load_attachment_owner(attachment_id, context)
+        else:
+            if not context.user_id:
+                raise NotFoundError(f"Pièce jointe {attachment_id} introuvable")
+            owner_id = context.user_id
+
+        user_dir = _user_directory(self._base_dir, owner_id)
         file_path = user_dir / _attachment_filename(attachment_id, attachment.name)
         if not file_path.is_file():
             raise NotFoundError(f"Pièce jointe {attachment_id} introuvable")

@@ -687,6 +687,23 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         return await self._run(_load)
 
+    async def load_attachment_owner(
+        self, attachment_id: str, context: ChatKitRequestContext
+    ) -> str:
+        def _load(session: Session) -> str:
+            stmt = select(ChatAttachment.owner_id).where(
+                ChatAttachment.id == attachment_id
+            )
+            if not context.is_admin:
+                owner_id = self._require_user_id(context)
+                stmt = stmt.where(ChatAttachment.owner_id == owner_id)
+            owner_id = session.execute(stmt).scalar_one_or_none()
+            if owner_id is None:
+                raise NotFoundError(f"Pièce jointe {attachment_id} introuvable")
+            return owner_id
+
+        return await self._run(_load)
+
     async def delete_attachment(
         self, attachment_id: str, context: ChatKitRequestContext
     ) -> None:

@@ -42,6 +42,7 @@ interface WebSocketMessage {
 interface UseWorkflowMonitorWebSocketOptions {
   token: string | null;
   enabled: boolean;
+  lookbackHours?: number | null;
   onUpdate?: (sessions: ActiveWorkflowSession[]) => void;
   onError?: (error: string) => void;
 }
@@ -97,7 +98,10 @@ const sanitizeApiBasePath = (pathname: string) => {
   return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
 };
 
-const buildWorkflowMonitorUrl = (token: string) => {
+const buildWorkflowMonitorUrl = (
+  token: string,
+  lookbackHours?: number | null,
+) => {
   if (typeof window === "undefined") {
     throw new Error("WebSocket non disponible dans cet environnement");
   }
@@ -114,6 +118,9 @@ const buildWorkflowMonitorUrl = (token: string) => {
   target.pathname = monitorPath.startsWith("/") ? monitorPath : `/${monitorPath}`;
   target.search = "";
   target.searchParams.set("token", token);
+  if (lookbackHours !== null && lookbackHours !== undefined) {
+    target.searchParams.set("lookback_hours", String(lookbackHours));
+  }
 
   return target.toString();
 };
@@ -121,6 +128,7 @@ const buildWorkflowMonitorUrl = (token: string) => {
 export const useWorkflowMonitorWebSocket = ({
   token,
   enabled,
+  lookbackHours,
   onUpdate,
   onError,
 }: UseWorkflowMonitorWebSocketOptions): UseWorkflowMonitorWebSocketReturn => {
@@ -144,8 +152,8 @@ export const useWorkflowMonitorWebSocket = ({
     if (!token) {
       throw new Error("Token manquant pour la connexion WebSocket");
     }
-    return buildWorkflowMonitorUrl(token);
-  }, [token]);
+    return buildWorkflowMonitorUrl(token, lookbackHours);
+  }, [token, lookbackHours]);
 
   const connect = useCallback(() => {
     if (!enabled || !token) {
@@ -223,7 +231,7 @@ export const useWorkflowMonitorWebSocket = ({
       onErrorRef.current?.("Failed to connect to WebSocket");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, token]);
+  }, [enabled, token, lookbackHours]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -285,7 +293,7 @@ export const useWorkflowMonitorWebSocket = ({
       disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, token]);
+  }, [enabled, token, lookbackHours]);
 
   return {
     sessions,
