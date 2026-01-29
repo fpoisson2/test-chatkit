@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { WorkflowSummary } from "../types/workflows";
 import { chatkitApi, type ChatKitWorkflowInfo } from "../utils/backend";
+import type { Thread } from "../chatkit/types";
 
 type UseChatkitWorkflowSyncParams = {
   token: string | null;
@@ -9,6 +10,8 @@ type UseChatkitWorkflowSyncParams = {
   fetchUpdates: () => Promise<void>;
   sendUserMessage: (content: string) => Promise<void>;
   initialThreadId: string | null;
+  /** Thread actuel pour vérifier s'il est vide (pour auto-start en contexte LTI) */
+  thread: Thread | null;
   reportError: (message: string, detail?: unknown) => void;
   enabled?: boolean;
   autoStartEnabled?: boolean;
@@ -29,6 +32,7 @@ export const useChatkitWorkflowSync = ({
   fetchUpdates,
   sendUserMessage,
   initialThreadId,
+  thread,
   reportError,
   enabled = true,
   autoStartEnabled = true,
@@ -138,8 +142,13 @@ export const useChatkitWorkflowSync = ({
       return;
     }
 
-    // Only auto-start when there's no thread (fresh start or new thread)
-    if (initialThreadId !== null) {
+    // Auto-start when:
+    // 1. No thread exists (fresh start) - initialThreadId === null
+    // 2. Thread exists but is empty (LTI context where backend creates empty thread)
+    const isNewThread = initialThreadId === null;
+    const isEmptyExistingThread = initialThreadId !== null && thread !== null && thread.items.length === 0;
+
+    if (!isNewThread && !isEmptyExistingThread) {
       return;
     }
 
@@ -170,9 +179,11 @@ export const useChatkitWorkflowSync = ({
     enabled,
     chatkitWorkflowInfo,
     initialThreadId,
+    thread,
     reportError,
     requestRefresh,
     sendUserMessage,
+    autoStartEnabled,
   ]);
 
   useEffect(() => {

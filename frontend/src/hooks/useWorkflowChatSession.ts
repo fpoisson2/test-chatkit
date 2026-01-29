@@ -54,6 +54,7 @@ export const useWorkflowChatSession = ({
     fetchUpdates,
     sendUserMessage,
     initialThreadId,
+    thread: control.thread,
     reportError,
     enabled: true, // Always enabled to support workflow sync in both local and hosted modes
     autoStartEnabled,
