@@ -50,6 +50,14 @@ export interface ComposerProps {
   onFilesSelected: (files: FileList | null) => void;
   /** Indique si un drag-and-drop de fichiers est en cours */
   isDraggingFiles?: boolean;
+  /** Edit mode state for branching */
+  editingState?: {
+    isEditing: boolean;
+    itemId: string;
+    originalContent: string;
+  } | null;
+  /** Callback to cancel edit mode */
+  onCancelEdit?: () => void;
 }
 
 // Export for testing
@@ -67,6 +75,8 @@ export function Composer({
   apiConfig,
   onFilesSelected,
   isDraggingFiles = false,
+  editingState,
+  onCancelEdit,
 }: ComposerProps): JSX.Element {
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
@@ -261,6 +271,50 @@ export function Composer({
     <>
       {/* Composer */}
       <div className="chatkit-composer">
+        {/* Edit mode banner */}
+        {editingState?.isEditing && (
+          <div className="chatkit-edit-banner">
+            <div className="chatkit-edit-banner-content">
+              <svg
+                className="chatkit-edit-banner-icon"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="6" y1="3" x2="6" y2="15"></line>
+                <circle cx="18" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <path d="M18 9a9 9 0 0 1-9 9"></path>
+              </svg>
+              <span>Editing message - this will create a new branch</span>
+            </div>
+            <button
+              type="button"
+              className="chatkit-edit-banner-cancel"
+              onClick={onCancelEdit}
+              aria-label="Cancel edit"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        )}
         <form
           onSubmit={handleSubmit}
           className={`chatkit-composer-form ${(isModelSelectorEnabled && availableModels.length > 0) || isMultiline ? 'is-multiline' : 'is-singleline'}${attachments.length > 0 ? ' has-attachments' : ''}${isDraggingFiles ? ' is-dragging' : ''}`}

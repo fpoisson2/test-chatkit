@@ -18,6 +18,7 @@ def build_chatkit_request_context(
     *,
     public_base_url: str | None = None,
     authorization: str | None = None,
+    branch_id: str | None = None,
     session: Session | None = None,
 ) -> ChatKitRequestContext:
     """Construct a :class:`ChatKitRequestContext` for the given user."""
@@ -55,6 +56,7 @@ def build_chatkit_request_context(
         is_lti_user=bool(getattr(current_user, "is_lti", False)),
         authorization=authorization,
         public_base_url=base_url,
+        branch_id=branch_id,
         **lti_kwargs,
     )
 

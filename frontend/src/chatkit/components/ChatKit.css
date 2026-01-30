@@ -3200,3 +3200,473 @@
   color: #fca5a5;
   border-color: #f87171;
 }
+
+/* =========================================
+   Conversation Branching Styles
+   ========================================= */
+
+/* Edit button on user messages */
+.chatkit-message-edit-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.chatkit-message-user:hover .chatkit-message-edit-button {
+  opacity: 1;
+}
+
+.chatkit-message-edit-button:hover {
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.chatkit-message-edit-button:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+.chatkit-message-edit-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Edit Message Modal */
+.chatkit-edit-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.chatkit-edit-modal {
+  background: var(--color-surface);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chatkit-edit-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.chatkit-edit-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.chatkit-edit-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chatkit-edit-modal-close:hover {
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.chatkit-edit-modal-close svg {
+  width: 20px;
+  height: 20px;
+}
+
+.chatkit-edit-modal-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chatkit-edit-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chatkit-edit-modal-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.chatkit-edit-modal-textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 12px;
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+
+.chatkit-edit-modal-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary, #3b82f6);
+}
+
+.chatkit-edit-modal-textarea::placeholder {
+  color: var(--color-text-secondary);
+}
+
+.chatkit-edit-modal-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+}
+
+.chatkit-edit-modal-input:focus {
+  outline: none;
+  border-color: var(--color-primary, #3b82f6);
+}
+
+.chatkit-edit-modal-input::placeholder {
+  color: var(--color-text-secondary);
+}
+
+.chatkit-edit-modal-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.chatkit-edit-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.chatkit-edit-modal-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chatkit-edit-modal-button-cancel {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.chatkit-edit-modal-button-cancel:hover {
+  background: var(--color-surface-secondary);
+}
+
+.chatkit-edit-modal-button-submit {
+  background: var(--color-primary, #3b82f6);
+  border: none;
+  color: white;
+}
+
+.chatkit-edit-modal-button-submit:hover:not(:disabled) {
+  background: var(--color-primary-hover, #2563eb);
+}
+
+.chatkit-edit-modal-button-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Branch Selector */
+.chatkit-branch-selector {
+  position: relative;
+  display: inline-flex;
+}
+
+.chatkit-branch-selector-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chatkit-branch-selector-trigger:hover:not(:disabled) {
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+  border-color: var(--color-text-secondary);
+}
+
+.chatkit-branch-selector-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chatkit-branch-selector-icon {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.chatkit-branch-selector-name {
+  font-weight: 500;
+  color: var(--color-text);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatkit-branch-selector-count {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.chatkit-branch-selector-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.chatkit-branch-selector[aria-expanded="true"] .chatkit-branch-selector-chevron {
+  transform: rotate(180deg);
+}
+
+.chatkit-branch-selector-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.chatkit-branch-selector-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.chatkit-branch-selector-option:first-child {
+  border-radius: 10px 10px 0 0;
+}
+
+.chatkit-branch-selector-option:last-child {
+  border-radius: 0 0 10px 10px;
+}
+
+.chatkit-branch-selector-option:only-child {
+  border-radius: 10px;
+}
+
+.chatkit-branch-selector-option:hover {
+  background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+}
+
+.chatkit-branch-selector-option-selected {
+  background: var(--appearance-accent-light, rgba(59, 130, 246, 0.1));
+}
+
+.chatkit-branch-selector-option-selected:hover {
+  background: var(--appearance-accent-light, rgba(59, 130, 246, 0.15));
+}
+
+.chatkit-branch-selector-option-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatkit-branch-selector-option-default {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.chatkit-branch-selector-option-check {
+  flex-shrink: 0;
+  color: var(--color-primary, #3b82f6);
+}
+
+/* Branch Indicator */
+.chatkit-branch-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--appearance-accent-light, rgba(59, 130, 246, 0.1));
+  border: none;
+  border-radius: 20px;
+  color: var(--color-primary, #3b82f6);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chatkit-branch-indicator:hover {
+  background: var(--appearance-accent-light, rgba(59, 130, 246, 0.15));
+}
+
+.chatkit-branch-indicator-icon {
+  flex-shrink: 0;
+}
+
+.chatkit-branch-indicator-name {
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dark theme overrides for branching */
+[data-theme="dark"] .chatkit-edit-modal-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="dark"] .chatkit-edit-modal {
+  background: var(--color-surface);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .chatkit-edit-modal-textarea,
+[data-theme="dark"] .chatkit-edit-modal-input {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .chatkit-branch-selector-dropdown {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .chatkit-branch-selector-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .chatkit-branch-selector-option-selected {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+[data-theme="dark"] .chatkit-branch-selector-option-selected:hover {
+  background: rgba(59, 130, 246, 0.25);
+}
+
+[data-theme="dark"] .chatkit-branch-indicator {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+/* Edit Banner (for branching) */
+.chatkit-edit-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--appearance-accent-light, rgba(59, 130, 246, 0.1));
+  border-bottom: 1px solid var(--color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.chatkit-edit-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chatkit-edit-banner-icon {
+  flex-shrink: 0;
+}
+
+.chatkit-edit-banner-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-primary, #3b82f6);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chatkit-edit-banner-cancel:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .chatkit-edit-banner {
+  background: rgba(59, 130, 246, 0.15);
+}

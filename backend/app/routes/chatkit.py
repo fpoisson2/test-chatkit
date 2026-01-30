@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,6 +118,7 @@ from ..workflows import (
     resolve_start_auto_start_message,
     resolve_start_hosted_workflows,
 )
+from ..services.branch_service import BranchService
 
 router = APIRouter()
 
@@ -1476,10 +1478,25 @@ async def chatkit_endpoint(
         payload_length,
     )
 
+    # Extract branch_id from payload for branch-specific operations
+    branch_id: str | None = None
+    try:
+        payload_json = json.loads(payload)
+        if isinstance(payload_json, dict):
+            req_type = payload_json.get("type")
+            params = payload_json.get("params") or {}
+            if req_type in {"threads.get_by_id", "threads.add_user_message"}:
+                candidate = params.get("branch_id")
+                if isinstance(candidate, str) and candidate.strip():
+                    branch_id = candidate.strip()
+    except Exception:
+        branch_id = None
+
     context = build_chatkit_request_context(
         current_user,
         request,
         public_base_url=base_url,
+        branch_id=branch_id,
     )
 
     try:
@@ -1506,3 +1523,132 @@ async def chatkit_endpoint(
     if isinstance(result, StreamingResult):
         return StreamingResponse(result, media_type="text/event-stream")
     return Response(content=result.json, media_type="application/json")
+
+
+# =============================================================================
+# Branch Management Endpoints
+# =============================================================================
+
+
+@router.get("/api/chatkit/threads/{thread_id}/branches")
+async def list_thread_branches(
+    thread_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """List all branches for a thread."""
+    branch_service = BranchService(SessionLocal)
+    owner_id = str(current_user.id)
+
+    branches = branch_service.list_branches(thread_id, owner_id)
+    current_branch_id = branch_service.get_current_branch_id(thread_id, owner_id)
+
+    return {
+        "branches": branches,
+        "current_branch_id": current_branch_id,
+    }
+
+
+@router.post("/api/chatkit/threads/{thread_id}/branches")
+async def create_thread_branch(
+    thread_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new branch from a fork point.
+
+    Request body:
+    - fork_after_item_id: The item ID after which to fork
+    - name: Optional name for the branch
+    - edited_content: The edited message content (optional, for creating the first message)
+    """
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Invalid request body"},
+        ) from exc
+
+    fork_after_item_id = body.get("fork_after_item_id")
+    if not fork_after_item_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "fork_after_item_id is required"},
+        )
+
+    name = body.get("name")
+    edited_content = body.get("edited_content")
+
+    branch_service = BranchService(SessionLocal)
+    owner_id = str(current_user.id)
+
+    # Check if we can create a branch (respects max_branches limit if configured)
+    # For now, use 0 (unlimited) - this can be made configurable per workflow
+    if not branch_service.can_create_branch(thread_id, owner_id, max_branches=0):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Maximum number of branches reached"},
+        )
+
+    result = branch_service.create_branch(
+        thread_id=thread_id,
+        fork_after_item_id=fork_after_item_id,
+        owner_id=owner_id,
+        name=name,
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Thread or fork point not found"},
+        )
+
+    # If edited_content is provided, we need to send a new message
+    # This will be handled by the frontend calling sendMessage after branch creation
+
+    return result
+
+
+@router.post("/api/chatkit/threads/{thread_id}/branches/{branch_id}/switch")
+async def switch_thread_branch(
+    thread_id: str,
+    branch_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Switch to a different branch."""
+    branch_service = BranchService(SessionLocal)
+    owner_id = str(current_user.id)
+
+    result = branch_service.switch_branch(thread_id, branch_id, owner_id)
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Branch not found"},
+        )
+
+    return result
+
+
+@router.get("/api/chatkit/threads/{thread_id}/branches/{branch_id}")
+async def get_thread_branch(
+    thread_id: str,
+    branch_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Get info about a specific branch."""
+    branch_service = BranchService(SessionLocal)
+    owner_id = str(current_user.id)
+
+    result = branch_service.get_branch_info(thread_id, branch_id, owner_id)
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Branch not found"},
+        )
+
+    return result

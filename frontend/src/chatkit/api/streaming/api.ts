@@ -13,6 +13,7 @@ export interface FetchThreadOptions {
   url: string;
   headers?: Record<string, string>;
   threadId: string;
+  branchId?: string | null;
 }
 
 export interface SendClientToolOutputOptions {
@@ -87,12 +88,13 @@ export interface ListItemsOptions {
  * Récupère un thread existant
  */
 export async function fetchThread(options: FetchThreadOptions): Promise<Thread> {
-  const { url, headers = {}, threadId } = options;
+  const { url, headers = {}, threadId, branchId } = options;
 
   const payload = {
     type: 'threads.get_by_id',
     params: {
       thread_id: threadId,
+      ...(branchId ? { branch_id: branchId } : {}),
     },
   };
 

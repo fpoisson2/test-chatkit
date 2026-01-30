@@ -169,6 +169,7 @@ class ChatKitRequestContext:
     ags_scopes: tuple[str, ...] | None = None
     ags_default_score_maximum: float | None = None
     ags_default_label: str | None = None
+    branch_id: str | None = None
 
     def trace_metadata(self) -> dict[str, str]:
         """Retourne des métadonnées de trace compatibles avec l'Agents SDK."""

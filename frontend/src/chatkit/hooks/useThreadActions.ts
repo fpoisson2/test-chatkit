@@ -14,6 +14,7 @@ export interface UseThreadActionsOptions {
   api: ChatKitAPIConfig;
   thread: Thread | null;
   threadCacheRef: React.MutableRefObject<Map<string, Thread>>;
+  getThreadKey: (threadId: string | null | undefined) => string;
   setThread: React.Dispatch<React.SetStateAction<Thread | null>>;
   fetchUpdates: () => Promise<void>;
   onThreadChange?: (event: { threadId?: string | null; thread?: Thread }) => void;
@@ -33,6 +34,7 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
     api,
     thread,
     threadCacheRef,
+    getThreadKey,
     setThread,
     fetchUpdates,
     onThreadChange,
@@ -69,7 +71,7 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
           },
           onThreadUpdate: (updated) => {
             setThread(updated);
-            threadCacheRef.current.set(updated.id, updated);
+            threadCacheRef.current.set(getThreadKey(updated.id), updated);
             onThreadChange?.({ thread: updated });
           },
           onError: (err) => {
@@ -81,14 +83,14 @@ export function useThreadActions(options: UseThreadActionsOptions): UseThreadAct
 
         if (updatedThread) {
           setThread(updatedThread);
-          threadCacheRef.current.set(updatedThread.id, updatedThread);
+          threadCacheRef.current.set(getThreadKey(updatedThread.id), updatedThread);
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.({ error });
       }
     },
-    [thread, api.url, api.headers, onError, onLog, onThreadChange, threadCacheRef, setThread]
+    [thread, api.url, api.headers, onError, onLog, onThreadChange, threadCacheRef, setThread, getThreadKey]
   );
 
   const retryAfterItem = useCallback(

@@ -43,3 +43,7 @@ export type { UseInlineWidgetsOptions, UseInlineWidgetsReturn } from './useInlin
 
 export { useWidgetActions } from './useWidgetActions';
 export type { UseWidgetActionsOptions, UseWidgetActionsReturn } from './useWidgetActions';
+
+// Branch management hook
+export { useBranches } from './useBranches';
+export type { UseBranchesOptions, UseBranchesReturn } from './useBranches';
