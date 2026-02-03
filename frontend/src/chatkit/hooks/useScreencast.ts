@@ -176,16 +176,6 @@ export function useScreencast({
     if (!newActiveScreencast && currentActiveScreencast) {
       // Only clear if we really decided we shouldn't have one anymore
       setActiveScreencast(null);
-      if (lastScreencastScreenshot) {
-        const screenshotWorkflow = workflows.find((w: any) => w.id === lastScreencastScreenshot.itemId);
-        const screenshotTask = screenshotWorkflow?.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
-        if (screenshotTask) {
-          const isActuallyTerminal = screenshotTask.status_indicator === 'complete' || screenshotTask.status_indicator === 'error';
-          if (isActuallyTerminal) {
-            setLastScreencastScreenshot(null);
-          }
-        }
-      }
     }
 
     if (newActiveScreencast &&
@@ -228,10 +218,21 @@ export function useScreencast({
     return () => clearTimeout(retryTimeout);
   }, [failedScreencastTokens, threadItems]);
 
-  // Callback for last frame (screenshots now handled by backend)
+  // Callback for last frame (used to display a fallback screenshot after closing)
   const handleScreencastLastFrame = useCallback((itemId: string) => {
     return (_frameDataUrl: string) => {
-      // Screenshot is now emitted by backend, no need to store it here
+      if (!_frameDataUrl) return;
+
+      setLastScreencastScreenshot(prev => {
+        if (prev?.itemId === itemId && prev.src === _frameDataUrl) {
+          return prev;
+        }
+
+        return {
+          itemId,
+          src: _frameDataUrl,
+        };
+      });
     };
   }, []);
 
