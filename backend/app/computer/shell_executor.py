@@ -16,20 +16,24 @@ class SSHShellExecutor:
         action = request.data.action
         outputs: list[ShellCommandOutput] = []
 
-        # Execute each requested command via HostedSSH
-        # Note: HostedSSH.run_command currently returns combined output string
-        # We might want to enhance HostedSSH to return structured data later
-        # For now, we use what we have.
         for command in action.commands:
-            output = await self.ssh.run_command(command)
+            result = await self.ssh.run_command_with_context(command)
+
+            username = self.ssh.config.username
+            hostname = self.ssh.config.host
+            prompt_cwd = result.cwd or "~"
+            prompt_symbol = "#" if username == "root" else "$"
             outputs.append(
                 ShellCommandOutput(
                     command=command,
-                    stdout=output,
-                    stderr="",  # HostedSSH combines stderr into stdout
-                    outcome=ShellCallOutcome(
-                        type="exit", exit_code=0
-                    ),  # We assume success if no exception
+                    user=username,
+                    host=hostname,
+                    hostname=hostname,
+                    cwd=result.cwd,
+                    prompt=f"{username}@{hostname}:{prompt_cwd}{prompt_symbol}",
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    outcome=ShellCallOutcome(type="exit", exit_code=result.exit_status),
                 )
             )
 
