@@ -172,6 +172,18 @@ def prepare_agents(
         overrides_raw = step.parameters or {}
         overrides = dict(overrides_raw)
 
+        # Enforce model for computer_use nodes
+        if step.kind == "computer_use":
+            logger.info(
+                "Enforcing model 'claude-3-5-sonnet-20241022' for computer_use step %s",
+                step.slug,
+            )
+            overrides["model"] = "claude-3-5-sonnet-20241022"
+            # Clear provider binding to allow auto-resolution based on model name
+            overrides.pop("model_provider_id", None)
+            overrides.pop("model_provider_slug", None)
+            overrides.pop("model_provider", None)
+
         raw_provider_id = overrides_raw.get("model_provider_id")
         provider_id = (
             raw_provider_id.strip() if isinstance(raw_provider_id, str) else None
