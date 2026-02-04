@@ -23,6 +23,7 @@ from chatkit.types import (
 )
 
 from .base import BaseNodeHandler
+from ..executor import resolve_transform_value
 
 if TYPE_CHECKING:  # pragma: no cover
     from ...models import WorkflowStep
@@ -60,9 +61,17 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
         on_stream_event = context.runtime_vars.get("on_stream_event")
         emit_stream_event = context.runtime_vars.get("emit_stream_event")
 
-        # Get message content
+        # Get message content and interpolate template variables
         raw_message = self._resolve_assistant_message(node)
-        sanitized_message = _normalize_user_text(raw_message)
+        interpolated_message = resolve_transform_value(
+            raw_message,
+            state=context.state,
+            default_input_context=context.last_step_context,
+            input_context=context.last_step_context,
+        )
+        sanitized_message = _normalize_user_text(
+            interpolated_message if isinstance(interpolated_message, str) else raw_message
+        )
         stream_config = self._resolve_assistant_stream_config(node)
 
         # Record step
@@ -233,9 +242,17 @@ class UserMessageNodeHandler(BaseNodeHandler):
         on_stream_event = context.runtime_vars.get("on_stream_event")
         emit_stream_event = context.runtime_vars.get("emit_stream_event")
 
-        # Get message content
+        # Get message content and interpolate template variables
         raw_message = self._resolve_user_message(node)
-        sanitized_message = _normalize_user_text(raw_message)
+        interpolated_message = resolve_transform_value(
+            raw_message,
+            state=context.state,
+            default_input_context=context.last_step_context,
+            input_context=context.last_step_context,
+        )
+        sanitized_message = _normalize_user_text(
+            interpolated_message if isinstance(interpolated_message, str) else raw_message
+        )
 
         # Record step
         if context.record_step:
