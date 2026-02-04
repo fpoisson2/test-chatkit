@@ -214,6 +214,26 @@ class WaitNodeHandler(BaseNodeHandler):
         if thread is not None:
             _set_wait_state_metadata(thread, wait_state_payload)
 
+            # CRITICAL: Persist thread with wait state immediately to ensure
+            # the wait state survives if the user leaves and returns via LTI.
+            # Without this, the workflow would restart from the beginning.
+            if agent_context is not None:
+                store = getattr(agent_context, "store", None)
+                request_context = getattr(agent_context, "request_context", None)
+                if store is not None and request_context is not None:
+                    try:
+                        await store.save_thread(thread, context=request_context)
+                        logger.info(
+                            "[WAIT_DEBUG] Thread %s wait state persisted immediately",
+                            getattr(thread, "id", "unknown"),
+                        )
+                    except Exception as persist_exc:
+                        logger.warning(
+                            "[WAIT_DEBUG] Failed to persist wait state for thread %s: %s",
+                            getattr(thread, "id", "unknown"),
+                            persist_exc,
+                        )
+
         # Set final end state to waiting
         context.runtime_vars["final_end_state"] = WorkflowEndState(
             slug=node.slug,
