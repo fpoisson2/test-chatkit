@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from .base import BaseNodeHandler
@@ -68,6 +69,19 @@ class WidgetNodeHandler(BaseNodeHandler):
             if on_widget_step is not None and _should_wait_for_widget_action(
                 node.kind, widget_config
             ):
+                # If we're resuming from a saved widget wait state, clear it from
+                # runtime_vars so downstream nodes don't see stale state.
+                pending_wait_state = context.runtime_vars.get("pending_wait_state")
+                if (
+                    isinstance(pending_wait_state, Mapping)
+                    and pending_wait_state.get("slug") == node.slug
+                ):
+                    context.runtime_vars["pending_wait_state"] = None
+
+                # Persist a wait state BEFORE blocking on the widget action so that
+                # the workflow can resume here if the user leaves and returns via LTI.
+                await self._save_widget_wait_state(node, context)
+
                 # Emit awaiting_action event to signal the frontend that we're waiting for user input
                 if emit_stream_event is not None:
                     from chatkit.types import AwaitingActionEvent
@@ -76,6 +90,9 @@ class WidgetNodeHandler(BaseNodeHandler):
                 result = await on_widget_step(node, widget_config)
                 if result is not None:
                     action_payload = dict(result)
+
+                # Widget action received — clear the wait state.
+                await self._clear_widget_wait_state(context)
 
             # Build widget identifier
             widget_identifier = (
@@ -142,3 +159,94 @@ class WidgetNodeHandler(BaseNodeHandler):
             next_slug=next_slug,
             context_updates={"last_step_context": last_step_context},
         )
+
+    # ------------------------------------------------------------------
+    # Wait-state persistence helpers (mirrors logic from wait.py)
+    # ------------------------------------------------------------------
+
+    async def _save_widget_wait_state(
+        self,
+        node: WorkflowStep,
+        context: ExecutionContext,
+    ) -> None:
+        """Persist a wait state so the workflow can resume at this widget node."""
+        from ...chatkit_server.context import _set_wait_state_metadata
+        from ..utils import _clone_conversation_history_snapshot, _json_safe_copy
+
+        thread = context.runtime_vars.get("thread")
+        if thread is None:
+            return
+
+        current_input_item_id = context.runtime_vars.get("current_input_item_id")
+
+        wait_state_payload: dict[str, Any] = {
+            "slug": node.slug,
+            "input_item_id": current_input_item_id,
+        }
+
+        conversation_snapshot = _clone_conversation_history_snapshot(
+            context.conversation_history
+        )
+        if conversation_snapshot:
+            wait_state_payload["conversation_history"] = conversation_snapshot
+
+        next_slug_after = self._next_slug_or_fallback(node.slug, context)
+        if next_slug_after is not None:
+            wait_state_payload["next_step_slug"] = next_slug_after
+
+        if context.state:
+            wait_state_payload["state"] = _json_safe_copy(context.state)
+
+        # Snapshot for workflow monitoring
+        wait_state_payload["snapshot"] = {
+            "current_slug": node.slug,
+            "steps": [
+                {"key": step.key, "title": step.title} for step in context.steps
+            ],
+        }
+
+        _set_wait_state_metadata(thread, wait_state_payload)
+
+        # Persist to DB immediately so the state survives a disconnection.
+        agent_context = context.runtime_vars.get("agent_context")
+        if agent_context is not None:
+            store = getattr(agent_context, "store", None)
+            request_context = getattr(agent_context, "request_context", None)
+            if store is not None and request_context is not None:
+                try:
+                    await store.save_thread(thread, context=request_context)
+                    logger.info(
+                        "[WIDGET_WAIT] Thread %s widget wait state persisted for node %s",
+                        getattr(thread, "id", "unknown"),
+                        node.slug,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "[WIDGET_WAIT] Failed to persist widget wait state for thread %s: %s",
+                        getattr(thread, "id", "unknown"),
+                        exc,
+                    )
+
+    async def _clear_widget_wait_state(self, context: ExecutionContext) -> None:
+        """Clear the wait state after the widget action has been received."""
+        from ...chatkit_server.context import _set_wait_state_metadata
+
+        thread = context.runtime_vars.get("thread")
+        if thread is None:
+            return
+
+        _set_wait_state_metadata(thread, None)
+
+        agent_context = context.runtime_vars.get("agent_context")
+        if agent_context is not None:
+            store = getattr(agent_context, "store", None)
+            request_context = getattr(agent_context, "request_context", None)
+            if store is not None and request_context is not None:
+                try:
+                    await store.save_thread(thread, context=request_context)
+                except Exception as exc:
+                    logger.warning(
+                        "[WIDGET_WAIT] Failed to clear widget wait state for thread %s: %s",
+                        getattr(thread, "id", "unknown"),
+                        exc,
+                    )
