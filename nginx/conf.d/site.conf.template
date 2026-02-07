@@ -4,6 +4,10 @@ server {
     listen 80;
     server_name ${APP_DOMAIN};
 
+    # Resolver DNS Docker pour résolution dynamique des upstreams
+    # valid=10s: re-résout le DNS toutes les 10 secondes
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
     # Logs
     access_log /var/log/nginx/access.log;
     error_log /var/log/nginx/error.log;
@@ -24,9 +28,13 @@ server {
     proxy_read_timeout 3600s;
     proxy_socket_keepalive on;
 
+    # Variables pour résolution DNS dynamique
+    set $backend_upstream backend:8000;
+    set $frontend_upstream frontend:5183;
+
     # LTI API routes - allow iframe embedding for LMS integration
     location /api/lti/ {
-        proxy_pass http://backend:8000/api/lti/;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         # Override X-Frame-Options with frame-ancestors (takes precedence)
         proxy_hide_header X-Frame-Options;
@@ -35,20 +43,20 @@ server {
 
     # JWKS endpoint for LTI
     location /.well-known/jwks.json {
-        proxy_pass http://backend:8000/.well-known/jwks.json;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_hide_header X-Frame-Options;
     }
 
     # Backend API
     location /api/ {
-        proxy_pass http://backend:8000/api/;
+        proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
     }
 
     # Frontend LTI launch page - allow iframe embedding
     location /lti/ {
-        proxy_pass http://frontend:5183/lti/;
+        proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         # Override X-Frame-Options with frame-ancestors (takes precedence)
         proxy_hide_header X-Frame-Options;
@@ -57,7 +65,7 @@ server {
 
     # Frontend widget embedding - allow iframe embedding
     location /widget/ {
-        proxy_pass http://frontend:5183/widget/;
+        proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_hide_header X-Frame-Options;
         add_header Content-Security-Policy "frame-ancestors 'self' *;" always;
@@ -65,7 +73,7 @@ server {
 
     # Frontend
     location / {
-        proxy_pass http://frontend:5183/;
+        proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
     }
 }

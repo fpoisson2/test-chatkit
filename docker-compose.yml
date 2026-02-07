@@ -2,6 +2,7 @@ services:
   backend:
     image: chatkit-backend:latest
     pull_policy: build
+    restart: unless-stopped
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -51,6 +52,7 @@ services:
       - redis
   frontend:
     image: node:20
+    restart: unless-stopped
     working_dir: /workspace/frontend
     command: >-
       sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5183"
@@ -95,6 +97,7 @@ services:
       - frontend
   db:
     image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-chatkit}
       POSTGRES_USER: ${POSTGRES_USER:-chatkit}
@@ -105,6 +108,7 @@ services:
       - app-network
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: redis-server --port 6380
     volumes:
       - redis-data:/data
@@ -120,6 +124,7 @@ services:
       - app-network
   celery-worker:
     image: chatkit-backend:latest
+    restart: unless-stopped
     pull_policy: never
     working_dir: /workspace/backend
     command: >-
