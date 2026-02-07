@@ -592,21 +592,6 @@ function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): 
     !isWaitingForUserInput &&
     (isLoadingCurrentThread || (hasMessages && lastItemIsUserMessage));
 
-  // Debug logging
-  console.log('[LoadingIndicator]', {
-    threadId: thread?.id,
-    threadStatus: thread?.status?.type,
-    loadingThreadIds: Array.from(loadingThreadIds),
-    loadingThreadIdsSize: loadingThreadIds.size,
-    hasMessages,
-    itemsLength: items.length,
-    lastItemType: lastItem?.type,
-    isThreadActive,
-    isLoadingCurrentThread,
-    lastItemIsUserMessage,
-    isWaitingForUserInput,
-    isWaitingForAssistant,
-  });
 
   if (!isWaitingForAssistant) {
     return null;

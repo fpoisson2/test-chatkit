@@ -230,13 +230,18 @@ async def stream_widget(
 @contextmanager
 def agents_sdk_user_agent_override():
     ua = f"Agents/Python {agents.__version__} ChatKit/Python {__version__}"
-    chat_completions_token = chat_completions_headers_override.set({"User-Agent": ua})
-    responses_token = responses_headers_override.set({"User-Agent": ua})
+    old_chat = chat_completions_headers_override.get(None)
+    old_responses = responses_headers_override.get(None)
+    chat_completions_headers_override.set({"User-Agent": ua})
+    responses_headers_override.set({"User-Agent": ua})
 
-    yield
-
-    chat_completions_headers_override.reset(chat_completions_token)
-    responses_headers_override.reset(responses_token)
+    try:
+        yield
+    finally:
+        # Use set() instead of reset() to avoid ValueError when the token
+        # was created in a different async context (common with async generators).
+        chat_completions_headers_override.set(old_chat)
+        responses_headers_override.set(old_responses)
 
 
 class StreamingResult(AsyncIterable[bytes]):
@@ -603,6 +608,7 @@ class ChatKitServer(ABC, Generic[TContext]):
                     # shouldn't happen if the caller is using the API correctly.
                     yield ErrorEvent(
                         code=ErrorCode.STREAM_ERROR,
+                        message="Invalid item type for action: expected a widget item.",
                         allow_retry=False,
                     )
                     return
@@ -820,11 +826,13 @@ class ChatKitServer(ABC, Generic[TContext]):
         except StreamError as e:
             yield ErrorEvent(
                 code=e.code,
+                message=str(e) or f"Stream error ({e.code})",
                 allow_retry=e.allow_retry,
             )
         except Exception as e:
             yield ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
+                message=f"Unexpected error: {e}",
                 allow_retry=True,
             )
             logger.exception(e)
