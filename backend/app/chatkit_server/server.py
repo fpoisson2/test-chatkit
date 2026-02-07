@@ -650,6 +650,36 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._title_agent = _get_thread_title_agent()
         logger.info("✅ Agent de génération de titre rechargé")
 
+    # SSE heartbeat interval in seconds.  Cloudflare tunnels drop idle
+    # connections after ~100 s; 30 s keeps us well within that window.
+    _SSE_HEARTBEAT_INTERVAL: float = 30.0
+
+    async def _process_streaming(
+        self, request: StreamingReq, context: ChatKitRequestContext,
+    ) -> AsyncIterator[bytes]:
+        """Override parent to inject SSE comment heartbeats during idle periods.
+
+        Without periodic data, reverse-proxies (Cloudflare, nginx) may close
+        the connection while the backend is waiting for a widget action or
+        other long-running operation.
+        """
+        heartbeat = b": heartbeat\n\n"
+        inner = super()._process_streaming(request, context)
+        try:
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        inner.__anext__(),
+                        timeout=self._SSE_HEARTBEAT_INTERVAL,
+                    )
+                    yield chunk
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    yield heartbeat
+        finally:
+            await inner.aclose()
+
     async def _process_streaming_impl(
         self,
         request: StreamingReq,
