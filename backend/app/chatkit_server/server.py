@@ -662,22 +662,34 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         Without periodic data, reverse-proxies (Cloudflare, nginx) may close
         the connection while the backend is waiting for a widget action or
         other long-running operation.
+
+        Uses a shielded task so that heartbeat timeouts do NOT cancel the
+        inner generator's pending ``__anext__`` call.
         """
         heartbeat = b": heartbeat\n\n"
         inner = super()._process_streaming(request, context)
+        pending: asyncio.Task[bytes] | None = None
         try:
             while True:
-                try:
-                    chunk = await asyncio.wait_for(
-                        inner.__anext__(),
-                        timeout=self._SSE_HEARTBEAT_INTERVAL,
-                    )
+                if pending is None:
+                    pending = asyncio.ensure_future(inner.__anext__())
+                done, _ = await asyncio.wait(
+                    {pending}, timeout=self._SSE_HEARTBEAT_INTERVAL,
+                )
+                if done:
+                    try:
+                        chunk = pending.result()
+                    except StopAsyncIteration:
+                        break
+                    pending = None
                     yield chunk
-                except StopAsyncIteration:
-                    break
-                except asyncio.TimeoutError:
+                else:
+                    # Timeout — the inner generator is still waiting; send a
+                    # keepalive comment without cancelling the pending read.
                     yield heartbeat
         finally:
+            if pending is not None and not pending.done():
+                pending.cancel()
             await inner.aclose()
 
     async def _process_streaming_impl(
