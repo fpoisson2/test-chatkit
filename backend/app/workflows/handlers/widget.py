@@ -181,6 +181,7 @@ class WidgetNodeHandler(BaseNodeHandler):
 
         wait_state_payload: dict[str, Any] = {
             "slug": node.slug,
+            "node_kind": "widget",
             "input_item_id": current_input_item_id,
         }
 

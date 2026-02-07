@@ -1501,7 +1501,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 action_context,
             )
 
-            await self._signal_widget_action(
+            signaled = await self._signal_widget_action(
                 thread.id,
                 widget_item_id=updated_item.id,
                 widget_slug=slug,
@@ -1509,16 +1509,26 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
 
             logger.info(
-                "Action de widget traitée avec succès : type=%s, widget_id=%s, slug=%s",
+                "Action de widget traitée avec succès : type=%s, widget_id=%s, slug=%s, signaled=%s",
                 action.type,
                 updated_item.id,
                 slug,
+                signaled,
             )
 
             yield ThreadItemUpdated(
                 item_id=updated_item.id,
                 update=WidgetRootUpdated(widget=widget_root),
             )
+
+            # If no in-memory waiter was found, check for a persisted wait state
+            # and resume the workflow (common in LTI scenarios where the stream
+            # was closed and the user returns later).
+            if not signaled:
+                async for event in self._maybe_resume_from_persisted_wait(
+                    thread, context, action_context,
+                ):
+                    yield event
             return
 
         item_id = self.store.generate_item_id("widget", thread, context)
@@ -1552,7 +1562,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             action_context,
         )
 
-        await self._signal_widget_action(
+        signaled = await self._signal_widget_action(
             thread.id,
             widget_item_id=new_item.id,
             widget_slug=slug,
@@ -1560,13 +1570,159 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
 
         logger.info(
-            "Action de widget traitée avec succès (nouveau widget) : type=%s, widget_id=%s, slug=%s",
+            "Action de widget traitée avec succès (nouveau widget) : type=%s, widget_id=%s, slug=%s, signaled=%s",
             action.type,
             new_item.id,
             slug,
+            signaled,
         )
 
         yield ThreadItemDoneEvent(item=new_item)
+
+        # If no in-memory waiter was found, check for a persisted wait state
+        # and resume the workflow (common in LTI scenarios where the stream
+        # was closed and the user returns later).
+        if not signaled:
+            async for event in self._maybe_resume_from_persisted_wait(
+                thread, context, action_context,
+            ):
+                yield event
+
+    async def _maybe_resume_from_persisted_wait(
+        self,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+        action_context: dict[str, Any],
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        """Resume a workflow from a persisted wait state after a widget action.
+
+        When the stream is no longer active (e.g. user left and returned via LTI),
+        there is no in-memory waiter. In that case we check for a persisted wait
+        state on the thread and re-launch the workflow from the saved snapshot.
+        """
+        from chatkit.agents import AgentContext
+        from ..workflows.executor import WorkflowInput, WorkflowRuntimeSnapshot
+
+        wait_state = _get_wait_state_metadata(thread)
+        if not wait_state:
+            logger.debug(
+                "No persisted wait state for thread %s, nothing to resume.",
+                thread.id,
+            )
+            return
+
+        # Only resume if the wait state was saved by a widget node.
+        # If the workflow has moved past the widget (e.g. now waiting at a
+        # wait_for_user_input node), clicking the widget button should NOT
+        # cause a resume from the wrong wait state.
+        node_kind = wait_state.get("node_kind")
+        if node_kind != "widget":
+            logger.info(
+                "Persisted wait state for thread %s is not from a widget node "
+                "(node_kind=%s, slug=%s), skipping widget-triggered resume.",
+                thread.id,
+                node_kind,
+                wait_state.get("slug"),
+            )
+            return
+
+        next_step_slug = wait_state.get("next_step_slug")
+        if not next_step_slug:
+            logger.warning(
+                "Persisted wait state for thread %s has no next_step_slug, cannot resume.",
+                thread.id,
+            )
+            return
+
+        logger.info(
+            "Resuming workflow from persisted wait state for thread %s "
+            "(wait_slug=%s, next_step=%s)",
+            thread.id,
+            wait_state.get("slug"),
+            next_step_slug,
+        )
+
+        # Clear wait state before resuming
+        _set_wait_state_metadata(thread, None)
+        await self.store.save_thread(thread, context=context)
+
+        # Build runtime snapshot from saved state
+        saved_state = wait_state.get("state", {})
+        conversation_history = wait_state.get("conversation_history", [])
+
+        runtime_snapshot = WorkflowRuntimeSnapshot(
+            state=saved_state if isinstance(saved_state, dict) else {},
+            conversation_history=conversation_history,
+            last_step_context={"widget_action": action_context},
+            steps=[],
+            current_slug=next_step_slug,
+        )
+
+        # Reload thread history
+        history_asc = await self.store.load_thread_items(
+            thread.id,
+            after=None,
+            limit=1000,
+            order="asc",
+            context=context,
+        )
+
+        # Resolve model override
+        model_override = _get_last_model_override_from_history(history_asc)
+
+        workflow_input = WorkflowInput(
+            input_as_text="",
+            auto_start_was_triggered=False,
+            auto_start_assistant_message=None,
+            source_item_id=None,
+            model_override=model_override,
+        )
+
+        agent_ctx = AgentContext(
+            thread=thread,
+            store=self.store,
+            request_context=context,
+        )
+
+        event_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        workflow_task = asyncio.create_task(
+            self._execute_workflow(
+                thread=thread,
+                agent_context=agent_ctx,
+                workflow_input=workflow_input,
+                event_queue=event_queue,
+                thread_items_history=history_asc.data,
+                thread_item_converter=self._thread_item_converter,
+                input_user_message=None,
+                runtime_snapshot=runtime_snapshot,
+            )
+        )
+
+        # Stream events from the resumed workflow
+        while True:
+            try:
+                event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
+                if event is _STREAM_DONE:
+                    break
+                yield event
+            except asyncio.TimeoutError:
+                if workflow_task.done():
+                    # Drain remaining events
+                    while not event_queue.empty():
+                        event = event_queue.get_nowait()
+                        if event is _STREAM_DONE:
+                            break
+                        yield event
+                    break
+
+        # Propagate any exception from the workflow task
+        if workflow_task.done() and workflow_task.exception():
+            logger.exception(
+                "Workflow resumption failed for thread %s",
+                thread.id,
+                exc_info=workflow_task.exception(),
+            )
 
     async def _handle_continue_workflow(
         self,

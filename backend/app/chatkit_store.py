@@ -30,6 +30,21 @@ else:  # pragma: no cover - utilisé uniquement pour éviter les imports circula
 _T = TypeVar("_T")
 
 
+def _strip_null_bytes(obj: Any) -> Any:
+    """Recursively strip \\u0000 (null bytes) from strings in a JSON-like structure.
+
+    PostgreSQL's JSONB type cannot store null bytes, so we must remove them
+    before persisting.
+    """
+    if isinstance(obj, str):
+        return obj.replace("\x00", "")
+    if isinstance(obj, dict):
+        return {k: _strip_null_bytes(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_strip_null_bytes(v) for v in obj]
+    return obj
+
+
 def _ensure_timezone(value: dt.datetime | None) -> dt.datetime:
     if isinstance(value, dt.datetime):
         if value.tzinfo is None:
@@ -532,7 +547,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _save(session: Session) -> None:
-            payload = thread.model_dump(mode="json")
+            payload = _strip_null_bytes(thread.model_dump(mode="json"))
             # Utiliser thread.metadata si disponible (peut contenir des mises à jour récentes),
             # sinon utiliser les métadonnées du payload
             if isinstance(thread.metadata, dict):
@@ -788,7 +803,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 expected,
             )
             # Ne PAS normaliser lors de la sauvegarde pour préserver les données d'image
-            payload = item.model_dump(mode="json")
+            payload = _strip_null_bytes(item.model_dump(mode="json"))
             created_at = _ensure_timezone(getattr(item, "created_at", None))
             existing = session.get(ChatThreadItem, item.id)
             if existing is None:
@@ -836,7 +851,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                     f"Élément {item.id} introuvable dans le fil {thread_id}"
                 )
             # Ne PAS normaliser lors de la sauvegarde pour préserver les données d'image
-            record.payload = item.model_dump(mode="json")
+            record.payload = _strip_null_bytes(item.model_dump(mode="json"))
             record.created_at = _ensure_timezone(getattr(item, "created_at", None))
             session.commit()
 
