@@ -156,7 +156,7 @@ class AgentStepExecutor:
             agent,
             agent_context=self.deps.agent_context,
             run_context=run_context,
-            suppress_stream_events=widget_config is not None,
+            suppress_stream_events=(widget_config is not None) or (not display_response_in_chat),
             step_metadata={
                 "agent_key": agent_key,
                 "step_slug": self.deps.branch_prefixed_slug(current_node.slug),

@@ -5,6 +5,7 @@ import type { WidgetContext } from '../widgets/renderers/types';
 export interface UseWidgetActionsOptions {
   control: ChatKitControl;
   widgets?: ChatKitOptions['widgets'];
+  scrollItemToTop?: (itemId: string) => void;
 }
 
 export interface UseWidgetActionsReturn {
@@ -19,6 +20,7 @@ export interface UseWidgetActionsReturn {
 export function useWidgetActions({
   control,
   widgets,
+  scrollItemToTop,
 }: UseWidgetActionsOptions): UseWidgetActionsReturn {
   const formDataRef = useRef<FormData | null>(null);
 
@@ -54,6 +56,8 @@ export function useWidgetActions({
         formDataRef.current = null;
         // Send the action to the backend
         control.customAction(itemId, action);
+        // Scroll the widget to the top of the visible area
+        scrollItemToTop?.(itemId);
       },
       onFormData: (data: FormData) => {
         // Store form data to be included in the next action
@@ -62,7 +66,7 @@ export function useWidgetActions({
       voiceSession: widgets?.voiceSession,
       outboundCall: widgets?.outboundCall,
     }),
-    [control, widgets?.voiceSession, widgets?.outboundCall]
+    [control, widgets?.voiceSession, widgets?.outboundCall, scrollItemToTop]
   );
 
   return {

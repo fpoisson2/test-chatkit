@@ -696,7 +696,7 @@ export function MessageRenderer({
     : 'assistant';
 
   return (
-    <div className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}>
+    <div className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`} data-item-id={item.id}>
       {item.type === 'user_message' && (
         <UserMessageContent item={item} theme={theme} authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
       )}

@@ -10,6 +10,7 @@ export interface UseScrollToBottomReturn {
   messagesContainerRef: RefObject<HTMLDivElement | null>;
   showScrollButton: boolean;
   scrollToBottom: () => void;
+  scrollItemToTop: (itemId: string) => void;
 }
 
 /**
@@ -27,6 +28,7 @@ export function useScrollToBottom(
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const prevThreadIdRef = useRef<string | undefined>(threadId);
+  const autoScrollActiveRef = useRef(false);
 
   // Auto-scroll to bottom only when switching conversations
   // For new messages, do NOT force scroll - user stays at current position
@@ -51,7 +53,21 @@ export function useScrollToBottom(
     }
   }, [itemCount, threadId]);
 
+  // Auto-scroll to bottom as new content arrives (during streaming)
+  useEffect(() => {
+    if (!autoScrollActiveRef.current) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'instant',
+    });
+  }, [itemCount]);
+
   // Track scroll position to show/hide the "scroll to bottom" button
+  // and disable auto-scroll if user scrolls up manually
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -61,6 +77,14 @@ export function useScrollToBottom(
       // Consider "at bottom" if within threshold pixels from bottom
       const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold;
       setShowScrollButton(!isAtBottom);
+
+      // If user scrolls away from bottom, stop auto-scrolling
+      if (!isAtBottom && autoScrollActiveRef.current) {
+        const scrolledUpSignificantly = scrollHeight - scrollTop - clientHeight > 200;
+        if (scrolledUpSignificantly) {
+          autoScrollActiveRef.current = false;
+        }
+      }
     };
 
     container.addEventListener('scroll', handleScroll);
@@ -82,10 +106,27 @@ export function useScrollToBottom(
     });
   }, []);
 
+  // Scroll to bottom and enable auto-scroll for streaming content
+  const scrollItemToTop = useCallback((_itemId: string) => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Activate auto-scroll so new streaming content stays visible
+    autoScrollActiveRef.current = true;
+
+    setTimeout(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'instant',
+      });
+    }, 50);
+  }, []);
+
   return {
     messagesEndRef,
     messagesContainerRef,
     showScrollButton,
     scrollToBottom,
+    scrollItemToTop,
   };
 }

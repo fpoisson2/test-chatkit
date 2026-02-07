@@ -67,6 +67,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     messagesContainerRef,
     showScrollButton,
     scrollToBottom,
+    scrollItemToTop,
   } = useScrollToBottom(control.thread?.items.length ?? 0, {}, control.thread?.id);
 
   // Keyboard offset for mobile virtual keyboards
@@ -115,6 +116,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const { createWidgetContext } = useWidgetActions({
     control,
     widgets: options.widgets,
+    scrollItemToTop,
   });
 
   // Auto-dismiss errors
@@ -140,11 +142,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     if (!lastUserMessage) return;
 
     if (lastUserMessage.id !== lastUserMessageId) {
+      console.log('[ChatKit] new user message detected:', lastUserMessage.id, 'prev:', lastUserMessageId);
       setInputValue('');
       clearAttachments();
       setLastUserMessageId(lastUserMessage.id);
+      // Auto-scroll the new user message to the top of the visible area
+      scrollItemToTop(lastUserMessage.id);
     }
-  }, [control.thread?.items, lastUserMessageId, clearAttachments]);
+  }, [control.thread?.items, lastUserMessageId, clearAttachments, scrollItemToTop]);
 
   // Callback to continue workflow
   const handleContinueWorkflow = useCallback(() => {

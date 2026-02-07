@@ -176,7 +176,7 @@ async def process_agent_step(
         agent,
         agent_context=agent_context,
         run_context=run_context,
-        suppress_stream_events=widget_config is not None,
+        suppress_stream_events=(widget_config is not None) or (not display_response_in_chat),
         step_metadata={
             "agent_key": agent_key,
             "step_slug": branch_prefixed_slug(current_node.slug),
