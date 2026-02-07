@@ -135,7 +135,11 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
       } catch (err) {
         const e = err instanceof Error ? err : new Error(String(err));
         // If aborted, don't set global error
-        if (e.name !== 'AbortError') {
+        const isAbort =
+          e.name === 'AbortError' ||
+          (e instanceof DOMException && e.code === DOMException.ABORT_ERR) ||
+          (typeof e.message === 'string' && e.message.includes('aborted'));
+        if (!isAbort) {
           setError(e);
           onError?.({ error: e });
         }

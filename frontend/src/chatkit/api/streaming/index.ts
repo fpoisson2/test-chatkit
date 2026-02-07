@@ -158,7 +158,14 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
 
     return currentThread;
   } catch (error) {
-    onError?.(error instanceof Error ? error : new Error(String(error)));
+    const e = error instanceof Error ? error : new Error(String(error));
+    const isAbort =
+      e.name === 'AbortError' ||
+      (e instanceof DOMException && e.code === DOMException.ABORT_ERR) ||
+      (typeof e.message === 'string' && e.message.includes('aborted'));
+    if (!isAbort) {
+      onError?.(e);
+    }
     throw error;
   }
 }
