@@ -125,7 +125,7 @@ def _sanitize_previous_response_id(value: Any) -> str | None:
 
     if isinstance(value, str):
         candidate = value.strip()
-        if candidate.startswith("resp"):
+        if candidate.startswith("resp") and len(candidate) <= 64:
             return candidate
     return None
 
@@ -274,6 +274,50 @@ def _filter_conversation_history_for_previous_response(
 
     # Return only the last user message (or empty list if none found)
     return [last_user_message] if last_user_message is not None else []
+
+def _strip_stale_reasoning_items(
+    items: Sequence[TResponseInputItem],
+) -> list[TResponseInputItem]:
+    """Sanitise conversation history for use without ``previous_response_id``.
+
+    When there is no ``previous_response_id``, item IDs (``msg_…``,
+    ``rs_…``, etc.) that originated from a previous API response are not
+    resolvable by the Responses API.  Sending them causes either:
+
+    * a 404 ("Item with id … not found") for ``reasoning`` items, or
+    * a 400 ("message … was provided without its required reasoning item")
+      when a message ID is sent without its paired reasoning item.
+
+    This helper:
+    1. Drops ``reasoning`` items entirely (they carry no user-visible text).
+    2. Strips the ``id`` field from all remaining items so OpenAI treats them
+       as fresh input rather than references to a prior response.
+    """
+    import copy
+
+    result: list[TResponseInputItem] = []
+    for item in items:
+        item_type = None
+        if isinstance(item, Mapping):
+            item_type = item.get("type")
+        else:
+            item_type = getattr(item, "type", None)
+        if item_type == "reasoning":
+            continue
+        # Strip the id field so OpenAI doesn't try to resolve it
+        if isinstance(item, Mapping):
+            if "id" in item:
+                item = {k: v for k, v in item.items() if k != "id"}
+        else:
+            if getattr(item, "id", None) is not None:
+                item = copy.copy(item)
+                try:
+                    item.id = None  # type: ignore[union-attr]
+                except (AttributeError, TypeError):
+                    pass
+        result.append(item)
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer

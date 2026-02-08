@@ -425,6 +425,7 @@ async def run_workflow_v2(
         _filter_conversation_history_for_previous_response,
         _normalize_conversation_history_for_provider,
         _sanitize_previous_response_id,
+        _strip_stale_reasoning_items,
     )
     from .executor_helpers import create_executor_helpers
     from .template_utils import render_agent_instructions
@@ -784,6 +785,9 @@ async def run_workflow_v2(
         conversation_history_input = _deduplicate_conversation_history_items(
             conversation_history_input
         )
+        # Keep a copy of the full history before previous_response_id filtering
+        # so we can retry without it if the reference is stale.
+        conversation_history_input_raw = list(conversation_history_input)
 
         # Handle previous_response_id
         sanitized_previous_response_id = _sanitize_previous_response_id(
@@ -802,6 +806,12 @@ async def run_workflow_v2(
                 conversation_history_input
             )
             conversation_history_input = filtered_input
+        else:
+            # Without a previous_response_id, reasoning item IDs from earlier
+            # API calls are not resolvable and will cause a 404 error.
+            conversation_history_input = _strip_stale_reasoning_items(
+                conversation_history_input
+            )
 
         # Check for while loop iteration
         in_while_loop_iteration = False
@@ -893,58 +903,107 @@ async def run_workflow_v2(
                 content_summary,
             )
 
-        try:
-            result = Runner.run_streamed(
+        async def _run_and_stream(
+            _input: list,
+            _previous_response_id: str | None,
+        ) -> Any:
+            nonlocal accumulated_text
+            _result = Runner.run_streamed(
                 agent,
-                input=[*conversation_history_input],
+                input=_input,
                 run_config=_workflow_run_config(
                     response_format_override, provider_binding=provider_binding
                 ),
                 context=runner_context,
-                previous_response_id=sanitized_previous_response_id,
+                previous_response_id=_previous_response_id,
             )
-            try:
-                async for event in stream_agent_response(agent_context, result):
-                    if _should_forward_agent_event(
-                        event, suppress=suppress_stream_events
-                    ):
-                        await _emit_stream_event(event)
-                    # Debug: log event type and check for usage attributes
-                    event_usage = getattr(event, "usage", None)
-                    event_model_usage = getattr(event, "model_usage", None)
-                    event_usage_info = getattr(event, "usage_info", None)
-                    if event_usage or event_model_usage or event_usage_info:
-                        logger.info(
-                            "Event with usage: type=%s, usage=%s, model_usage=%s, usage_info=%s",
-                            getattr(event, "type", type(event)),
-                            event_usage,
-                            event_model_usage,
-                            event_usage_info,
-                        )
-                    usage_from_event = _coerce_usage(
-                        event_usage or event_model_usage or event_usage_info
+            async for event in stream_agent_response(agent_context, _result):
+                if _should_forward_agent_event(
+                    event, suppress=suppress_stream_events
+                ):
+                    await _emit_stream_event(event)
+                # Debug: log event type and check for usage attributes
+                event_usage = getattr(event, "usage", None)
+                event_model_usage = getattr(event, "model_usage", None)
+                event_usage_info = getattr(event, "usage_info", None)
+                if event_usage or event_model_usage or event_usage_info:
+                    logger.info(
+                        "Event with usage: type=%s, usage=%s, model_usage=%s, usage_info=%s",
+                        getattr(event, "type", type(event)),
+                        event_usage,
+                        event_model_usage,
+                        event_usage_info,
                     )
-                    if usage_from_event:
-                        logger.info("Recorded usage from event: %s", usage_from_event)
-                        _record_usage(agent_identifier, model_name, usage_from_event)
-                    delta_text = _extract_delta(event)
-                    if delta_text:
-                        accumulated_text += delta_text
-                        await _emit_step_stream(
-                            WorkflowStepStreamUpdate(
-                                key=step_key,
-                                title=title,
-                                index=step_index,
-                                delta=delta_text,
-                                text=accumulated_text,
-                            )
+                usage_from_event = _coerce_usage(
+                    event_usage or event_model_usage or event_usage_info
+                )
+                if usage_from_event:
+                    logger.info("Recorded usage from event: %s", usage_from_event)
+                    _record_usage(agent_identifier, model_name, usage_from_event)
+                delta_text = _extract_delta(event)
+                if delta_text:
+                    accumulated_text += delta_text
+                    await _emit_step_stream(
+                        WorkflowStepStreamUpdate(
+                            key=step_key,
+                            title=title,
+                            index=step_index,
+                            delta=delta_text,
+                            text=accumulated_text,
                         )
-                    await _inspect_event_for_images(event)
+                    )
+                await _inspect_event_for_images(event)
+            return _result
+
+        try:
+            try:
+                result = await _run_and_stream(
+                    [*conversation_history_input], sanitized_previous_response_id
+                )
+            except Exception as first_exc:
+                # If the error is a 404/400 related to stale previous_response_id
+                # or item references, retry without previous_response_id and with
+                # the full conversation history.
+                import openai as _openai
+
+                _is_stale_ref = isinstance(
+                    first_exc, (_openai.NotFoundError, _openai.BadRequestError)
+                ) and sanitized_previous_response_id is not None
+                if not _is_stale_ref:
+                    raise
+                logger.warning(
+                    "previous_response_id %s is stale, retrying without it: %s",
+                    sanitized_previous_response_id,
+                    first_exc,
+                )
+                sanitized_previous_response_id = None
+                try:
+                    agent_context.previous_response_id = None
+                except Exception:
+                    pass
+                # Re-build full conversation history (undo the filtering)
+                # and strip reasoning items whose IDs are no longer valid.
+                conversation_history_input = _strip_stale_reasoning_items(
+                    _deduplicate_conversation_history_items(
+                        _normalize_conversation_history_for_provider(
+                            conversation_history_input_raw,
+                            getattr(provider_binding, "provider_slug", None)
+                            if provider_binding
+                            else None,
+                        )
+                    )
+                )
+                accumulated_text = ""
+                result = await _run_and_stream(
+                    [*conversation_history_input], None
+                )
             except Exception as exc:
                 raise WorkflowExecutionError(step_key, title, exc, list(steps)) from exc
 
             # Handle response_id persistence
-            last_response_id = getattr(result, "last_response_id", None)
+            last_response_id = _sanitize_previous_response_id(
+                getattr(result, "last_response_id", None)
+            )
             if last_response_id is not None:
                 agent_context.previous_response_id = last_response_id
                 thread_metadata = getattr(agent_context, "thread", None)

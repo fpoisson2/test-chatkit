@@ -690,7 +690,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         finally:
             if pending is not None and not pending.done():
                 pending.cancel()
-            await inner.aclose()
+                try:
+                    await pending
+                except (asyncio.CancelledError, StopAsyncIteration, Exception):
+                    pass
+            try:
+                await inner.aclose()
+            except RuntimeError:
+                pass
 
     async def _process_streaming_impl(
         self,
