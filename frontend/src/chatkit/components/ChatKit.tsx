@@ -142,7 +142,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     if (!lastUserMessage) return;
 
     if (lastUserMessage.id !== lastUserMessageId) {
-      console.log('[ChatKit] new user message detected:', lastUserMessage.id, 'prev:', lastUserMessageId);
       setInputValue('');
       clearAttachments();
       setLastUserMessageId(lastUserMessage.id);

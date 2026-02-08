@@ -28,10 +28,17 @@ export function useScrollToBottom(
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const prevThreadIdRef = useRef<string | undefined>(threadId);
-  const autoScrollActiveRef = useRef(false);
+  const pinnedItemIdRef = useRef<string | null>(null);
+  const smoothScrollingRef = useRef(false);
+
+  // Helper to clear pin and spacer
+  const clearPin = useCallback(() => {
+    pinnedItemIdRef.current = null;
+    const anchor = messagesEndRef.current;
+    if (anchor) anchor.style.minHeight = '0px';
+  }, []);
 
   // Auto-scroll to bottom only when switching conversations
-  // For new messages, do NOT force scroll - user stays at current position
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -40,8 +47,7 @@ export function useScrollToBottom(
     prevThreadIdRef.current = threadId;
 
     if (isConversationSwitch) {
-      // When switching conversations, wait for DOM to settle before scrolling
-      // Double rAF ensures we scroll after the browser has painted the new content
+      clearPin();
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           container.scrollTo({
@@ -51,44 +57,69 @@ export function useScrollToBottom(
         });
       });
     }
-  }, [itemCount, threadId]);
+  }, [itemCount, threadId, clearPin]);
 
-  // Auto-scroll to bottom as new content arrives (during streaming)
+  // When itemCount changes and we have a pinned item, adjust spacer and scroll
   useEffect(() => {
-    if (!autoScrollActiveRef.current) return;
+    const pinnedId = pinnedItemIdRef.current;
+    if (!pinnedId) return;
+    if (smoothScrollingRef.current) return;
 
     const container = messagesContainerRef.current;
-    if (!container) return;
+    const anchor = messagesEndRef.current;
+    if (!container || !anchor) return;
 
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior: 'instant',
+    const element = container.querySelector(`[data-item-id="${pinnedId}"]`) as HTMLElement | null;
+    if (!element) return;
+
+    // Save scroll position before measuring
+    const savedScrollTop = container.scrollTop;
+
+    // Temporarily remove anchor height to measure real content height
+    anchor.style.minHeight = '0px';
+    const contentScrollHeight = container.scrollHeight;
+
+    const elementRect = element.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const elementTopInContent = elementRect.top - containerRect.top + container.scrollTop;
+    const contentBelowElement = contentScrollHeight - elementTopInContent;
+    const neededSpacer = Math.max(0, container.clientHeight - contentBelowElement);
+
+    // Restore spacer and scroll position
+    anchor.style.minHeight = `${neededSpacer}px`;
+    container.scrollTop = savedScrollTop;
+
+    if (neededSpacer <= 0) {
+      pinnedItemIdRef.current = null;
+    }
+
+    // Scroll to keep the pinned element at the top
+    requestAnimationFrame(() => {
+      const updatedRect = element.getBoundingClientRect();
+      const updatedContainerRect = container.getBoundingClientRect();
+      const targetScrollTop = updatedRect.top - updatedContainerRect.top + container.scrollTop;
+      container.scrollTop = targetScrollTop;
     });
+
   }, [itemCount]);
 
+  // Spacer is cleaned up naturally when:
+  // - A new message is sent (new pin replaces old)
+  // - User clicks scroll-to-bottom button
+  // - Conversation switch
+
   // Track scroll position to show/hide the "scroll to bottom" button
-  // and disable auto-scroll if user scrolls up manually
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
-      // Consider "at bottom" if within threshold pixels from bottom
       const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold;
       setShowScrollButton(!isAtBottom);
-
-      // If user scrolls away from bottom, stop auto-scrolling
-      if (!isAtBottom && autoScrollActiveRef.current) {
-        const scrolledUpSignificantly = scrollHeight - scrollTop - clientHeight > 200;
-        if (scrolledUpSignificantly) {
-          autoScrollActiveRef.current = false;
-        }
-      }
     };
 
     container.addEventListener('scroll', handleScroll);
-    // Check initial state
     handleScroll();
 
     return () => {
@@ -100,24 +131,55 @@ export function useScrollToBottom(
   const scrollToBottom = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
+    clearPin();
     container.scrollTo({
       top: container.scrollHeight,
       behavior: 'smooth',
     });
-  }, []);
+  }, [clearPin]);
 
-  // Scroll to bottom and enable auto-scroll for streaming content
-  const scrollItemToTop = useCallback((_itemId: string) => {
+  // Pin an item to the top of the visible area
+  const scrollItemToTop = useCallback((itemId: string) => {
     const container = messagesContainerRef.current;
-    if (!container) return;
+    const anchor = messagesEndRef.current;
+    if (!container || !anchor) return;
 
-    // Activate auto-scroll so new streaming content stays visible
-    autoScrollActiveRef.current = true;
+    pinnedItemIdRef.current = itemId;
+    smoothScrollingRef.current = true;
 
     setTimeout(() => {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: 'instant',
+      const element = container.querySelector(`[data-item-id="${itemId}"]`) as HTMLElement | null;
+      if (!element) return;
+
+      // Save current scroll position before measuring
+      const savedScrollTop = container.scrollTop;
+
+      // Temporarily remove spacer to measure real content
+      anchor.style.minHeight = '0px';
+      const contentScrollHeight = container.scrollHeight;
+
+      const elementRect = element.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const elementTopInContent = elementRect.top - containerRect.top + container.scrollTop;
+      const contentBelowElement = contentScrollHeight - elementTopInContent;
+      const neededSpacer = Math.max(0, container.clientHeight - contentBelowElement);
+
+      // Set spacer and restore scroll position to avoid visual jump
+      anchor.style.minHeight = `${neededSpacer}px`;
+      container.scrollTop = savedScrollTop;
+
+      requestAnimationFrame(() => {
+        const updatedRect = element.getBoundingClientRect();
+        const updatedContainerRect = container.getBoundingClientRect();
+        const targetScrollTop = updatedRect.top - updatedContainerRect.top + container.scrollTop;
+        container.scrollTo({
+          top: targetScrollTop,
+          behavior: 'smooth',
+        });
+
+        setTimeout(() => {
+          smoothScrollingRef.current = false;
+        }, 600);
       });
     }, 50);
   }, []);
