@@ -5,6 +5,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ComposerModel, ChatKitOptions } from '../types';
 import { ImageWithBlobUrl, TEXTAREA_MAX_HEIGHT_PX, getFileTypeIcon } from '../utils';
 import type { Attachment } from '../api/attachments';
+import { useI18n } from '../../i18n/I18nProvider';
 
 /**
  * Télécharge un fichier en créant un lien de téléchargement
@@ -78,6 +79,7 @@ export function Composer({
   editingState,
   onCancelEdit,
 }: ComposerProps): JSX.Element {
+  const { t } = useI18n();
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
@@ -291,13 +293,15 @@ export function Composer({
                 <circle cx="6" cy="18" r="3"></circle>
                 <path d="M18 9a9 9 0 0 1-9 9"></path>
               </svg>
-              <span>Editing message - this will create a new branch</span>
+              <span>
+                {t('chatkit.editMessage.banner') || 'Editing message - this will create a new branch'}
+              </span>
             </div>
             <button
               type="button"
               className="chatkit-edit-banner-cancel"
               onClick={onCancelEdit}
-              aria-label="Cancel edit"
+              aria-label={t('chatkit.editMessage.cancelEdit') || 'Cancel edit'}
             >
               <svg
                 width="16"

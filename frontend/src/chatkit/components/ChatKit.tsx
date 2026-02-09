@@ -315,6 +315,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     return workflowMetadata?.display_name || workflowMetadata?.slug;
   };
 
+  const headerEnabled = !(header === false || header?.enabled === false);
+
   return (
     <div
       className={`chatkit ${className || ''}`}
@@ -352,6 +354,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       {/* Messages */}
       <div className="chatkit-messages" ref={messagesContainerRef}>
+        {!headerEnabled && branchingEnabled && control.branches && control.branches.length > 1 && (
+          <div className="chatkit-branch-selector-inline">
+            <BranchSelector
+              branches={control.branches}
+              currentBranchId={control.currentBranchId || 'main'}
+              maxBranches={control.maxBranches || 0}
+              disabled={control.isLoading}
+              onSwitchBranch={control.switchBranch || (() => {})}
+            />
+          </div>
+        )}
         {showStartScreen && startScreen ? (
           <StartScreen
             greeting={startScreen.greeting}

@@ -63,13 +63,31 @@ export function BranchSelector({
     return null;
   }
 
+  const numberedBranches = branches.filter((branch) => branch.branch_id !== MAIN_BRANCH_ID);
+  const branchIndexMap = new Map(
+    numberedBranches.map((branch, index) => [branch.branch_id, index + 1])
+  );
+
+  const getBranchLabel = (branch: Branch): string => {
+    if (branch.name) {
+      return branch.name;
+    }
+
+    if (branch.branch_id === MAIN_BRANCH_ID) {
+      return t('chatkit.branches.main') || 'Main';
+    }
+
+    const branchNumber = branchIndexMap.get(branch.branch_id);
+    if (branchNumber) {
+      return t('chatkit.branches.numbered', { number: branchNumber }) || `Branch #${branchNumber}`;
+    }
+
+    return branch.branch_id;
+  };
+
   // Get the current branch info
   const currentBranch = branches.find((b) => b.branch_id === currentBranchId);
-  const currentBranchName = currentBranch?.name || (
-    currentBranchId === MAIN_BRANCH_ID
-      ? t('chatkit.branches.main') || 'Main'
-      : currentBranchId
-  );
+  const currentBranchName = currentBranch ? getBranchLabel(currentBranch) : currentBranchId;
 
   // Format branch count
   const branchCountDisplay = maxBranches > 0
@@ -133,11 +151,7 @@ export function BranchSelector({
         >
           {branches.map((branch) => {
             const isSelected = branch.branch_id === currentBranchId;
-            const displayName = branch.name || (
-              branch.branch_id === MAIN_BRANCH_ID
-                ? t('chatkit.branches.main') || 'Main'
-                : branch.branch_id
-            );
+            const displayName = getBranchLabel(branch);
 
             return (
               <button
