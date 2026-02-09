@@ -15,6 +15,7 @@ import type { WidgetContext } from '../widgets';
 import { Composer } from './Composer';
 import { MessageRenderer } from './MessageRenderer';
 import { Header } from './Header';
+import { BranchSelector } from './BranchSelector';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useScreencast } from '../hooks/useScreencast';
 import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
@@ -41,6 +42,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const backendUrl = getBackendBaseUrl() || undefined;
   const [inputValue, setInputValue] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  // Edit message state (for branching)
+  const [editingState, setEditingState] = useState<{
+    isEditing: boolean;
+    itemId: string;
+    originalContent: string;
+  } | null>(null);
 
   const {
     header,
@@ -157,6 +165,29 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   // Callback for composer submission
   const handleComposerSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[], selectedModelId?: string | null) => {
+    // If we're in edit mode, create a branch instead of sending a regular message
+    if (editingState?.isEditing) {
+      console.log('[ChatKit] Edit mode detected, creating branch...', {
+        itemId: editingState.itemId,
+        message,
+        hasEditMessage: !!control.editMessage,
+      });
+      if (control.editMessage) {
+        try {
+          await control.editMessage(editingState.itemId, message);
+          console.log('[ChatKit] Branch created successfully');
+        } catch (err) {
+          console.error('[ChatKit] Error creating branch:', err);
+        }
+      } else {
+        console.warn('[ChatKit] control.editMessage is not defined!');
+      }
+      setEditingState(null);
+      setInputValue('');
+      clearAttachments();
+      return;
+    }
+
     // Build message content
     const content: UserMessageContent[] = [];
     if (message) {
@@ -180,7 +211,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // Reset the form
     setInputValue('');
     clearAttachments();
-  }, [control, clearAttachments]);
+  }, [control, clearAttachments, editingState]);
 
   const handlePromptClick = (prompt: string) => {
     control.sendMessage(prompt);
@@ -199,6 +230,32 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     setCopiedMessageId(messageId);
     setTimeout(() => setCopiedMessageId(null), COPY_FEEDBACK_DELAY_MS);
   };
+
+  // Start editing a message (load content into composer for branching)
+  const handleEditMessage = useCallback((itemId: string, content: string) => {
+    console.log('[ChatKit] handleEditMessage called', { itemId, content });
+    setEditingState({ isEditing: true, itemId, originalContent: content });
+    setInputValue(content);
+  }, []);
+
+  // Cancel editing mode
+  const handleCancelEdit = useCallback(() => {
+    setEditingState(null);
+    setInputValue('');
+  }, []);
+
+  // Check if branching is enabled
+  const branchingEnabled = control.branches !== undefined && control.branches.length >= 0;
+
+  // Debug logging for branching
+  useEffect(() => {
+    console.log('[ChatKit] Branching state:', {
+      branchingEnabled,
+      branches: control.branches,
+      currentBranchId: control.currentBranchId,
+      hasEditMessage: !!control.editMessage,
+    });
+  }, [branchingEnabled, control.branches, control.currentBranchId, control.editMessage]);
 
   // Show start screen only when there's no thread present (truly new conversation)
   // Don't show if:
@@ -258,6 +315,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     return workflowMetadata?.display_name || workflowMetadata?.slug;
   };
 
+  const headerEnabled = !(header === false || header?.enabled === false);
+
   return (
     <div
       className={`chatkit ${className || ''}`}
@@ -280,10 +339,32 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         showNewThreadButton={!showStartScreen}
         showHistoryButton={false}
         onNewThread={handleNewThread}
-      />
+      >
+        {/* Branch selector in header */}
+        {branchingEnabled && control.branches && control.branches.length > 1 && (
+          <BranchSelector
+            branches={control.branches}
+            currentBranchId={control.currentBranchId || 'main'}
+            maxBranches={control.maxBranches || 0}
+            disabled={control.isLoading}
+            onSwitchBranch={control.switchBranch || (() => {})}
+          />
+        )}
+      </Header>
 
       {/* Messages */}
       <div className="chatkit-messages" ref={messagesContainerRef}>
+        {!headerEnabled && branchingEnabled && control.branches && control.branches.length > 1 && (
+          <div className="chatkit-branch-selector-inline">
+            <BranchSelector
+              branches={control.branches}
+              currentBranchId={control.currentBranchId || 'main'}
+              maxBranches={control.maxBranches || 0}
+              disabled={control.isLoading}
+              onSwitchBranch={control.switchBranch || (() => {})}
+            />
+          </div>
+        )}
         {showStartScreen && startScreen ? (
           <StartScreen
             greeting={startScreen.greeting}
@@ -336,6 +417,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             isAdmin={isAdmin}
             inlineVoiceWidget={inlineVoiceWidget}
             inlineOutboundCallWidget={inlineOutboundCallWidget}
+            onEditMessage={handleEditMessage}
+            branchingEnabled={branchingEnabled}
           />
           </>
         )}
@@ -379,8 +462,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         apiConfig={api.url ? { url: api.url, headers: api.headers } : undefined}
         onFilesSelected={handleFilesSelected}
         isDraggingFiles={isDraggingFiles}
+        editingState={editingState}
+        onCancelEdit={handleCancelEdit}
       />
-    </div>
+
+          </div>
   );
 }
 
@@ -455,6 +541,9 @@ interface MessageListProps {
   isAdmin?: boolean;
   inlineVoiceWidget: VoiceSessionWidget | null;
   inlineOutboundCallWidget: OutboundCallWidget | null;
+  // Branch editing props
+  onEditMessage?: (itemId: string, content: string) => void;
+  branchingEnabled?: boolean;
 }
 
 function MessageList({
@@ -479,6 +568,8 @@ function MessageList({
   isAdmin,
   inlineVoiceWidget,
   inlineOutboundCallWidget,
+  onEditMessage,
+  branchingEnabled,
 }: MessageListProps): JSX.Element {
   const renderInlineWidgets = (
     voiceWidget: VoiceSessionWidget | null,
@@ -543,6 +634,8 @@ function MessageList({
         onDismissScreencast={onDismissScreencast}
         onContinueWorkflow={onContinueWorkflow}
         isAdmin={isAdmin}
+        onEditMessage={onEditMessage}
+        branchingEnabled={branchingEnabled}
       />,
     ];
 

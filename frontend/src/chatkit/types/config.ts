@@ -19,6 +19,7 @@ import type {
 import type { VoiceSessionWidget, OutboundCallWidget } from './widgets';
 import type { UserMessageContent } from './messages';
 import type { Thread } from './threads';
+import type { Branch, CreateBranchResponse } from './branches';
 
 // ===== Configuration API =====
 
@@ -66,6 +67,8 @@ export interface OutboundCallWidgetContext {
 export interface ChatKitOptions {
   api: ChatKitAPIConfig;
   initialThread?: string | null;
+  /** Optional initial branch id (from URL or state) */
+  initialBranchId?: string | null;
   header?: {
     enabled?: boolean;
     leftAction?: {
@@ -135,6 +138,8 @@ export interface ChatKitOptions {
   onThreadLoadEnd?: (event: { threadId: string }) => void;
   onThreadNotFound?: (event: { threadId: string }) => void;
   onLog?: (entry: { name: string; data?: Record<string, unknown> }) => void;
+  /** Called when active branch changes */
+  onBranchChange?: (event: { branchId: string }) => void;
   /** Show usage metadata (cost, tokens) for admin users */
   isAdmin?: boolean;
 }
@@ -161,4 +166,22 @@ export interface ChatKitControl {
   isLoadingOlderItems: boolean;
   /** Load older messages */
   loadOlderItems: () => Promise<void>;
+
+  // Branch management
+  /** List of all branches for the current thread */
+  branches: Branch[];
+  /** Current active branch ID */
+  currentBranchId: string;
+  /** Maximum allowed branches (0 = unlimited) */
+  maxBranches: number;
+  /** Whether a new branch can be created */
+  canCreateBranch: boolean;
+  /** Whether branches are currently loading */
+  isLoadingBranches: boolean;
+  /** Create a new branch from a fork point and optionally edit the message */
+  createBranch: (forkAfterItemId: string, name?: string) => Promise<CreateBranchResponse | null>;
+  /** Switch to a different branch */
+  switchBranch: (branchId: string) => Promise<boolean>;
+  /** Edit a message by creating a new branch */
+  editMessage: (itemId: string, newContent: string, branchName?: string) => Promise<void>;
 }

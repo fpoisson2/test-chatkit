@@ -8,6 +8,7 @@ import { fetchThread } from '../api/streaming/api';
 export interface UseThreadLoaderOptions {
   api: ChatKitAPIConfig;
   initialThread: string | null | undefined;
+  branchIdRef?: React.MutableRefObject<string | null>;
   threadCacheRef: React.MutableRefObject<Map<string, Thread>>;
   activeThreadIdRef: React.MutableRefObject<string | null>;
   visibleThreadIdRef: React.MutableRefObject<string | null>;
@@ -31,6 +32,7 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
   const {
     api,
     initialThread,
+    branchIdRef,
     threadCacheRef,
     activeThreadIdRef,
     visibleThreadIdRef,
@@ -64,7 +66,7 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
       onLog?.({ name: 'thread.load.start', data: { threadId: initialThread } });
 
       // Check cache first for instant display
-      const cachedThread = threadCacheRef.current.get(initialThread);
+      const cachedThread = threadCacheRef.current.get(getThreadKey(initialThread));
 
       if (cachedThread) {
         setThread(cachedThread);
@@ -79,13 +81,29 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
           url: api.url,
           headers: api.headers,
           threadId: initialThread,
+          branchId: branchIdRef?.current,
         })
           .then((loadedThread) => {
+            const responseBranchId =
+              (loadedThread.metadata as { current_branch_id?: string } | undefined)
+                ?.current_branch_id ?? null;
+            if (branchIdRef?.current && responseBranchId && responseBranchId !== branchIdRef.current) {
+              // Ignore stale response from another branch
+              onLog?.({
+                name: 'thread.load.ignored',
+                data: {
+                  threadId: loadedThread.id,
+                  responseBranchId,
+                  expectedBranchId: branchIdRef.current,
+                },
+              });
+              return;
+            }
             // Clear loading state BEFORE setting thread to avoid race condition
             // where typing indicator shows up when thread is set but loading not yet cleared
             setThreadLoading(loadedThread.id, false);
             setThread(loadedThread);
-            threadCacheRef.current.set(loadedThread.id, loadedThread);
+            threadCacheRef.current.set(getThreadKey(loadedThread.id), loadedThread);
             activeThreadIdRef.current = loadedThread.id;
             visibleThreadIdRef.current = loadedThread.id;
             onThreadLoadEnd?.({ threadId: initialThread });
@@ -110,7 +128,7 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
           });
       }
     }
-  }, [initialThread, api.url, api.headers, onThreadLoadStart, onThreadLoadEnd, onError, onLog, setThreadLoading, generateTempThreadId, threadCacheRef, activeThreadIdRef, visibleThreadIdRef, setThread]);
+  }, [initialThread, api.url, api.headers, onThreadLoadStart, onThreadLoadEnd, onError, onLog, setThreadLoading, generateTempThreadId, threadCacheRef, activeThreadIdRef, visibleThreadIdRef, setThread, getThreadKey]);
 
   // Fetch thread updates
   const fetchUpdates = useCallback(async () => {
@@ -126,10 +144,26 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
         url: api.url,
         headers: api.headers,
         threadId: targetThreadId,
+        branchId: branchIdRef?.current,
       });
 
+      const responseBranchId =
+        (updatedThread.metadata as { current_branch_id?: string } | undefined)
+          ?.current_branch_id ?? null;
+      if (branchIdRef?.current && responseBranchId && responseBranchId !== branchIdRef.current) {
+        onLog?.({
+          name: 'thread.refresh.ignored',
+          data: {
+            threadId: updatedThread.id,
+            responseBranchId,
+            expectedBranchId: branchIdRef.current,
+          },
+        });
+        return;
+      }
+
       setThread(updatedThread);
-      threadCacheRef.current.set(updatedThread.id, updatedThread);
+      threadCacheRef.current.set(getThreadKey(updatedThread.id), updatedThread);
       activeThreadIdRef.current = updatedThread.id;
       visibleThreadIdRef.current = updatedThread.id;
       setThreadLoading(updatedThread.id, false);
@@ -140,7 +174,7 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
     } finally {
       setThreadLoading(targetThreadId, false);
     }
-  }, [api.url, api.headers, onError, onLog, setThreadLoading, isTempThreadId, visibleThreadIdRef, activeThreadIdRef, threadCacheRef, setThread]);
+  }, [api.url, api.headers, onError, onLog, setThreadLoading, isTempThreadId, visibleThreadIdRef, activeThreadIdRef, threadCacheRef, setThread, branchIdRef, getThreadKey]);
 
   return {
     fetchUpdates,

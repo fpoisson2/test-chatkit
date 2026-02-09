@@ -129,6 +129,38 @@ class ChatThreadItem(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
 
 
+class ChatThreadBranch(Base):
+    """Branch metadata for conversation branching feature.
+
+    Enables users to edit a message and create a new conversation branch,
+    preserving the original history while allowing exploration of alternatives.
+    """
+
+    __tablename__ = "chat_thread_branches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    branch_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    thread_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("chat_threads.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    parent_branch_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    fork_point_item_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("thread_id", "branch_id", name="uq_chat_thread_branches_thread_branch"),
+    )
+
+
 class ChatAttachment(Base):
     __tablename__ = "chat_attachments"
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, startTransition } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ChatKitOptions } from "../../chatkit";
 import type { Thread } from "../../chatkit/types";
 
@@ -43,6 +43,10 @@ type ClientToolCall = WeatherToolCall;
 
 export function MyChatContent() {
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const urlBranchId = searchParams.get("branch") || null;
   const { token, user } = useAuth();
   const { settings: appearanceSettings, setActiveWorkflow: setAppearanceWorkflow, activeWorkflow: activeAppearanceWorkflow } = useAppearanceSettings();
   const { openSidebar, setHideSidebar, isSidebarOpen } = useAppLayout();
@@ -260,6 +264,7 @@ export function MyChatContent() {
     return {
       api: apiConfig,
       initialThread: initialThreadId,
+      initialBranchId: urlBranchId,
       ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header ? { header: { enabled: false } } : {
         header: {
           ...(isSidebarOpen ? {} : { leftAction: { icon: "menu" as const, onClick: openSidebar } }),
@@ -291,9 +296,22 @@ export function MyChatContent() {
       },
       onError: chatkitCallbacks.onError, onResponseStart: chatkitCallbacks.onResponseStart, onResponseEnd: chatkitCallbacks.onResponseEnd,
       onThreadChange: chatkitCallbacks.onThreadChange, onThreadLoadStart: chatkitCallbacks.onThreadLoadStart, onThreadLoadEnd: chatkitCallbacks.onThreadLoadEnd, onThreadNotFound: chatkitCallbacks.onThreadNotFound, onLog: chatkitCallbacks.onLog,
+      onBranchChange: ({ branchId }) => {
+        const nextParams = new URLSearchParams(searchParams);
+        if (!branchId || branchId === "main") {
+          nextParams.delete("branch");
+        } else {
+          nextParams.set("branch", branchId);
+        }
+        const nextSearch = nextParams.toString();
+        navigate(
+          { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+          { replace: true }
+        );
+      },
       isAdmin: user?.is_admin,
     } satisfies ChatKitOptions;
-  }, [apiConfig, initialThreadId, activeWorkflow, user, isSidebarOpen, openSidebar, mode, workflows, workflowSelection, handleWorkflowSelectorChange, themeConfig, appearanceSettings, composerPlaceholder, attachmentsConfig, composerModels, widgetsConfig, chatkitCallbacks]);
+  }, [apiConfig, initialThreadId, urlBranchId, activeWorkflow, user, isSidebarOpen, openSidebar, mode, workflows, workflowSelection, handleWorkflowSelectorChange, themeConfig, appearanceSettings, composerPlaceholder, attachmentsConfig, composerModels, widgetsConfig, chatkitCallbacks, searchParams, navigate, location.pathname]);
 
   // Instance cache
   const { currentWorkflowId, activeInstances } = useChatInstanceCache({ mode, activeWorkflowId, hostedWorkflowSlug, activeWorkflow, initialThreadId, chatkitOptions, chatInstanceKey });

@@ -18,3 +18,11 @@ export { LoadingIndicator } from './LoadingIndicator';
 export { WorkflowRenderer } from './WorkflowRenderer';
 export { TaskRenderer } from './TaskRenderer';
 export { StartScreen } from './StartScreen';
+
+// Branch management components
+export { EditMessageModal } from './EditMessageModal';
+export type { EditMessageModalProps } from './EditMessageModal';
+export { BranchSelector } from './BranchSelector';
+export type { BranchSelectorProps } from './BranchSelector';
+export { BranchIndicator } from './BranchIndicator';
+export type { BranchIndicatorProps } from './BranchIndicator';
