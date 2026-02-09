@@ -125,6 +125,13 @@ def get_active_sessions(
         thread_payload = thread.payload if hasattr(thread, 'payload') else {}
         thread_metadata = thread_payload.get("metadata", {}) if isinstance(thread_payload, dict) else {}
         workflow_meta = thread_metadata.get("workflow", {}) if isinstance(thread_metadata, dict) else {}
+        current_branch_id = (
+            thread_metadata.get("current_branch_id")
+            if isinstance(thread_metadata, dict)
+            else None
+        )
+        if not isinstance(current_branch_id, str):
+            current_branch_id = None
 
         # Skip threads sans workflow
         if not workflow_meta or not isinstance(workflow_meta, dict):
@@ -230,6 +237,7 @@ def get_active_sessions(
 
         active_sessions.append({
             "thread_id": thread.id,
+            "current_branch_id": current_branch_id,
             "user": {
                 "id": user.id,
                 "email": user.email,

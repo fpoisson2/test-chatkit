@@ -1566,6 +1566,7 @@ class ActiveWorkflowSession(BaseModel):
     """Session de workflow active pour un utilisateur."""
 
     thread_id: str
+    current_branch_id: str | None = None
     user: WorkflowUserInfo
     workflow: WorkflowInfo
     current_step: WorkflowStepInfo

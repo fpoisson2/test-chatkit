@@ -21,6 +21,7 @@ interface WorkflowInfo {
 
 interface ActiveWorkflowSession {
   thread_id: string;
+  current_branch_id?: string | null;
   user: WorkflowUserInfo;
   workflow: WorkflowInfo;
   current_step: WorkflowStepInfo;

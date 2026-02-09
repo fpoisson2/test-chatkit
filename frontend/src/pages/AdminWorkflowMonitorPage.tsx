@@ -34,6 +34,7 @@ interface WorkflowInfo {
 
 interface ActiveWorkflowSession {
   thread_id: string;
+  current_branch_id?: string | null;
   user: WorkflowUserInfo;
   workflow: WorkflowInfo;
   current_step: WorkflowStepInfo;
@@ -219,6 +220,7 @@ export const AdminWorkflowMonitorPage = () => {
 Thread ID: ${session.thread_id}
 Utilisateur: ${session.user.email}
 Workflow: ${session.workflow.display_name}
+Branche: ${session.current_branch_id && session.current_branch_id !== "main" ? session.current_branch_id : "Principale"}
 Étape actuelle: ${session.current_step.display_name}
 Progression: ${session.step_history.length} étapes complétées
 Démarré: ${formatDateTime(session.started_at)}
@@ -352,6 +354,16 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
             <div className="text-xs text-muted">{session.current_step.slug}</div>
           </div>
         ),
+      },
+      {
+        key: "branch",
+        label: "Branche",
+        render: (session) => {
+          if (!session.current_branch_id || session.current_branch_id === "main") {
+            return <span className="text-xs text-muted">Principale</span>;
+          }
+          return <span className="font-medium">{`Branche ${session.current_branch_id}`}</span>;
+        },
       },
       {
         key: "progress",
