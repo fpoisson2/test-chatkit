@@ -15,7 +15,14 @@ export interface UseThreadStateReturn {
   isTempThreadId: (threadId: string | null | undefined) => boolean;
 }
 
-export function useThreadState(initialThreadId: string | null | undefined): UseThreadStateReturn {
+type UseThreadStateOptions = {
+  keySuffixRef?: React.MutableRefObject<string | null>;
+};
+
+export function useThreadState(
+  initialThreadId: string | null | undefined,
+  options?: UseThreadStateOptions
+): UseThreadStateReturn {
   const [thread, setThread] = useState<Thread | null>(null);
 
   const activeThreadIdRef = useRef<string | null>(initialThreadId || null);
@@ -23,7 +30,11 @@ export function useThreadState(initialThreadId: string | null | undefined): UseT
   const threadCacheRef = useRef<Map<string, Thread>>(new Map());
   const tempThreadIdCounterRef = useRef<number>(0);
 
-  const getThreadKey = useCallback((threadId: string | null | undefined) => threadId ?? '__new_thread__', []);
+  const getThreadKey = useCallback((threadId: string | null | undefined) => {
+    const base = threadId ?? '__new_thread__';
+    const suffix = options?.keySuffixRef ? (options.keySuffixRef.current ?? 'unknown') : null;
+    return suffix ? `${base}::${suffix}` : base;
+  }, [options?.keySuffixRef]);
 
   const generateTempThreadId = useCallback(() => {
     tempThreadIdCounterRef.current += 1;

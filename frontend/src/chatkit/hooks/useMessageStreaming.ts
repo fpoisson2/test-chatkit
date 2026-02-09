@@ -8,6 +8,7 @@ import { streamChatKitEvents } from '../api/streaming/index';
 export interface UseMessageStreamingOptions {
   api: ChatKitAPIConfig;
   thread: Thread | null;
+  branchIdRef?: React.MutableRefObject<string | null>;
   threadCacheRef: React.MutableRefObject<Map<string, Thread>>;
   activeThreadIdRef: React.MutableRefObject<string | null>;
   visibleThreadIdRef: React.MutableRefObject<string | null>;
@@ -35,6 +36,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
   const {
     api,
     thread,
+    branchIdRef,
     threadCacheRef,
     activeThreadIdRef,
     visibleThreadIdRef,
@@ -84,7 +86,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
           },
           onThreadUpdate: (newThread: Thread) => {
             updatedThread = newThread;
-            threadCacheRef.current.set(newThread.id, newThread);
+            threadCacheRef.current.set(getThreadKey(newThread.id), newThread);
 
             const visibleKey = getThreadKey(visibleThreadIdRef.current);
             const shouldUpdateThreadState = streamThreadKeyRef.current === visibleKey;
@@ -181,7 +183,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
       const existingController = abortControllersRef.current.get(threadKey);
       const initialThreadForStream =
         targetThreadId && !isTempThreadId(targetThreadId)
-          ? threadCacheRef.current.get(targetThreadId) ?? null
+          ? threadCacheRef.current.get(getThreadKey(targetThreadId)) ?? null
           : null;
 
       if (existingController) {
@@ -222,6 +224,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
             params: {
               thread_id: targetThreadId,
               input,
+              ...(branchIdRef?.current ? { branch_id: branchIdRef.current } : {}),
             },
           }
         : {
@@ -241,6 +244,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
       isTempThreadId,
       threadCacheRef,
       handleStream,
+      branchIdRef,
     ]
   );
 
@@ -248,7 +252,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
     async (threadId: string) => {
       const threadKey = getThreadKey(threadId);
       const existingController = abortControllersRef.current.get(threadKey);
-      const initialThreadForStream = threadCacheRef.current.get(threadId) ?? null;
+      const initialThreadForStream = threadCacheRef.current.get(getThreadKey(threadId)) ?? null;
 
       if (existingController) {
         // If streaming is already in progress for this thread, do not interrupt

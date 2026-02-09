@@ -38,6 +38,11 @@ export interface MessageRendererProps {
   isAdmin?: boolean;
   /** Si true, c'est le dernier workflow du thread (potentiellement actif/en streaming) */
   isLastWorkflowItem?: boolean;
+  // Branch editing props
+  /** Callback when user wants to edit a message */
+  onEditMessage?: (itemId: string, content: string) => void;
+  /** Whether branching is enabled */
+  branchingEnabled?: boolean;
 }
 
 /**
@@ -100,50 +105,103 @@ function UserMessageContent({
   authToken,
   apiUrl,
   backendUrl,
-}: { item: ThreadItem; theme?: string; authToken?: string; apiUrl?: string; backendUrl?: string }): JSX.Element {
+  onEditMessage,
+  branchingEnabled,
+}: {
+  item: ThreadItem;
+  theme?: string;
+  authToken?: string;
+  apiUrl?: string;
+  backendUrl?: string;
+  onEditMessage?: (itemId: string, content: string) => void;
+  branchingEnabled?: boolean;
+}): JSX.Element {
+  const { t } = useI18n();
+
   if (item.type !== 'user_message') return <></>;
 
+  // Extract text content for editing
+  const getTextContent = (): string => {
+    return item.content
+      .filter((c) => c.type === 'input_text')
+      .map((c) => c.text)
+      .join('\n');
+  };
+
+  const handleEdit = () => {
+    const content = getTextContent();
+    if (onEditMessage && content) {
+      onEditMessage(item.id, content);
+    }
+  };
+
   return (
-    <div className="chatkit-message-content">
-      {item.content.map((content, idx) => (
-        <div key={idx}>
-          {content.type === 'input_text' && <MarkdownRenderer content={content.text} theme={theme} />}
-          {content.type === 'input_tag' && (
-            <span className="chatkit-tag">{content.text}</span>
-          )}
-          {content.type === 'image' && (
-            <ImageWithBlobUrl src={content.image} alt="" authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
-          )}
-          {content.type === 'file' && (
-            <FileAttachmentDisplay
-              attachmentId={content.file}
-              attachment={findAttachment(content.file, item.attachments)}
-              authToken={authToken}
-            />
-          )}
-        </div>
-      ))}
-      {/* Render any attachments not in content (legacy support) */}
-      {item.attachments && item.attachments.length > 0 && (
-        <div className="chatkit-attachments">
-          {item.attachments
-            .filter(att => !item.content.some(c => c.type === 'file' && c.file === att.id))
-            .map((att, idx) => (
+    <>
+      <div className="chatkit-message-content">
+        {item.content.map((content, idx) => (
+          <div key={idx}>
+            {content.type === 'input_text' && <MarkdownRenderer content={content.text} theme={theme} />}
+            {content.type === 'input_tag' && (
+              <span className="chatkit-tag">{content.text}</span>
+            )}
+            {content.type === 'image' && (
+              <ImageWithBlobUrl src={content.image} alt="" authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
+            )}
+            {content.type === 'file' && (
               <FileAttachmentDisplay
-                key={`att-${idx}`}
-                attachmentId={att.id}
-                attachment={att}
+                attachmentId={content.file}
+                attachment={findAttachment(content.file, item.attachments)}
                 authToken={authToken}
               />
-            ))}
+            )}
+          </div>
+        ))}
+        {/* Render any attachments not in content (legacy support) */}
+        {item.attachments && item.attachments.length > 0 && (
+          <div className="chatkit-attachments">
+            {item.attachments
+              .filter(att => !item.content.some(c => c.type === 'file' && c.file === att.id))
+              .map((att, idx) => (
+                <FileAttachmentDisplay
+                  key={`att-${idx}`}
+                  attachmentId={att.id}
+                  attachment={att}
+                  authToken={authToken}
+                />
+              ))}
+          </div>
+        )}
+        {item.quoted_text && (
+          <div className="chatkit-quoted-text">
+            <blockquote>{item.quoted_text}</blockquote>
+          </div>
+        )}
+      </div>
+      {/* Edit button for branching */}
+      {branchingEnabled && onEditMessage && getTextContent() && (
+        <div className="chatkit-message-actions chatkit-message-actions-user">
+          <button
+            className="chatkit-message-edit-button"
+            onClick={handleEdit}
+            title={t('chatkit.message.edit') || 'Edit message'}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+          </button>
         </div>
       )}
-      {item.quoted_text && (
-        <div className="chatkit-quoted-text">
-          <blockquote>{item.quoted_text}</blockquote>
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -681,6 +739,8 @@ export function MessageRenderer({
   onContinueWorkflow,
   isAdmin,
   isLastWorkflowItem = false,
+  onEditMessage,
+  branchingEnabled = false,
 }: MessageRendererProps): JSX.Element | null {
   // Don't render end_of_turn
   if (item.type === 'end_of_turn') {
@@ -698,7 +758,15 @@ export function MessageRenderer({
   return (
     <div className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`} data-item-id={item.id}>
       {item.type === 'user_message' && (
-        <UserMessageContent item={item} theme={theme} authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
+        <UserMessageContent
+          item={item}
+          theme={theme}
+          authToken={authToken}
+          apiUrl={apiUrl}
+          backendUrl={backendUrl}
+          onEditMessage={onEditMessage}
+          branchingEnabled={branchingEnabled}
+        />
       )}
 
       {item.type === 'assistant_message' && (

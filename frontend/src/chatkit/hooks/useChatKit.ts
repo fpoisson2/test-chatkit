@@ -10,7 +10,9 @@ import { useAbortControllers } from './useAbortControllers';
 import { useThreadLoader } from './useThreadLoader';
 import { useMessageStreaming } from './useMessageStreaming';
 import { useThreadActions } from './useThreadActions';
+import { useBranches } from './useBranches';
 import { loadOlderItems as loadOlderItemsApi } from '../api/streaming/api';
+import { MAIN_BRANCH_ID } from '../types';
 
 export interface UseChatKitReturn {
   control: ChatKitControl;
@@ -23,6 +25,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   const {
     api,
     initialThread,
+    initialBranchId,
     onError,
     onResponseStart,
     onResponseEnd,
@@ -32,7 +35,11 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     onThreadNotFound,
     onLog,
     onClientTool,
+    onBranchChange,
   } = options;
+
+  // Track current branch id for API calls that need it
+  const branchIdRef = useRef<string | null>(null);
 
   // Thread state management
   const {
@@ -44,7 +51,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     getThreadKey,
     generateTempThreadId,
     isTempThreadId,
-  } = useThreadState(initialThread);
+  } = useThreadState(initialThread, { keySuffixRef: branchIdRef });
 
   // Loading state management
   // Pass initialThread to initialize loading state synchronously on mount
@@ -63,6 +70,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   const { fetchUpdates } = useThreadLoader({
     api,
     initialThread,
+    branchIdRef,
     threadCacheRef,
     activeThreadIdRef,
     visibleThreadIdRef,
@@ -82,6 +90,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   const { error, setError, sendUserMessage, resumeStream } = useMessageStreaming({
     api,
     thread,
+    branchIdRef,
     threadCacheRef,
     activeThreadIdRef,
     visibleThreadIdRef,
@@ -129,12 +138,109 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     api,
     thread,
     threadCacheRef,
+    getThreadKey,
     setThread,
     fetchUpdates,
     onThreadChange,
     onError,
     onLog,
   });
+
+  // Branch management
+  const {
+    branches,
+    currentBranchId,
+    isBranchesLoaded,
+    maxBranches,
+    canCreateBranch,
+    isLoadingBranches,
+    createBranch,
+    switchBranch,
+    reloadBranches,
+  } = useBranches({
+    api,
+    threadId: thread?.id,
+    onError,
+    onLog,
+    onBranchChange: useCallback((branchId: string) => {
+      branchIdRef.current = branchId;
+      onBranchChange?.({ branchId });
+      // Reload thread items when branch changes
+      fetchUpdates();
+    }, [fetchUpdates, onBranchChange]),
+  });
+
+  useEffect(() => {
+    branchIdRef.current = isBranchesLoaded ? (currentBranchId || null) : null;
+  }, [currentBranchId, isBranchesLoaded]);
+
+  // Apply initial branch from URL/state once branches are loaded
+  const appliedInitialBranchRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialBranchId || !isBranchesLoaded) return;
+    if (appliedInitialBranchRef.current === initialBranchId) return;
+    if (currentBranchId === initialBranchId) {
+      appliedInitialBranchRef.current = initialBranchId;
+      return;
+    }
+    appliedInitialBranchRef.current = initialBranchId;
+    switchBranch(initialBranchId);
+  }, [initialBranchId, isBranchesLoaded, currentBranchId, switchBranch]);
+
+  // Edit message by creating a new branch
+  const editMessage = useCallback(async (
+    itemId: string,
+    newContent: string,
+    branchName?: string
+  ) => {
+    console.log('[useChatKit.editMessage] Called with:', { itemId, newContent, branchName, threadId: thread?.id });
+
+    if (!thread?.id) {
+      console.warn('[useChatKit.editMessage] No thread ID, returning early');
+      return;
+    }
+
+    // Find the item to get the fork point (the item before this one)
+    const items = thread.items || [];
+    const itemIndex = items.findIndex(item => item.id === itemId);
+    console.log('[useChatKit.editMessage] Item search:', { itemIndex, totalItems: items.length });
+
+    if (itemIndex < 0) {
+      console.error('[useChatKit.editMessage] Message not found');
+      onError?.({ error: new Error('Message not found') });
+      return;
+    }
+
+    // The fork point is the item before the one being edited
+    // If it's the first item, we fork from the start
+    const forkAfterItemId = itemIndex > 0 ? items[itemIndex - 1].id : null;
+    console.log('[useChatKit.editMessage] Fork point:', { forkAfterItemId, itemIndex });
+
+    if (!forkAfterItemId) {
+      console.error('[useChatKit.editMessage] Cannot edit the first message');
+      onError?.({ error: new Error('Cannot edit the first message') });
+      return;
+    }
+
+    // Create the branch
+    console.log('[useChatKit.editMessage] Creating branch...');
+    const branch = await createBranch(forkAfterItemId, branchName);
+    console.log('[useChatKit.editMessage] Branch result:', branch);
+
+    if (!branch) {
+      console.error('[useChatKit.editMessage] Branch creation failed');
+      return; // Error already handled by createBranch
+    }
+
+    // Reload to get the updated items for the new branch
+    console.log('[useChatKit.editMessage] Fetching updates...');
+    await fetchUpdates();
+
+    // Send the edited message as a new message in the branch
+    console.log('[useChatKit.editMessage] Sending new message...');
+    await sendUserMessage(newContent);
+    console.log('[useChatKit.editMessage] Done!');
+  }, [thread?.id, thread?.items, createBranch, fetchUpdates, sendUserMessage, onError]);
 
   // Computed loading state
   const currentThreadId = thread?.id ?? activeThreadIdRef.current;
@@ -183,9 +289,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       });
 
       // Update cache
-      const updatedThread = threadCacheRef.current.get(thread.id);
+      const updatedThread = threadCacheRef.current.get(getThreadKey(thread.id));
       if (updatedThread) {
-        threadCacheRef.current.set(thread.id, {
+        threadCacheRef.current.set(getThreadKey(thread.id), {
           ...updatedThread,
           items: [...result.items, ...updatedThread.items],
           has_more_items: result.has_more,
@@ -200,7 +306,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     } finally {
       setIsLoadingOlderItems(false);
     }
-  }, [thread?.id, thread?.pagination_cursor, isLoadingOlderItems, api.url, api.headers, setThread, threadCacheRef, onLog, onError]);
+  }, [thread?.id, thread?.pagination_cursor, isLoadingOlderItems, api.url, api.headers, setThread, threadCacheRef, onLog, onError, getThreadKey]);
 
   // Computed hasMoreItems
   const hasMoreItems = thread?.has_more_items ?? false;
@@ -222,6 +328,15 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     hasMoreItems,
     isLoadingOlderItems,
     loadOlderItems,
+    // Branch management
+    branches,
+    currentBranchId,
+    maxBranches,
+    canCreateBranch,
+    isLoadingBranches,
+    createBranch,
+    switchBranch,
+    editMessage,
   };
 
   return {

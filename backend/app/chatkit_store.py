@@ -15,8 +15,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from chatkit.store import NotFoundError, Store
 from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
 
-from .models import ChatAttachment, ChatThread, ChatThreadItem
+from .models import ChatAttachment, ChatThread, ChatThreadBranch, ChatThreadItem
 from .workflows import WorkflowService
+from .services.branch_service import MAIN_BRANCH_ID
 
 # Taille minimale d'une image base64 pour être remplacée par une URL (en caractères)
 # ~10KB en base64 = ~13KB en caractères
@@ -583,12 +584,123 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             else:
                 if existing.owner_id != owner_id:
                     raise NotFoundError(f"Thread {thread.id} introuvable")
+                # Preserve current_branch_id if the caller didn't include it
+                if "current_branch_id" not in metadata:
+                    existing_meta = (existing.payload or {}).get("metadata") or {}
+                    existing_metadata = dict(existing_meta)
+                    existing_branch_id = existing_metadata.get("current_branch_id")
+                    if existing_branch_id:
+                        metadata["current_branch_id"] = existing_branch_id
+                        payload["metadata"] = metadata
                 existing.payload = payload
                 existing.created_at = created_at
                 existing.updated_at = now
             session.commit()
 
         await self._run(_save)
+
+    def _get_branch_fork_chain(
+        self,
+        session: Session,
+        thread_id: str,
+        branch_id: str,
+    ) -> list[dict[str, Any]]:
+        """Get the chain of fork points from root to the given branch.
+
+        Returns a list of dicts with branch_id, parent_branch_id, and fork_point_item_id.
+        """
+        chain: list[dict[str, Any]] = []
+        current_branch_id = branch_id
+
+        while current_branch_id and current_branch_id != MAIN_BRANCH_ID:
+            branch = session.execute(
+                select(ChatThreadBranch).where(
+                    ChatThreadBranch.thread_id == thread_id,
+                    ChatThreadBranch.branch_id == current_branch_id,
+                )
+            ).scalar_one_or_none()
+
+            if branch is None:
+                break
+
+            chain.insert(
+                0,
+                {
+                    "branch_id": branch.branch_id,
+                    "parent_branch_id": branch.parent_branch_id,
+                    "fork_point_item_id": branch.fork_point_item_id,
+                },
+            )
+            current_branch_id = branch.parent_branch_id
+
+        return chain
+
+    def _filter_items_for_branch(
+        self,
+        records: list[ChatThreadItem],
+        branch_id: str,
+        fork_chain: list[dict[str, Any]],
+    ) -> list[ChatThreadItem]:
+        """Filter items to show only those visible in the given branch.
+
+        Logic:
+        - Items created before the first fork point in the chain are shared (visible)
+        - Items created after a fork point must have matching branch_id in their payload
+        - Items without branch_id in payload are considered "main" branch items
+
+        Args:
+            records: All thread items in order.
+            branch_id: The target branch ID.
+            fork_chain: Chain of fork points from root to branch.
+
+        Returns:
+            Filtered list of items visible in the branch.
+        """
+        if not fork_chain:
+            # Main branch or no forks - show items without branch_id or with main branch_id
+            return [
+                r for r in records
+                if r.payload.get("branch_id") in (None, MAIN_BRANCH_ID)
+            ]
+        # Build ordered branch chain: main -> ... -> target
+        ordered_branch_ids = [MAIN_BRANCH_ID] + [f["branch_id"] for f in fork_chain]
+        ordered_fork_points = [f["fork_point_item_id"] for f in fork_chain]
+
+        filtered: list[ChatThreadItem] = []
+        active_index = 0  # index in ordered_branch_ids
+
+        for record in records:
+            item_branch_id = record.payload.get("branch_id")
+
+            # If this record is a fork point, include it in the current branch segment,
+            # then advance to the next branch segment.
+            if active_index < len(ordered_fork_points):
+                current_fork_point = ordered_fork_points[active_index]
+                if current_fork_point and record.id == current_fork_point:
+                    if active_index == 0:
+                        if item_branch_id in (None, MAIN_BRANCH_ID):
+                            filtered.append(record)
+                    else:
+                        if item_branch_id == ordered_branch_ids[active_index]:
+                            filtered.append(record)
+                    # Advance through any consecutive fork points with the same item id
+                    while (
+                        active_index < len(ordered_fork_points)
+                        and ordered_fork_points[active_index] == record.id
+                    ):
+                        active_index += 1
+                    continue
+
+            if active_index == 0:
+                # Main segment before first fork point
+                if item_branch_id in (None, MAIN_BRANCH_ID):
+                    filtered.append(record)
+            else:
+                # After fork points, include only items from the active branch
+                if item_branch_id == ordered_branch_ids[active_index]:
+                    filtered.append(record)
+
+        return filtered
 
     async def load_thread_items(
         self,
@@ -597,30 +709,60 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         limit: int,
         order: str,
         context: ChatKitRequestContext,
+        branch_id: str | None = None,
     ) -> Page[ThreadItem]:
         def _load(session: Session) -> Page[ThreadItem]:
             owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
-            self._require_thread_record(
+            _record, thread_payload = self._require_thread_record(
                 session,
                 thread_id,
                 owner_id,
                 expected,
             )
 
+            # Determine which branch to load
+            effective_branch_id = branch_id
+            metadata = thread_payload.get("metadata") or {}
+            if effective_branch_id is None:
+                # Use the current branch from thread metadata
+                effective_branch_id = metadata.get("current_branch_id") or MAIN_BRANCH_ID
+            if getattr(context, "branch_id", None):
+                effective_branch_id = context.branch_id or effective_branch_id
+            if effective_branch_id is None:
+                effective_branch_id = MAIN_BRANCH_ID
+
+            import logging
+            logger = logging.getLogger("chatkit.store")
+            logger.info(
+                "[BRANCH_DEBUG] load_thread_items: thread_id=%s, effective_branch_id=%s, metadata=%s",
+                thread_id, effective_branch_id, metadata
+            )
+
+            # Always load in chronological order for branch filtering logic
             stmt = select(ChatThreadItem).where(
                 ChatThreadItem.thread_id == thread_id,
                 ChatThreadItem.owner_id == owner_id,
+            ).order_by(ChatThreadItem.created_at.asc(), ChatThreadItem.id.asc())
+            all_records = list(session.execute(stmt).scalars().all())
+
+            # Filter records for the branch
+            fork_chain = self._get_branch_fork_chain(
+                session, thread_id, effective_branch_id
+            )
+            logger.info(
+                "[BRANCH_DEBUG] fork_chain=%s, all_records_count=%d",
+                fork_chain, len(all_records)
+            )
+            records = self._filter_items_for_branch(
+                all_records, effective_branch_id, fork_chain
             )
             if order == "desc":
-                stmt = stmt.order_by(
-                    ChatThreadItem.created_at.desc(), ChatThreadItem.id.desc()
-                )
-            else:
-                stmt = stmt.order_by(
-                    ChatThreadItem.created_at.asc(), ChatThreadItem.id.asc()
-                )
-            records = session.execute(stmt).scalars().all()
+                records = list(reversed(records))
+            logger.info(
+                "[BRANCH_DEBUG] filtered_records_count=%d, item_ids=%s",
+                len(records), [r.id for r in records]
+            )
 
             start_index = 0
             if after:
@@ -790,13 +932,17 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         return await self._run(_load)
 
     async def add_thread_item(
-        self, thread_id: str, item: ThreadItem, context: ChatKitRequestContext
+        self,
+        thread_id: str,
+        item: ThreadItem,
+        context: ChatKitRequestContext,
+        branch_id: str | None = None,
     ) -> None:
         owner_id = self._require_user_id(context)
 
         def _add(session: Session) -> None:
             expected = self._current_workflow_metadata()
-            self._require_thread_record(
+            _record, thread_payload = self._require_thread_record(
                 session,
                 thread_id,
                 owner_id,
@@ -804,6 +950,29 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             )
             # Ne PAS normaliser lors de la sauvegarde pour préserver les données d'image
             payload = _strip_null_bytes(item.model_dump(mode="json"))
+
+            # Determine branch_id - use provided value or get from thread metadata
+            effective_branch_id = branch_id
+            if effective_branch_id is None:
+                metadata = thread_payload.get("metadata") or {}
+                effective_branch_id = metadata.get("current_branch_id")
+            if getattr(context, "branch_id", None):
+                effective_branch_id = context.branch_id
+
+            import logging
+            logger = logging.getLogger("chatkit.store")
+            logger.info(
+                "[BRANCH_DEBUG] add_thread_item: thread_id=%s, item_id=%s, item_type=%s, effective_branch_id=%s",
+                thread_id,
+                item.id,
+                getattr(item, "type", None),
+                effective_branch_id,
+            )
+
+            # Add branch_id to payload if we're on a non-main branch
+            if effective_branch_id and effective_branch_id != MAIN_BRANCH_ID:
+                payload["branch_id"] = effective_branch_id
+
             created_at = _ensure_timezone(getattr(item, "created_at", None))
             existing = session.get(ChatThreadItem, item.id)
             if existing is None:
@@ -851,7 +1020,12 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                     f"Élément {item.id} introuvable dans le fil {thread_id}"
                 )
             # Ne PAS normaliser lors de la sauvegarde pour préserver les données d'image
-            record.payload = _strip_null_bytes(item.model_dump(mode="json"))
+            new_payload = _strip_null_bytes(item.model_dump(mode="json"))
+            # Preserve branch_id from existing record if present
+            existing_branch_id = record.payload.get("branch_id")
+            if existing_branch_id:
+                new_payload["branch_id"] = existing_branch_id
+            record.payload = new_payload
             record.created_at = _ensure_timezone(getattr(item, "created_at", None))
             session.commit()
 

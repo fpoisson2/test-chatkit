@@ -18,6 +18,8 @@ export interface HeaderProps {
   showNewThreadButton?: boolean;
   showHistoryButton?: boolean;
   onNewThread: () => void;
+  /** Optional children to render in the header (e.g., BranchSelector) */
+  children?: ReactNode;
 }
 
 /**
@@ -30,6 +32,7 @@ export function Header({
   showNewThreadButton = true,
   showHistoryButton = true,
   onNewThread,
+  children,
 }: HeaderProps): JSX.Element | null {
   // Don't render if header is disabled
   if (config === false || config?.enabled === false) {
@@ -64,6 +67,8 @@ export function Header({
           )}
         </div>
       )}
+      {/* Additional header content (e.g., branch selector) */}
+      {children}
       <div className="chatkit-header-actions">
         <button
           className="chatkit-header-action"

@@ -186,3 +186,13 @@ export type {
   ChatKitOptions,
   ChatKitControl,
 } from './config';
+
+// Types de branches
+export type {
+  Branch,
+  BranchListResponse,
+  CreateBranchRequest,
+  CreateBranchResponse,
+  SwitchBranchResponse,
+} from './branches';
+export { MAIN_BRANCH_ID } from './branches';
