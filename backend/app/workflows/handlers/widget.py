@@ -91,8 +91,9 @@ class WidgetNodeHandler(BaseNodeHandler):
                 if result is not None:
                     action_payload = dict(result)
 
-                # Widget action received — clear the wait state.
-                await self._clear_widget_wait_state(context)
+                # NOTE: We intentionally do NOT clear the wait state here.
+                # The next wait/widget node will overwrite it.  See the
+                # equivalent comment in wait.py for the rationale.
 
             # Build widget identifier
             widget_identifier = (

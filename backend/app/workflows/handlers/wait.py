@@ -88,11 +88,20 @@ class WaitNodeHandler(BaseNodeHandler):
             if next_slug is None:
                 next_slug = self._next_slug_or_fallback(node.slug, context)
 
-            # Clear wait state
-            if thread is not None:
-                _set_wait_state_metadata(thread, None)
+            # NOTE: We intentionally do NOT clear the wait state from the
+            # thread metadata here.  The on_step_stream callback persists the
+            # thread whenever the current step changes; if we cleared the wait
+            # state in memory now, that save would also wipe it from the DB.
+            # If the student then disconnects before the *next* wait/widget
+            # node saves its own state, the workflow would have no fallback
+            # and restart from scratch.
+            #
+            # Instead we leave the old wait state in the thread metadata.  The
+            # next wait or widget node will overwrite it with its own state.
+            # Worst case (student leaves before the next node), the workflow
+            # resumes at the *previous* wait node rather than at the beginning.
 
-            # Also clear pending_wait_state in runtime_vars so that agent steps
+            # Clear pending_wait_state in runtime_vars so that agent steps
             # in while loops don't incorrectly clear conversation history
             # (see executor_v2.py lines 820-823)
             context.runtime_vars["pending_wait_state"] = None
