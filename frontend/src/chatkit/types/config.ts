@@ -181,7 +181,11 @@ export interface ChatKitControl {
   /** Whether branches are currently loading */
   isLoadingBranches: boolean;
   /** Create a new branch from a fork point and optionally edit the message */
-  createBranch: (forkAfterItemId: string, name?: string) => Promise<CreateBranchResponse | null>;
+  createBranch: (
+    forkAfterItemId: string,
+    name?: string,
+    editedItemId?: string
+  ) => Promise<CreateBranchResponse | null>;
   /** Switch to a different branch */
   switchBranch: (branchId: string) => Promise<boolean>;
   /** Edit a message by creating a new branch */

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
 
 # Default branch ID for the main conversation
 MAIN_BRANCH_ID = "main"
+_WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
+_WAIT_STATE_BY_BRANCH_METADATA_KEY = "workflow_wait_for_user_input_by_branch"
+_WAIT_STATE_INDEX_BY_BRANCH_METADATA_KEY = "workflow_wait_for_user_input_index_by_branch"
 
 
 class BranchService:
@@ -30,6 +34,32 @@ class BranchService:
 
     def __init__(self, session_factory: "sessionmaker[Session]") -> None:
         self._session_factory = session_factory
+
+    @staticmethod
+    def _migrate_legacy_wait_state_for_current_branch(
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Move legacy global wait state to branch-aware metadata for current branch."""
+        current_branch_id = metadata.get("current_branch_id")
+        if not isinstance(current_branch_id, str) or not current_branch_id.strip():
+            current_branch_id = MAIN_BRANCH_ID
+        else:
+            current_branch_id = current_branch_id.strip()
+
+        legacy_wait_state = metadata.get(_WAIT_STATE_METADATA_KEY)
+        if not isinstance(legacy_wait_state, Mapping):
+            return metadata
+
+        wait_states_by_branch_raw = metadata.get(_WAIT_STATE_BY_BRANCH_METADATA_KEY)
+        wait_states_by_branch = (
+            dict(wait_states_by_branch_raw)
+            if isinstance(wait_states_by_branch_raw, Mapping)
+            else {}
+        )
+        wait_states_by_branch[current_branch_id] = dict(legacy_wait_state)
+        metadata[_WAIT_STATE_BY_BRANCH_METADATA_KEY] = wait_states_by_branch
+        metadata.pop(_WAIT_STATE_METADATA_KEY, None)
+        return metadata
 
     def _generate_branch_id(self) -> str:
         """Generate a unique branch ID."""
@@ -167,6 +197,7 @@ class BranchService:
             # Update thread metadata with current branch
             payload = dict(thread.payload or {})
             metadata = dict(payload.get("metadata") or {})
+            metadata = self._migrate_legacy_wait_state_for_current_branch(metadata)
             metadata["current_branch_id"] = branch_id
             payload["metadata"] = metadata
             thread.payload = payload
@@ -181,6 +212,7 @@ class BranchService:
         thread_id: str,
         fork_after_item_id: str,
         owner_id: str,
+        edited_item_id: str | None = None,
         name: str | None = None,
     ) -> dict[str, Any] | None:
         """Create a new branch from an existing conversation point.
@@ -189,6 +221,7 @@ class BranchService:
             thread_id: The thread ID to branch from.
             fork_after_item_id: The item ID after which to fork
                 (new branch starts with a modified version of items after this point).
+            edited_item_id: The edited item ID (if available).
             owner_id: The owner ID for authorization.
             name: Optional name for the branch.
 
@@ -218,8 +251,15 @@ class BranchService:
             if fork_item is None:
                 return None
 
-            # Determine the parent branch
-            current_branch_id = self.get_current_branch_id(thread_id, owner_id)
+            # Determine the parent branch from the fork point item itself.
+            # This avoids attaching a new branch to the currently active branch
+            # when the user edits a message that belongs to an ancestor branch.
+            fork_payload = fork_item.payload if isinstance(fork_item.payload, dict) else {}
+            fork_item_branch_id = fork_payload.get("branch_id")
+            if isinstance(fork_item_branch_id, str) and fork_item_branch_id.strip():
+                parent_branch_id = fork_item_branch_id.strip()
+            else:
+                parent_branch_id = MAIN_BRANCH_ID
 
             # Ensure the main branch record exists
             main_branch = session.execute(
@@ -250,7 +290,7 @@ class BranchService:
             branch = ChatThreadBranch(
                 branch_id=new_branch_id,
                 thread_id=thread_id,
-                parent_branch_id=current_branch_id,
+                parent_branch_id=parent_branch_id,
                 fork_point_item_id=fork_after_item_id,
                 name=name,
                 is_default=False,
@@ -261,6 +301,63 @@ class BranchService:
             # Switch to the new branch
             payload = dict(thread.payload or {})
             metadata = dict(payload.get("metadata") or {})
+            metadata = self._migrate_legacy_wait_state_for_current_branch(metadata)
+            wait_states_raw = metadata.get(_WAIT_STATE_BY_BRANCH_METADATA_KEY)
+            wait_states = dict(wait_states_raw) if isinstance(wait_states_raw, Mapping) else {}
+
+            # Restore branch-specific wait state at the fork point when available.
+            wait_index_raw = metadata.get(_WAIT_STATE_INDEX_BY_BRANCH_METADATA_KEY)
+            wait_index = dict(wait_index_raw) if isinstance(wait_index_raw, Mapping) else {}
+            parent_wait_index_raw = wait_index.get(parent_branch_id)
+            parent_wait_index = (
+                dict(parent_wait_index_raw)
+                if isinstance(parent_wait_index_raw, Mapping)
+                else {}
+            )
+            restored_wait_state: Mapping[str, Any] | None = None
+
+            if isinstance(edited_item_id, str) and edited_item_id.strip():
+                edited_item_id = edited_item_id.strip()
+                restored_wait_state = parent_wait_index.get(edited_item_id)
+
+            if not isinstance(restored_wait_state, Mapping):
+                restored_wait_state = parent_wait_index.get(fork_after_item_id)
+
+            if not isinstance(restored_wait_state, Mapping):
+                # Fallback: reuse a sibling branch wait state from the same fork point.
+                sibling_branches = session.execute(
+                    select(ChatThreadBranch)
+                    .where(
+                        ChatThreadBranch.thread_id == thread_id,
+                        ChatThreadBranch.parent_branch_id == parent_branch_id,
+                        ChatThreadBranch.fork_point_item_id == fork_after_item_id,
+                    )
+                    .order_by(ChatThreadBranch.created_at.desc())
+                ).scalars().all()
+                for sibling in sibling_branches:
+                    candidate = wait_states.get(sibling.branch_id)
+                    if (
+                        isinstance(candidate, Mapping)
+                        and candidate.get("anchor_item_id") == fork_after_item_id
+                    ):
+                        restored_wait_state = candidate
+                        break
+
+            if isinstance(restored_wait_state, Mapping):
+                restored_wait_state = dict(restored_wait_state)
+                if isinstance(edited_item_id, str) and edited_item_id:
+                    restored_wait_state["input_item_id"] = edited_item_id
+                    restored_wait_state.setdefault("anchor_item_id", fork_after_item_id)
+
+            if isinstance(restored_wait_state, Mapping):
+                wait_states[new_branch_id] = dict(restored_wait_state)
+            else:
+                wait_states.pop(new_branch_id, None)
+            if wait_states:
+                metadata[_WAIT_STATE_BY_BRANCH_METADATA_KEY] = wait_states
+            else:
+                metadata.pop(_WAIT_STATE_BY_BRANCH_METADATA_KEY, None)
+
             metadata["current_branch_id"] = new_branch_id
             payload["metadata"] = metadata
             thread.payload = payload
@@ -272,7 +369,7 @@ class BranchService:
             return {
                 "branch_id": new_branch_id,
                 "thread_id": thread_id,
-                "parent_branch_id": current_branch_id,
+                "parent_branch_id": parent_branch_id,
                 "fork_point_item_id": fork_after_item_id,
                 "name": name,
                 "is_default": False,

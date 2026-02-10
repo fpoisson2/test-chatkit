@@ -234,7 +234,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
     // Create the branch
     console.log('[useChatKit.editMessage] Creating branch...');
-    const branch = await createBranch(forkAfterItemId, branchName);
+    const branch = await createBranch(forkAfterItemId, branchName, itemId);
     console.log('[useChatKit.editMessage] Branch result:', branch);
 
     if (!branch) {

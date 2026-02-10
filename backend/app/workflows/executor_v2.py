@@ -1249,6 +1249,15 @@ async def run_workflow_v2(
     if on_stream_event is not None:
 
         async def emit_stream_event(event: Any) -> None:
+            item = getattr(event, "item", None)
+            item_type = getattr(item, "type", None)
+            item_id = getattr(item, "id", None)
+            if (
+                item_type in {"assistant_message", "widget"}
+                and isinstance(item_id, str)
+                and item_id
+            ):
+                context.runtime_vars["last_prompt_item_id"] = item_id
             if on_stream_event is not None:
                 await on_stream_event(event)
 

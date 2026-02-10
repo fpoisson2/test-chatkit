@@ -34,7 +34,8 @@ export interface UseBranchesReturn {
   /** Create a new branch from a fork point */
   createBranch: (
     forkAfterItemId: string,
-    name?: string
+    name?: string,
+    editedItemId?: string
   ) => Promise<CreateBranchResponse | null>;
   /** Switch to a different branch */
   switchBranch: (branchId: string) => Promise<boolean>;
@@ -128,9 +129,10 @@ export function useBranches(options: UseBranchesOptions): UseBranchesReturn {
   const createBranch = useCallback(
     async (
       forkAfterItemId: string,
-      name?: string
+      name?: string,
+      editedItemId?: string
     ): Promise<CreateBranchResponse | null> => {
-      console.log('[useBranches.createBranch] Called with:', { threadId, forkAfterItemId, name });
+      console.log('[useBranches.createBranch] Called with:', { threadId, forkAfterItemId, name, editedItemId });
 
       if (!threadId) {
         console.warn('[useBranches.createBranch] No threadId, returning null');
@@ -156,6 +158,7 @@ export function useBranches(options: UseBranchesOptions): UseBranchesReturn {
             },
             body: JSON.stringify({
               fork_after_item_id: forkAfterItemId,
+              edited_item_id: editedItemId,
               name,
             }),
           }

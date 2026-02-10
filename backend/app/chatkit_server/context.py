@@ -15,6 +15,11 @@ from ..workflows.utils import (
 
 _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 """Clé de métadonnées utilisée pour stocker l'état d'attente du workflow."""
+_WAIT_STATE_BY_BRANCH_METADATA_KEY = "workflow_wait_for_user_input_by_branch"
+"""Stockage branch-aware des états d'attente."""
+_WAIT_STATE_INDEX_BY_BRANCH_METADATA_KEY = "workflow_wait_for_user_input_index_by_branch"
+"""Index branch-aware des états d'attente par item d'ancrage."""
+_MAIN_BRANCH_ID = "main"
 
 
 def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
@@ -40,6 +45,26 @@ def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
         logger.info(
             "[WAIT_STATE_DEBUG] _get_wait_state_metadata: no metadata dict, returning None"
         )
+        return None
+
+    current_branch_id = metadata.get("current_branch_id")
+    if not isinstance(current_branch_id, str) or not current_branch_id.strip():
+        current_branch_id = _MAIN_BRANCH_ID
+    else:
+        current_branch_id = current_branch_id.strip()
+
+    wait_states_by_branch = metadata.get(_WAIT_STATE_BY_BRANCH_METADATA_KEY)
+    if isinstance(wait_states_by_branch, Mapping):
+        branch_state = wait_states_by_branch.get(current_branch_id)
+        logger.info(
+            "[WAIT_STATE_DEBUG] _get_wait_state_metadata: branch=%s, by_branch=%s",
+            current_branch_id,
+            branch_state is not None,
+        )
+        if isinstance(branch_state, dict):
+            return dict(branch_state)
+        # When branch-aware metadata exists but this branch has no entry,
+        # do not fall back to legacy global state to avoid cross-branch leaks.
         return None
 
     state = metadata.get(_WAIT_STATE_METADATA_KEY)
@@ -81,13 +106,63 @@ def _set_wait_state_metadata(thread: Any, state: Mapping[str, Any] | None) -> No
     # internal dict, and reassigning thread.metadata = new_dict may not persist
     # if the property returns a copy each time it's accessed.
     if isinstance(metadata, dict):
+        current_branch_id = metadata.get("current_branch_id")
+        if not isinstance(current_branch_id, str) or not current_branch_id.strip():
+            current_branch_id = _MAIN_BRANCH_ID
+        else:
+            current_branch_id = current_branch_id.strip()
+
+        wait_states_by_branch_raw = metadata.get(_WAIT_STATE_BY_BRANCH_METADATA_KEY)
+        wait_states_by_branch = (
+            dict(wait_states_by_branch_raw)
+            if isinstance(wait_states_by_branch_raw, Mapping)
+            else {}
+        )
+
         if state is None:
+            wait_states_by_branch.pop(current_branch_id, None)
+            if wait_states_by_branch:
+                metadata[_WAIT_STATE_BY_BRANCH_METADATA_KEY] = wait_states_by_branch
+            else:
+                metadata.pop(_WAIT_STATE_BY_BRANCH_METADATA_KEY, None)
+
+            wait_index_raw = metadata.get(_WAIT_STATE_INDEX_BY_BRANCH_METADATA_KEY)
+            wait_index = dict(wait_index_raw) if isinstance(wait_index_raw, Mapping) else {}
+            if current_branch_id in wait_index:
+                wait_index.pop(current_branch_id, None)
+                if wait_index:
+                    metadata[_WAIT_STATE_INDEX_BY_BRANCH_METADATA_KEY] = wait_index
+                else:
+                    metadata.pop(_WAIT_STATE_INDEX_BY_BRANCH_METADATA_KEY, None)
             metadata.pop(_WAIT_STATE_METADATA_KEY, None)
             logger.info(
                 "[WAIT_STATE_DEBUG] Removed wait key from metadata dict in place"
             )
         else:
-            metadata[_WAIT_STATE_METADATA_KEY] = dict(state)
+            state_copy = dict(state)
+            wait_states_by_branch[current_branch_id] = state_copy
+            metadata[_WAIT_STATE_BY_BRANCH_METADATA_KEY] = wait_states_by_branch
+
+            wait_index_raw = metadata.get(_WAIT_STATE_INDEX_BY_BRANCH_METADATA_KEY)
+            wait_index = dict(wait_index_raw) if isinstance(wait_index_raw, Mapping) else {}
+            branch_index_raw = wait_index.get(current_branch_id)
+            branch_index = (
+                dict(branch_index_raw) if isinstance(branch_index_raw, Mapping) else {}
+            )
+
+            anchor_item_id = state_copy.get("anchor_item_id")
+            if isinstance(anchor_item_id, str) and anchor_item_id.strip():
+                branch_index[anchor_item_id.strip()] = state_copy
+
+            input_item_id = state_copy.get("input_item_id")
+            if isinstance(input_item_id, str) and input_item_id.strip():
+                branch_index[f"input:{input_item_id.strip()}"] = state_copy
+
+            if branch_index:
+                wait_index[current_branch_id] = branch_index
+                metadata[_WAIT_STATE_INDEX_BY_BRANCH_METADATA_KEY] = wait_index
+            # Keep legacy key in sync for backward compatibility.
+            metadata[_WAIT_STATE_METADATA_KEY] = state_copy
             logger.info(
                 "[WAIT_STATE_DEBUG] Set wait key in metadata dict in place"
             )

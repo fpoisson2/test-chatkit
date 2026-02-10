@@ -185,6 +185,7 @@ class WaitNodeHandler(BaseNodeHandler):
         last_step_context = context_payload
 
         # Stream message to user if needed
+        emitted_wait_message_id: str | None = None
         if sanitized_message and on_stream_event is not None and agent_context is not None:
             emit_stream_event = context.runtime_vars.get("emit_stream_event")
             if emit_stream_event is not None:
@@ -194,6 +195,7 @@ class WaitNodeHandler(BaseNodeHandler):
                     created_at=datetime.now(),
                     content=[AssistantMessageContent(text=sanitized_message)],
                 )
+                emitted_wait_message_id = assistant_message.id
                 await emit_stream_event(ThreadItemAddedEvent(item=assistant_message))
                 await emit_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
@@ -202,6 +204,13 @@ class WaitNodeHandler(BaseNodeHandler):
             "slug": node.slug,
             "input_item_id": current_input_item_id,
         }
+        anchor_item_id = emitted_wait_message_id
+        if not anchor_item_id:
+            candidate_anchor = context.runtime_vars.get("last_prompt_item_id")
+            if isinstance(candidate_anchor, str) and candidate_anchor:
+                anchor_item_id = candidate_anchor
+        if anchor_item_id:
+            wait_state_payload["anchor_item_id"] = anchor_item_id
 
         conversation_snapshot = _clone_conversation_history_snapshot(
             context.conversation_history

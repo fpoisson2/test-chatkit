@@ -27,6 +27,7 @@ export interface BranchListResponse {
  */
 export interface CreateBranchRequest {
   fork_after_item_id: string;
+  edited_item_id?: string;
   name?: string;
   edited_content?: string;
 }

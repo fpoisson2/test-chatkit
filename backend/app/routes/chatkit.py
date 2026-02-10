@@ -1559,6 +1559,7 @@ async def create_thread_branch(
 
     Request body:
     - fork_after_item_id: The item ID after which to fork
+    - edited_item_id: The item ID that was edited (optional, improves workflow resume targeting)
     - name: Optional name for the branch
     - edited_content: The edited message content (optional, for creating the first message)
     """
@@ -1578,6 +1579,12 @@ async def create_thread_branch(
         )
 
     name = body.get("name")
+    edited_item_id = body.get("edited_item_id")
+    if edited_item_id is not None and not isinstance(edited_item_id, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "edited_item_id must be a string"},
+        )
     edited_content = body.get("edited_content")
 
     branch_service = BranchService(SessionLocal)
@@ -1594,6 +1601,7 @@ async def create_thread_branch(
     result = branch_service.create_branch(
         thread_id=thread_id,
         fork_after_item_id=fork_after_item_id,
+        edited_item_id=edited_item_id,
         owner_id=owner_id,
         name=name,
     )
