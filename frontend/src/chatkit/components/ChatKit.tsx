@@ -58,6 +58,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     theme,
     api,
     isAdmin,
+    isLtiUser,
   } = options;
 
   const attachmentsConfig = composer?.attachments;
@@ -68,6 +69,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     (api.headers?.['Authorization'] as string | undefined) ??
     (api.headers?.['authorization'] as string | undefined);
   const authToken = authHeader?.replace(/^Bearer\s+/i, '').trim() || undefined;
+  const [isRestartingLtiThread, setIsRestartingLtiThread] = useState(false);
+  const [ltiRestartError, setLtiRestartError] = useState<string | null>(null);
 
   // Scroll management
   const {
@@ -129,6 +132,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   // Auto-dismiss errors
   useAutoDismissError(control.error, control.clearError);
+
+  // Reset local restart state when switching to another thread.
+  useEffect(() => {
+    setIsRestartingLtiThread(false);
+    setLtiRestartError(null);
+  }, [control.thread?.id]);
 
   // Clear the composer when switching threads
   useEffect(() => {
@@ -217,6 +226,61 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     control.sendMessage(prompt);
   };
 
+  const handleRestartLtiThread = useCallback(async () => {
+    if (isRestartingLtiThread) {
+      return;
+    }
+    setIsRestartingLtiThread(true);
+    setLtiRestartError(null);
+    try {
+      const endpointBase = getBackendBaseUrl();
+      const endpoint = endpointBase
+        ? `${endpointBase.replace(/\/$/, "")}/api/lti/restart-thread`
+        : "/api/lti/restart-thread";
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        let detail = `${response.status} ${response.statusText}`;
+        try {
+          const payload = await response.json();
+          if (payload?.detail && typeof payload.detail === "string") {
+            detail = payload.detail;
+          }
+        } catch (_error) {
+          // Ignore JSON parsing failure and keep status text.
+        }
+        throw new Error(detail);
+      }
+
+      const payload = await response.json();
+      const nextThreadId = typeof payload?.thread_id === "string" ? payload.thread_id : "";
+      if (!nextThreadId) {
+        throw new Error("thread_id manquant dans la réponse");
+      }
+
+      if (options.onThreadChange) {
+        options.onThreadChange({ threadId: nextThreadId });
+      } else {
+        window.location.replace(`/c/${nextThreadId}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur inconnue";
+      setLtiRestartError(message);
+    } finally {
+      setIsRestartingLtiThread(false);
+    }
+  }, [authToken, isRestartingLtiThread, options]);
+
   // Create a new thread
   const handleNewThread = () => {
     if (options.onThreadChange) {
@@ -275,6 +339,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const isThreadClosed = threadStatus?.type === 'closed';
   const isThreadLocked = threadStatus?.type === 'locked';
   const isThreadDisabled = isThreadClosed || isThreadLocked;
+  const showLtiRestart = Boolean(isLtiUser && isThreadClosed && control.thread?.id);
   const threadStatusMessage = isThreadDisabled
     ? (threadStatus?.reason || (isThreadClosed ? t('chatkit.thread.closed') : t('chatkit.thread.locked')))
     : null;
@@ -444,6 +509,29 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             <span><strong>Erreur:</strong> {control.error.message}</span>
             <span className="chatkit-error-close">&times;</span>
           </div>
+        </div>
+      )}
+
+      {showLtiRestart && (
+        <div className="chatkit-lti-restart">
+          <div className="chatkit-lti-restart-content">
+            <span>{t("chatkit.thread.ltiRestartPrompt")}</span>
+            <button
+              className="chatkit-lti-restart-button"
+              type="button"
+              onClick={handleRestartLtiThread}
+              disabled={isRestartingLtiThread}
+            >
+              {isRestartingLtiThread
+                ? t("chatkit.thread.ltiRestartLoading")
+                : t("chatkit.thread.ltiRestartAction")}
+            </button>
+          </div>
+          {ltiRestartError && (
+            <div className="chatkit-lti-restart-error">
+              {ltiRestartError}
+            </div>
+          )}
         </div>
       )}
 

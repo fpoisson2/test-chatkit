@@ -36,6 +36,7 @@ from ..models import (
     Language,
     LanguageGenerationTask,
     LTIRegistration,
+    LTIWorkflowThread,
     OutboundCall,
     SipAccount,
     TelephonyRoute,
@@ -1677,6 +1678,15 @@ async def reset_workflow_session(
         # Marquer le payload comme modifié pour SQLAlchemy
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(thread, "payload")
+
+    # Dissocier aussi ce thread des mappings LTI persistants.
+    # Sinon, un retour LTI peut réutiliser ce thread "réinitialisé"
+    # au lieu de recréer un parcours propre.
+    lti_mappings = session.scalars(
+        select(LTIWorkflowThread).where(LTIWorkflowThread.thread_id == thread_id)
+    ).all()
+    for mapping in lti_mappings:
+        session.delete(mapping)
 
     # Sauvegarder
     session.commit()

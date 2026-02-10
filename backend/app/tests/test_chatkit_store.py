@@ -164,3 +164,34 @@ def test_store_rejects_threads_from_other_workflows(tmp_path) -> None:
             await store.save_thread(forbidden_thread, context)
 
     asyncio.run(_run())
+
+
+def test_save_thread_strips_null_bytes_from_metadata(tmp_path) -> None:
+    async def _run() -> None:
+        workflow_service = _StubWorkflowService(slug="active-workflow")
+        store, factory = _build_store(tmp_path / "store-null-bytes.db", workflow_service)
+        context = SimpleNamespace(user_id="user-1")
+
+        thread = ThreadMetadata(
+            id="thread-null",
+            created_at=dt.datetime.now(dt.UTC),
+            metadata={
+                "owner_id": context.user_id,
+                "workflow": {
+                    "id": 1,
+                    "slug": "active-workflow",
+                    "definition_id": 10,
+                },
+                "bad_text": "abc\x00def",
+            },
+        )
+
+        await store.save_thread(thread, context)
+
+        with factory() as session:
+            record = session.get(ChatThread, "thread-null")
+            assert record is not None
+            metadata = (record.payload or {}).get("metadata") or {}
+            assert metadata.get("bad_text") == "abcdef"
+
+    asyncio.run(_run())

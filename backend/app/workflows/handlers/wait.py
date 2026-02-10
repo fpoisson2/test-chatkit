@@ -61,6 +61,11 @@ class WaitNodeHandler(BaseNodeHandler):
         waiting_input_id = (
             pending_wait_state.get("input_item_id") if pending_wait_state else None
         )
+        consumed_wait_inputs = context.runtime_vars.get("consumed_wait_inputs")
+        if not isinstance(consumed_wait_inputs, dict):
+            consumed_wait_inputs = {}
+            context.runtime_vars["consumed_wait_inputs"] = consumed_wait_inputs
+        already_consumed_for_node = consumed_wait_inputs.get(node.slug)
 
         logger.info(
             "[WAIT_DEBUG] node=%s, thread=%s, pending_wait_state=%s, "
@@ -78,6 +83,7 @@ class WaitNodeHandler(BaseNodeHandler):
             and waiting_slug == node.slug
             and current_input_item_id
             and waiting_input_id != current_input_item_id
+            and already_consumed_for_node != current_input_item_id
         )
 
         logger.info("[WAIT_DEBUG] resumed=%s", resumed)
@@ -105,6 +111,7 @@ class WaitNodeHandler(BaseNodeHandler):
             # in while loops don't incorrectly clear conversation history
             # (see executor_v2.py lines 820-823)
             context.runtime_vars["pending_wait_state"] = None
+            consumed_wait_inputs[node.slug] = current_input_item_id
 
             # Get the text from the NEW user message (not initial_user_text which is stale)
             new_user_text = initial_user_text  # Default fallback

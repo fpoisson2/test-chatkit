@@ -351,6 +351,28 @@ async def get_current_lti_workflow(
     }
 
 
+@router.post("/api/lti/restart-thread")
+async def restart_lti_thread(
+    service: LTIService = Depends(_get_service),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Force la création d'un nouveau thread pour l'utilisateur LTI courant."""
+    if not current_user.is_lti:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Action réservée aux utilisateurs LTI",
+        )
+
+    thread_id, workflow_id = service.restart_current_lti_workflow_thread(
+        user=current_user
+    )
+    return {
+        "success": True,
+        "thread_id": thread_id,
+        "workflow_id": workflow_id,
+    }
+
+
 @router.get("/api/lti/deep-link", response_class=HTMLResponse)
 async def lti_deep_link_page(state: str | None = None, id_token: str | None = None):
     """Serve the deep linking workflow selection page."""

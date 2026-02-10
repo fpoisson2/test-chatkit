@@ -39,7 +39,13 @@ from backend.app.config import (  # noqa: E402
 )
 from backend.app.database import get_session  # noqa: E402
 from backend.app.dependencies import require_admin  # noqa: E402
-from backend.app.models import AppSettings, Base, LTIRegistration  # noqa: E402
+from backend.app.models import (  # noqa: E402
+    AppSettings,
+    Base,
+    ChatThread,
+    LTIRegistration,
+    LTIWorkflowThread,
+)
 from backend.app.routes import admin as admin_routes  # noqa: E402
 
 
@@ -226,3 +232,50 @@ def test_lti_registration_crud_flow(
     with session_factory() as session:
         remaining = session.scalars(select(LTIRegistration)).all()
         assert remaining == []
+
+
+def test_reset_workflow_session_dissociates_lti_thread_mapping(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    thread_id = "thr-reset-admin-001"
+
+    with session_factory() as session:
+        session.add(
+            ChatThread(
+                id=thread_id,
+                owner_id="user:42",
+                created_at=now,
+                updated_at=now,
+                payload={
+                    "metadata": {
+                        "workflow": {"id": 27, "wait_state": {"step": "exercise_1"}}
+                    }
+                },
+            )
+        )
+        session.add(
+            LTIWorkflowThread(
+                user_id=42,
+                resource_link_id=158,
+                workflow_id=27,
+                thread_id=thread_id,
+            )
+        )
+        session.commit()
+
+    response = client.post(f"/api/admin/workflows/sessions/{thread_id}/reset")
+    assert response.status_code == status.HTTP_200_OK
+    payload = response.json()
+    assert payload["success"] is True
+
+    with session_factory() as session:
+        mapping = session.scalar(
+            select(LTIWorkflowThread).where(LTIWorkflowThread.thread_id == thread_id)
+        )
+        assert mapping is None
+
+        thread = session.scalar(select(ChatThread).where(ChatThread.id == thread_id))
+        assert thread is not None
+        metadata = (thread.payload or {}).get("metadata", {})
+        assert "workflow" not in metadata

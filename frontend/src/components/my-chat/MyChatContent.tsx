@@ -310,6 +310,7 @@ export function MyChatContent() {
         );
       },
       isAdmin: user?.is_admin,
+      isLtiUser: user?.is_lti,
     } satisfies ChatKitOptions;
   }, [apiConfig, initialThreadId, urlBranchId, activeWorkflow, user, isSidebarOpen, openSidebar, mode, workflows, workflowSelection, handleWorkflowSelectorChange, themeConfig, appearanceSettings, composerPlaceholder, attachmentsConfig, composerModels, widgetsConfig, chatkitCallbacks, searchParams, navigate, location.pathname]);
 

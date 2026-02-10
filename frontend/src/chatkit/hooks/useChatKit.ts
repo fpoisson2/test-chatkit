@@ -40,6 +40,16 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
   // Track current branch id for API calls that need it
   const branchIdRef = useRef<string | null>(null);
+  const lastInitialThreadRef = useRef<string | null | undefined>(initialThread);
+
+  // Reset branch context when switching to another thread to avoid carrying a stale
+  // branch id from a previous conversation.
+  useEffect(() => {
+    if (lastInitialThreadRef.current !== initialThread) {
+      branchIdRef.current = null;
+      lastInitialThreadRef.current = initialThread;
+    }
+  }, [initialThread]);
 
   // Thread state management
   const {

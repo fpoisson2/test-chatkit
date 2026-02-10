@@ -142,6 +142,8 @@ export interface ChatKitOptions {
   onBranchChange?: (event: { branchId: string }) => void;
   /** Show usage metadata (cost, tokens) for admin users */
   isAdmin?: boolean;
+  /** Enable LTI-specific UX (e.g. restart closed exercise threads) */
+  isLtiUser?: boolean;
 }
 
 // ===== Control ChatKit =====

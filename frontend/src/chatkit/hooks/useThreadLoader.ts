@@ -88,16 +88,18 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
               (loadedThread.metadata as { current_branch_id?: string } | undefined)
                 ?.current_branch_id ?? null;
             if (branchIdRef?.current && responseBranchId && responseBranchId !== branchIdRef.current) {
-              // Ignore stale response from another branch
+              // For the initial thread load, prefer showing content over staying blank.
+              // A stale branch id can be carried across thread switches; in that case,
+              // align branch ref with server response and continue.
               onLog?.({
-                name: 'thread.load.ignored',
+                name: 'thread.load.branch_mismatch_fallback',
                 data: {
                   threadId: loadedThread.id,
                   responseBranchId,
                   expectedBranchId: branchIdRef.current,
                 },
               });
-              return;
+              branchIdRef.current = responseBranchId;
             }
             // Clear loading state BEFORE setting thread to avoid race condition
             // where typing indicator shows up when thread is set but loading not yet cleared

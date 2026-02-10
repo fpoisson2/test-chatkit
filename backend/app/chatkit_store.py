@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import TypeAdapter
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from chatkit.store import NotFoundError, Store
@@ -552,9 +553,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             # Utiliser thread.metadata si disponible (peut contenir des mises à jour récentes),
             # sinon utiliser les métadonnées du payload
             if isinstance(thread.metadata, dict):
-                metadata = dict(thread.metadata)
+                metadata = _strip_null_bytes(dict(thread.metadata))
             else:
-                metadata = dict(payload.get("metadata") or {})
+                metadata = _strip_null_bytes(dict(payload.get("metadata") or {}))
             metadata.setdefault("owner_id", owner_id)
             expected_workflow = self._current_workflow_metadata()
             workflow_metadata = metadata.get("workflow")
@@ -567,6 +568,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 metadata["workflow"] = dict(expected_workflow)
             thread.metadata = metadata
             payload["metadata"] = metadata
+            payload = _strip_null_bytes(payload)
             now = dt.datetime.now(dt.UTC)
             created_at = _ensure_timezone(thread.created_at)
             stmt = select(ChatThread).where(ChatThread.id == thread.id)
@@ -992,7 +994,22 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                     )
                 existing.payload = payload
                 existing.created_at = created_at
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # Concurrent insert with the same item id can happen while streaming.
+                # Retry as update if the row belongs to this thread/owner.
+                session.rollback()
+                persisted = session.get(ChatThreadItem, item.id)
+                if persisted is None:
+                    raise
+                if persisted.owner_id != owner_id or persisted.thread_id != thread_id:
+                    raise NotFoundError(
+                        f"Élément {item.id} introuvable dans le fil {thread_id}"
+                    )
+                persisted.payload = payload
+                persisted.created_at = created_at
+                session.commit()
 
         await self._run(_add)
 
@@ -1016,9 +1033,50 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             )
             record = session.execute(stmt).scalar_one_or_none()
             if record is None:
-                raise NotFoundError(
-                    f"Élément {item.id} introuvable dans le fil {thread_id}"
+                # Race-tolerant path: during streamed workflow updates, an item can be
+                # updated before the initial insert is visible from this code path.
+                # If the ID is not bound to another thread/owner, create it instead
+                # of failing the whole request.
+                existing_any = session.get(ChatThreadItem, item.id)
+                if existing_any is not None and (
+                    existing_any.thread_id != thread_id
+                    or existing_any.owner_id != owner_id
+                ):
+                    raise NotFoundError(
+                        f"Élément {item.id} introuvable dans le fil {thread_id}"
+                    )
+                payload = _strip_null_bytes(item.model_dump(mode="json"))
+                session.add(
+                    ChatThreadItem(
+                        id=item.id,
+                        thread_id=thread_id,
+                        owner_id=owner_id,
+                        created_at=_ensure_timezone(getattr(item, "created_at", None)),
+                        payload=payload,
+                    )
                 )
+                try:
+                    session.commit()
+                except IntegrityError:
+                    # Same race condition as add_thread_item: another concurrent
+                    # path inserted the row between our read and commit.
+                    session.rollback()
+                    persisted = session.get(ChatThreadItem, item.id)
+                    if persisted is None:
+                        raise
+                    if (
+                        persisted.thread_id != thread_id
+                        or persisted.owner_id != owner_id
+                    ):
+                        raise NotFoundError(
+                            f"Élément {item.id} introuvable dans le fil {thread_id}"
+                        )
+                    persisted.payload = payload
+                    persisted.created_at = _ensure_timezone(
+                        getattr(item, "created_at", None)
+                    )
+                    session.commit()
+                return
             # Ne PAS normaliser lors de la sauvegarde pour préserver les données d'image
             new_payload = _strip_null_bytes(item.model_dump(mode="json"))
             # Preserve branch_id from existing record if present

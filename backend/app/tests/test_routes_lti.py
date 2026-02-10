@@ -415,6 +415,175 @@ def test_lti_launch_parses_scope_string(client, monkeypatch):
         ]
 
 
+def test_lti_restart_thread_creates_new_mapping_thread(client, monkeypatch):
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        _, _, workflow = _setup_registration(session)
+
+    login_response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-123",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+            "login_hint": "hint",
+            "lti_message_hint": "resource-999",
+        },
+        follow_redirects=False,
+    )
+    assert login_response.status_code == 302
+    state = parse_qs(urlparse(login_response.headers["location"]).query)["state"][0]
+
+    with database.SessionLocal() as session:
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(models.LTIUserSession.state == state)
+        )
+        assert session_record is not None
+        nonce = session_record.nonce
+
+    id_token = _build_id_token(
+        nonce,
+        "deployment-123",
+        "LtiResourceLinkRequest",
+        {
+            "email": "restart@example.com",
+            "https://purl.imsglobal.org/spec/lti/claim/resource_link": {
+                "id": "resource-999"
+            },
+            "https://purl.imsglobal.org/spec/lti/claim/custom": {
+                "workflow_slug": workflow.slug
+            },
+        },
+    )
+
+    launch = client.post("/api/lti/launch", json={"state": state, "id_token": id_token})
+    assert launch.status_code == 200
+    launch_payload = launch.json()
+    access_token = launch_payload.get("access_token")
+    assert isinstance(access_token, str) and access_token
+
+    with database.SessionLocal() as session:
+        user = session.scalar(
+            select(models.User).where(models.User.email == "restart@example.com")
+        )
+        assert user is not None
+        mapping = session.scalar(
+            select(models.LTIWorkflowThread).where(
+                models.LTIWorkflowThread.user_id == user.id,
+                models.LTIWorkflowThread.workflow_id == workflow.id,
+            )
+        )
+        assert mapping is not None
+        original_thread_id = mapping.thread_id
+
+    restart = client.post(
+        "/api/lti/restart-thread",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert restart.status_code == 200
+    restart_payload = restart.json()
+    assert restart_payload.get("success") is True
+    new_thread_id = restart_payload.get("thread_id")
+    assert isinstance(new_thread_id, str) and new_thread_id
+    assert new_thread_id != original_thread_id
+
+    with database.SessionLocal() as session:
+        mapping = session.scalar(
+            select(models.LTIWorkflowThread).where(
+                models.LTIWorkflowThread.user_id == user.id,
+                models.LTIWorkflowThread.workflow_id == workflow.id,
+            )
+        )
+        assert mapping is not None
+        assert mapping.thread_id == new_thread_id
+        new_thread = session.scalar(
+            select(models.ChatThread).where(models.ChatThread.id == new_thread_id)
+        )
+        assert new_thread is not None
+
+
+def test_lti_launch_creates_new_thread_when_history_disabled(client, monkeypatch):
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        _registration, _deployment, workflow = _setup_registration(session)
+        workflow.lti_enable_history = False
+        session.commit()
+
+    def _launch_once() -> str:
+        login_response = client.post(
+            "/api/lti/login",
+            data={
+                "iss": "https://platform.example",
+                "client_id": "platform-client",
+                "lti_deployment_id": "deployment-123",
+                "target_link_uri": "https://tool.example/api/lti/launch",
+                "login_hint": "hint",
+                "lti_message_hint": "resource-history-disabled",
+            },
+            follow_redirects=False,
+        )
+        assert login_response.status_code == 302
+        state = parse_qs(urlparse(login_response.headers["location"]).query)["state"][0]
+
+        with database.SessionLocal() as session:
+            session_record = session.scalar(
+                select(models.LTIUserSession).where(models.LTIUserSession.state == state)
+            )
+            assert session_record is not None
+            nonce = session_record.nonce
+
+        id_token = _build_id_token(
+            nonce,
+            "deployment-123",
+            "LtiResourceLinkRequest",
+            {
+                "email": "history-disabled@example.com",
+                "https://purl.imsglobal.org/spec/lti/claim/resource_link": {
+                    "id": "resource-history-disabled"
+                },
+                "https://purl.imsglobal.org/spec/lti/claim/custom": {
+                    "workflow_slug": workflow.slug
+                },
+            },
+        )
+
+        launch = client.post(
+            "/api/lti/launch", json={"state": state, "id_token": id_token}
+        )
+        assert launch.status_code == 200
+        launch_payload = launch.json()
+        thread_id = launch_payload.get("thread_id")
+        assert isinstance(thread_id, str) and thread_id
+        return thread_id
+
+    first_thread_id = _launch_once()
+    second_thread_id = _launch_once()
+    assert first_thread_id != second_thread_id
+
+    with database.SessionLocal() as session:
+        user = session.scalar(
+            select(models.User).where(
+                models.User.email == "history-disabled@example.com"
+            )
+        )
+        assert user is not None
+        mapping = session.scalar(
+            select(models.LTIWorkflowThread).where(
+                models.LTIWorkflowThread.user_id == user.id,
+                models.LTIWorkflowThread.workflow_id == workflow.id,
+            )
+        )
+        assert mapping is not None
+        assert mapping.thread_id == second_thread_id
+
+
 def test_lti_launch_without_deep_link_selection_returns_error(client, monkeypatch):
     database = importlib.import_module("backend.app.database")
     models = importlib.import_module("backend.app.models")

@@ -390,11 +390,13 @@ class LTIService:
         user: User,
         resource_link: LTIResourceLink,
         workflow: Workflow,
+        force_new_thread: bool = False,
     ) -> str:
         """Retourne un thread_id stable pour (user, resource_link, workflow)."""
 
         now = _now_utc()
         desired_definition_id = workflow.active_version_id
+        must_create_new_thread = force_new_thread or (not workflow.lti_enable_history)
 
         mapping = self.session.scalar(
             select(LTIWorkflowThread).where(
@@ -473,6 +475,24 @@ class LTIService:
             if changed:
                 existing_thread.payload = payload
                 existing_thread.updated_at = now
+
+        if must_create_new_thread:
+            new_thread_id = uuid.uuid4().hex
+            _create_thread_record(new_thread_id)
+            if mapping is None:
+                self.session.add(
+                    LTIWorkflowThread(
+                        user_id=user.id,
+                        resource_link_id=resource_link.id,
+                        workflow_id=workflow.id,
+                        thread_id=new_thread_id,
+                    )
+                )
+            else:
+                mapping.thread_id = new_thread_id
+                mapping.updated_at = now
+            self.session.commit()
+            return new_thread_id
 
         if mapping is not None:
             existing_thread = self.session.scalar(
@@ -553,6 +573,43 @@ class LTIService:
         )
         self.session.commit()
         return thread_id
+
+    def restart_current_lti_workflow_thread(self, *, user: User) -> tuple[str, int]:
+        """Force la création d'un nouveau thread pour le dernier lancement LTI."""
+
+        latest_session = self.session.scalar(
+            select(LTIUserSession)
+            .where(
+                LTIUserSession.user_id == user.id,
+                LTIUserSession.resource_link_id.is_not(None),
+            )
+            .order_by(
+                LTIUserSession.launched_at.desc(),
+                LTIUserSession.created_at.desc(),
+            )
+            .limit(1)
+        )
+        if latest_session is None or latest_session.resource_link is None:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail="Aucune session LTI active trouvée",
+            )
+
+        resource_link = latest_session.resource_link
+        workflow = resource_link.workflow
+        if workflow is None:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                detail="Aucun workflow LTI associé à la session",
+            )
+
+        thread_id = self._ensure_lti_thread(
+            user=user,
+            resource_link=resource_link,
+            workflow=workflow,
+            force_new_thread=True,
+        )
+        return thread_id, workflow.id
 
     def handle_deep_link(
         self,

@@ -190,7 +190,12 @@ class StreamProcessor:
 
     def start(self, workflow_task: asyncio.Task[None]) -> None:
         if self._task is not None:
-            logger.debug("StreamProcessor already started for thread %s", self.thread.id)
+            logger.warning(
+                "StreamProcessor already started for thread %s; cancelling duplicate workflow task",
+                self.thread.id,
+            )
+            if not workflow_task.done():
+                workflow_task.cancel()
             return
         logger.info("Starting StreamProcessor loop for thread %s", self.thread.id)
         self._workflow_task = workflow_task

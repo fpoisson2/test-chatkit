@@ -785,9 +785,19 @@ class ChatKitServer(ABC, Generic[TContext]):
                                     deep=True
                                 )
 
-                            await self.store.save_item(
-                                thread.id, event.item, context=context
-                            )
+                            try:
+                                await self.store.save_item(
+                                    thread.id, event.item, context=context
+                                )
+                            except NotFoundError:
+                                try:
+                                    await self.store.add_thread_item(
+                                        thread.id, event.item, context=context
+                                    )
+                                except Exception as exc:
+                                    logger.error(f"Failed to store replaced item (fallback add): {exc}")
+                            except Exception as e:
+                                logger.error(f"Failed to save replaced item: {e}")
 
                     # special case - don't send hidden context items back to the client
                     should_swallow_event = isinstance(
