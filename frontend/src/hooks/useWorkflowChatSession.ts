@@ -12,6 +12,7 @@ type UseWorkflowChatSessionOptions = {
   reportError: (message: string, detail?: unknown) => void;
   mode: "local" | "hosted";
   autoStartEnabled?: boolean;
+  enabled?: boolean;
 };
 
 type UseWorkflowChatSessionResult = ReturnType<typeof useChatKit> & {
@@ -27,6 +28,7 @@ export const useWorkflowChatSession = ({
   reportError,
   mode,
   autoStartEnabled = true,
+  enabled = true,
 }: UseWorkflowChatSessionOptions): UseWorkflowChatSessionResult => {
   const { control, fetchUpdates, sendUserMessage } = useChatKit(chatkitOptions);
 
@@ -56,7 +58,7 @@ export const useWorkflowChatSession = ({
     initialThreadId,
     thread: control.thread,
     reportError,
-    enabled: true, // Always enabled to support workflow sync in both local and hosted modes
+    enabled,
     autoStartEnabled,
     isStreaming: control.isLoading,
   });

@@ -39,6 +39,7 @@ export const WorkflowChatInstance = ({
     reportError,
     mode,
     autoStartEnabled,
+    enabled: isActive,
   });
 
   const requestRefreshRef = useRef(requestRefresh);

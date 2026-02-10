@@ -329,10 +329,31 @@ export function MyChatContent() {
       <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", minHeight: 0, overflow: "hidden" }}>
         <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
-            <WorkflowChatInstance key={instanceId === currentWorkflowId ? `${instanceId}-${chatInstanceKey}` : instanceId} workflowId={instanceId} chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
-              token={token} activeWorkflow={instance.workflow} initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
-              reportError={reportError} mode={instance.mode} isActive={instanceId === currentWorkflowId} autoStartEnabled={!hasVoiceAgent && (initialThreadId !== null || workflows.length <= 1 || activeWorkflow !== null)}
-              onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined} />
+            <WorkflowChatInstance
+              key={instanceId === currentWorkflowId ? `${instanceId}-${chatInstanceKey}` : instanceId}
+              workflowId={instanceId}
+              chatkitOptions={instanceId === currentWorkflowId
+                ? chatkitOptions
+                : {
+                    ...instance.chatkitOptions,
+                    onThreadChange: undefined,
+                    onResponseStart: undefined,
+                    onResponseEnd: undefined,
+                    onThreadLoadStart: undefined,
+                    onThreadLoadEnd: undefined,
+                    onThreadNotFound: undefined,
+                    onLog: undefined,
+                    onError: undefined,
+                  }}
+              token={token}
+              activeWorkflow={instance.workflow}
+              initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
+              reportError={reportError}
+              mode={instance.mode}
+              isActive={instanceId === currentWorkflowId}
+              autoStartEnabled={!hasVoiceAgent && (initialThreadId !== null || workflows.length <= 1 || activeWorkflow !== null)}
+              onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined}
+            />
           ))}
         </div>
       </div>
