@@ -197,6 +197,7 @@ def _credentials_from_config(
         provider=config.provider,
         api_base=config.api_base,
         api_key=config.api_key,
+        use_litellm=config.use_litellm,
     )
 
 
@@ -214,6 +215,7 @@ def _build_provider(
     Build native OpenAI provider if api_base is provided.
 
     Strategy:
+    - If use_litellm is True → Return None, LiteLLM handles routing
     - If api_base is provided → Create OpenAIProvider for custom endpoint
     - If api_base is not provided → Return None, LiteLLM will auto-route
 
@@ -229,6 +231,10 @@ def _build_provider(
             credentials.provider,
             credentials.id,
         )
+        return None
+
+    # If use_litellm is explicitly set, let LiteLLM handle routing
+    if credentials.use_litellm:
         return None
 
     # Create native provider if custom api_base is provided
@@ -282,10 +288,20 @@ def create_litellm_model(
         )
 
         if api_key:
-            # Ajouter le préfixe du provider si nécessaire pour le routage LiteLLM
             effective_model_name = model_name
-            if provider_slug and "/" not in model_name:
-                # Le nom du modèle n'a pas de préfixe, ajouter le provider_slug
+            base_url = None
+            if provider_binding.credentials.api_base:
+                # Proxy mode : le proxy gère le routage.
+                # Préfixer avec openai/ pour que le client LiteLLM traite
+                # le proxy comme un endpoint OpenAI-compatible.
+                base_url = normalize_api_base(
+                    provider_binding.credentials.api_base
+                )
+                if "/" not in model_name:
+                    effective_model_name = f"openai/{model_name}"
+            elif provider_slug and "/" not in model_name:
+                # Auto-routing client : ajouter le préfixe pour que LiteLLM
+                # identifie le provider (ex: groq/llama-3.1-8b)
                 effective_model_name = f"{provider_slug}/{model_name}"
                 logger.debug(
                     "Ajout du préfixe provider au nom du modèle: %s -> %s",
@@ -293,13 +309,17 @@ def create_litellm_model(
                     effective_model_name,
                 )
 
-            # Create LitellmModel with API key only - auto-routing based on model name
             logger.debug(
-                "Création de LitellmModel pour auto-routing: model=%s, api_key=%s",
+                "Création de LitellmModel: model=%s, api_key=%s, base_url=%s",
                 effective_model_name,
                 "***",
+                base_url,
             )
-            return LitellmModel(model=effective_model_name, api_key=api_key)
+            return LitellmModel(
+                model=effective_model_name,
+                api_key=api_key,
+                base_url=base_url,
+            )
         else:
             logger.warning(
                 "api_key vide ou None pour provider_id=%s - retour du nom de modèle",

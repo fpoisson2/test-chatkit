@@ -51,6 +51,7 @@ class StoredModelProvider:
     api_key_encrypted: str | None
     api_key_hint: str | None
     is_default: bool
+    use_litellm: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -60,6 +61,7 @@ class StoredModelProvider:
             "api_key_encrypted": self.api_key_encrypted,
             "api_key_hint": self.api_key_hint,
             "is_default": self.is_default,
+            "use_litellm": self.use_litellm,
         }
 
 
@@ -69,6 +71,7 @@ class ResolvedModelProviderCredentials:
     provider: str
     api_base: str | None
     api_key: str | None
+    use_litellm: bool = False
 
 _UNSET = object()
 
@@ -394,6 +397,7 @@ def _load_stored_model_providers(
             ),
             api_key_hint=_normalize_optional_encrypted(entry.get("api_key_hint")),
             is_default=bool(entry.get("is_default")),
+            use_litellm=bool(entry.get("use_litellm")),
         )
         records.append(record)
     return records
@@ -463,6 +467,7 @@ def _build_model_provider_configs(
                     api_key=_decrypt_secret(record.api_key_encrypted),
                     is_default=record.is_default,
                     id=record.id,
+                    use_litellm=record.use_litellm,
                 )
             )
 
@@ -534,6 +539,7 @@ def resolve_model_provider_credentials(
             provider=record.provider,
             api_base=record.api_base,
             api_key=_decrypt_secret(record.api_key_encrypted),
+            use_litellm=record.use_litellm,
         )
     finally:
         if owned_session and db_session is not None:
@@ -1144,6 +1150,7 @@ def update_admin_settings(
                     api_key_encrypted=encrypted,
                     api_key_hint=hint,
                     is_default=is_default,
+                    use_litellm=bool(entry.get("use_litellm")),
                 )
             )
 
@@ -1385,6 +1392,7 @@ def serialize_admin_settings(
             "api_key_hint": record.api_key_hint,
             "has_api_key": bool(record.api_key_encrypted),
             "is_default": record.is_default,
+            "use_litellm": record.use_litellm,
         }
         for record in stored_records
     ]

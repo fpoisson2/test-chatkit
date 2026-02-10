@@ -71,7 +71,8 @@ export const singleModelProviderSchema = z.object({
   apiBase: optionalUrlSchema,
   apiKey: z.string().optional(),
   isDefault: z.boolean().default(false),
-  deleteStoredKey: z.boolean().default(false)
+  deleteStoredKey: z.boolean().default(false),
+  useLitellm: z.boolean().default(false)
 });
 
 export type SingleModelProviderFormData = z.infer<typeof singleModelProviderSchema>;

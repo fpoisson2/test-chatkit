@@ -49,6 +49,7 @@ export const AdminModelProvidersPage = () => {
       apiKey: "",
       isDefault: false,
       deleteStoredKey: false,
+      useLitellm: false,
     },
   });
 
@@ -63,6 +64,7 @@ export const AdminModelProvidersPage = () => {
       apiKey: "",
       isDefault: providers.length === 0, // Premier fournisseur = default
       deleteStoredKey: false,
+      useLitellm: false,
     });
     setEditingProvider('new');
   };
@@ -75,6 +77,7 @@ export const AdminModelProvidersPage = () => {
       apiKey: "", // Ne pas préremplir pour sécurité
       isDefault: provider.is_default,
       deleteStoredKey: false,
+      useLitellm: provider.use_litellm,
     });
     setEditingProvider(provider.id);
   };
@@ -89,6 +92,7 @@ export const AdminModelProvidersPage = () => {
         provider: data.provider.trim().toLowerCase(),
         api_base: data.apiBase?.trim() || null,
         is_default: data.isDefault,
+        use_litellm: data.useLitellm,
       };
 
       if (data.apiKey?.trim()) {
@@ -101,6 +105,7 @@ export const AdminModelProvidersPage = () => {
         provider: p.provider,
         api_base: p.api_base,
         is_default: data.isDefault ? false : p.is_default,
+        use_litellm: p.use_litellm,
       }));
 
       // Ajouter le nouveau
@@ -138,6 +143,7 @@ export const AdminModelProvidersPage = () => {
             provider: p.provider,
             api_base: p.api_base,
             is_default: data.isDefault ? false : p.is_default, // Si nouveau default, désactiver les autres
+            use_litellm: p.use_litellm,
           };
         }
 
@@ -146,6 +152,7 @@ export const AdminModelProvidersPage = () => {
           provider: data.provider.trim().toLowerCase(),
           api_base: data.apiBase?.trim() || null,
           is_default: data.isDefault,
+          use_litellm: data.useLitellm,
         };
 
         if (data.apiKey?.trim()) {
@@ -193,6 +200,7 @@ export const AdminModelProvidersPage = () => {
           provider: p.provider,
           api_base: p.api_base,
           is_default: p.is_default,
+          use_litellm: p.use_litellm,
         }));
 
       // Si on supprime le default et qu'il reste des providers, mettre le premier en default
@@ -288,9 +296,14 @@ export const AdminModelProvidersPage = () => {
                       Base URL: {provider.api_base}
                     </div>
                   )}
+                  {provider.use_litellm && (
+                    <div className={styles.providerMeta}>
+                      Mode : agents[litellm]
+                    </div>
+                  )}
                   {provider.has_api_key && (
                     <div className={styles.providerMeta}>
-                      ✓ Clé API configurée {provider.api_key_hint && `(${provider.api_key_hint})`}
+                      Clé API configurée {provider.api_key_hint && `(${provider.api_key_hint})`}
                     </div>
                   )}
                   <div className={styles.providerActions}>
@@ -403,6 +416,15 @@ export const AdminModelProvidersPage = () => {
                 disabled={updateSettings.isPending}
               />
               <span>Définir comme fournisseur par défaut</span>
+            </label>
+
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                {...register("useLitellm")}
+                disabled={updateSettings.isPending}
+              />
+              <span>Utiliser agents[litellm]</span>
             </label>
           </form>
         </Modal>

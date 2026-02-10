@@ -199,6 +199,7 @@ class ModelProviderSettings(BaseModel):
     api_key_hint: str | None = None
     has_api_key: bool = False
     is_default: bool = False
+    use_litellm: bool = False
 
 
 class ModelProviderSettingsUpdate(BaseModel):
@@ -234,6 +235,13 @@ class ModelProviderSettingsUpdate(BaseModel):
     is_default: bool = Field(
         default=False,
         description="Marque cette configuration comme fournisseur par défaut.",
+    )
+    use_litellm: bool = Field(
+        default=False,
+        description=(
+            "Utiliser agents[litellm] au lieu du provider OpenAI natif. "
+            "Permet le routage LiteLLM même avec une URL de base personnalisée."
+        ),
     )
 
     @field_validator("api_base", mode="before")

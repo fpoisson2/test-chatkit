@@ -361,6 +361,7 @@ export type ModelProviderProfile = {
   api_key_hint: string | null;
   has_api_key: boolean;
   is_default: boolean;
+  use_litellm: boolean;
 };
 
 export type ModelProviderUpdatePayload = {
@@ -370,6 +371,7 @@ export type ModelProviderUpdatePayload = {
   api_key?: string | null;
   delete_api_key?: boolean;
   is_default: boolean;
+  use_litellm: boolean;
 };
 
 export type AppSettings = {

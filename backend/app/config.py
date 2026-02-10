@@ -216,6 +216,7 @@ class ModelProviderConfig:
     api_key: str | None
     is_default: bool = False
     id: str | None = None
+    use_litellm: bool = False
 
 
 @dataclass(frozen=True)
