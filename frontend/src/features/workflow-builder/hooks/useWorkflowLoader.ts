@@ -34,6 +34,7 @@ import { stringifyAgentParameters } from "../../../utils/workflows";
 import {
   buildEdgeStyle,
   buildGraphPayloadFrom,
+  computeAutoLayout,
   defaultEdgeOptions,
   extractPosition,
   humanizeSlug,
@@ -243,8 +244,12 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
           setSelectedVersionDetail(data);
 
           // Transform API nodes to ReactFlow nodes
-          const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
+          let nodesWithPositionCount = 0;
+          const flowNodes: FlowNode[] = data.graph.nodes.map((node, index) => {
             const positionFromMetadata = extractPosition(node.metadata);
+            if (positionFromMetadata !== null) {
+              nodesWithPositionCount++;
+            }
             const displayName = node.display_name ?? humanizeSlug(node.slug);
             const agentKey = isAgentKind(node.kind) ? node.agent_key ?? null : null;
             const parameters = resolveNodeParameters(
@@ -309,6 +314,25 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
               : { type: "arrowclosed" as any, color: "var(--text-color)" },
             style: buildEdgeStyle({ isSelected: false }),
           }));
+
+          // Apply auto-layout when no nodes have saved position metadata.
+          // Handles imported JSON workflows without position data, producing
+          // a readable top-to-bottom layout instead of a diagonal cascade.
+          if (nodesWithPositionCount === 0 && flowNodes.length > 1) {
+            const layoutPositions = computeAutoLayout(flowNodes, flowEdges, {
+              direction: "TB",
+              nodeWidth: 280,
+              nodeHeight: 80,
+              rankSep: 100,
+              nodeSep: 60,
+            });
+            for (const node of flowNodes) {
+              const newPos = layoutPositions.get(node.id);
+              if (newPos) {
+                node.position = newPos;
+              }
+            }
+          }
 
           // Update history
           const nextSnapshot = JSON.stringify(buildGraphPayloadFromFn(flowNodes, flowEdges));
