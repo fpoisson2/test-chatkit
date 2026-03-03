@@ -43,13 +43,15 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   const isReasoning = workflow.type === 'reasoning';
   const currentTaskCount = workflow.tasks.length;
 
+
+
   // Pour l'animation:
   // L'animation est active seulement si isActive=true ET le workflow n'est pas complété
   // Si isActive=false (workflow inactif/ancien), pas d'animation même si completed=undefined
   const isAnimationComplete = workflow.completed === true || !isActive;
 
   // Pour les autres logiques (affichage)
-  const isCompleted = workflow.completed === true || workflow.summary !== undefined;
+  const isCompleted = workflow.completed === true;
 
   // Stop animation when step has produced content (has tasks)
   const hasStepContent = currentTaskCount > 0;
@@ -121,9 +123,10 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
   );
 
   // Détecter si le workflow était déjà complet au premier render
+  // Inclut les anciens items d'historique (summary présent mais pas completed)
   if (!hasMountedRef.current) {
     hasMountedRef.current = true;
-    wasCompletedOnMountRef.current = isCompleted;
+    wasCompletedOnMountRef.current = isCompleted || workflow.summary !== undefined;
   }
 
   // Fonction pour traiter la file d'attente
@@ -214,6 +217,15 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
     if (isCompleted && currentTaskCount > 0) {
       const lastIndex = currentTaskCount - 1;
       enqueueTask(lastIndex);
+
+      // Race condition: the 2s timer may have fired before isCompleted became true,
+      // leaving the system in "waiting mode" (isProcessingRef=true, no active timeout).
+      // enqueueTask() is then a no-op (task already processed), so we clear manually.
+      if (isProcessingRef.current && !displayTimeoutRef.current) {
+        setDisplayedTaskIndex(null);
+        isProcessingRef.current = false;
+        minDisplayTimeRef.current = null;
+      }
     }
 
     previousTaskCountRef.current = currentTaskCount;
@@ -232,17 +244,12 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
       <div className={`chatkit-workflow-header ${!isAnimationComplete ? 'chatkit-workflow-active' : 'chatkit-workflow-completed'}`} onClick={toggleExpanded}>
         <div className="chatkit-workflow-summary">
-          {(() => {
-            const willShowSummary = workflow.summary && workflow.summary.title && workflow.summary.title !== 'Workflow';
-            const displayedTitle = willShowSummary ? workflow.summary.title : (currentTaskTitle || workflow.summary?.title || t('chatkit.workflow.workflow'));
-            return willShowSummary ? (
-              <SummaryRenderer summary={workflow.summary} />
-            ) : (
-              <div className="chatkit-workflow-default-title">
-                {displayedTitle}
-              </div>
-            );
-          })()}
+          <div className="chatkit-workflow-default-title">
+            {(isCompleted && workflow.summary && 'title' in workflow.summary && workflow.summary.title)
+              || workflow.title
+              || currentTaskTitle
+              || t('chatkit.workflow.workflow')}
+          </div>
         </div>
         <button className="chatkit-workflow-toggle" aria-expanded={expanded} aria-label={expanded ? t('chatkit.workflow.collapse') : t('chatkit.workflow.expand')}>
           {expanded ? (
@@ -265,14 +272,14 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light', au
       )}
 
       {/* Afficher la dernière tâche complète (avec animation) */}
-      {!expanded && displayedTask && !isCompleted && (
+      {!expanded && displayedTask && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
           <TaskRenderer task={displayedTask} theme={theme} hideComputerUseScreenshot authToken={authToken} apiUrl={apiUrl} backendUrl={backendUrl} />
         </div>
       )}
 
       {/* Afficher la dernière tâche si rien n'est en cours de streaming et pas terminé */}
-      {!expanded && !streamingTask && !displayedTask && !isCompleted && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
+      {!expanded && !streamingTask && !displayedTask && !isCompleted && !wasCompletedOnMountRef.current && currentTaskCount > 0 && hasRenderableContent(workflow.tasks[currentTaskCount - 1]) && (
         <div className="chatkit-workflow-last-task">
             <TaskRenderer
               task={workflow.tasks[currentTaskCount - 1]}

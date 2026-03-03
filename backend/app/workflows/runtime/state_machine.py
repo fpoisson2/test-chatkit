@@ -26,8 +26,6 @@ async def _update_workflow_metadata(
     slug: str,
     title: str,
     steps_history: list[Any],
-    agent_context: Any = None,
-    context: Any = None,
 ) -> None:
     """Update workflow metadata in thread for monitoring purposes."""
     if thread is None:
@@ -61,70 +59,6 @@ async def _update_workflow_metadata(
     updated["workflow"]["steps_history"] = [
         {"key": step.key, "title": step.title} for step in steps_history
     ]
-
-    # AJOUT: Mettre à jour le summary du workflow affiché dans le chat via agent_context
-    # Ne pas mettre à jour pour les widgets - ils ne doivent pas créer de bloc reasoning
-    is_widget_step = slug.startswith("widget")
-    if agent_context is not None and title and not is_widget_step:
-        try:
-            from chatkit.types import CustomSummary
-
-            workflow_item = getattr(agent_context, "workflow_item", None)
-            logger.info(f"[TITLE_TRACE] agent_context.workflow_item = {workflow_item}")
-
-            # Si le workflow existe déjà, mettre à jour le summary
-            if workflow_item is not None:
-                workflow = getattr(workflow_item, "workflow", None)
-                if workflow is not None:
-                    workflow.summary = CustomSummary(title=title)
-                    logger.info(
-                        f"[TITLE_TRACE] Updated restored workflow summary with title: {title}"
-                    )
-
-                    # Stocker le workflow_item dans runtime_vars pour le partager entre étapes
-                    if context is not None and hasattr(context, "runtime_vars"):
-                        context.runtime_vars["workflow_item"] = workflow_item
-
-                        # Aussi le stocker dans le thread pour plus de sécurité
-                        thread = context.runtime_vars.get("thread")
-                        if thread:
-                            thread._workflow_item = workflow_item
-
-                    # Forcer la mise à jour du frontend en remplaçant l'item dans le thread
-
-                else:
-                    logger.info(f"[TITLE_TRACE] workflow_item.workflow is None")
-            else:
-                # Essayer de restaurer le workflow_item depuis runtime_vars
-                stored_workflow_item = None
-                if context is not None and hasattr(context, "runtime_vars"):
-                    stored_workflow_item = context.runtime_vars.get("workflow_item")
-
-                if stored_workflow_item is not None:
-                    logger.info(
-                        f"[TITLE_TRACE] Restoring workflow_item from runtime_vars"
-                    )
-                    # Remettre le workflow_item dans agent_context
-                    agent_context.workflow_item = stored_workflow_item
-                    workflow = getattr(stored_workflow_item, "workflow", None)
-                    if workflow is not None:
-                        workflow.summary = CustomSummary(title=title)
-                        logger.info(
-                            f"[TITLE_TRACE] Updated restored workflow summary with title: {title}"
-                        )
-
-                    else:
-                        logger.info(
-                            f"[TITLE_TRACE] restored workflow_item.workflow is None"
-                        )
-                else:
-                    logger.info(
-                        f"[TITLE_TRACE] workflow_item is None and no stored workflow_item, skipping summary update"
-                    )
-        except Exception as exc:
-            logger.warning(
-                f"[TITLE_TRACE] Failed to update workflow summary: {exc}", exc_info=True
-            )
 
     # Save back to thread - handle both SDK and DB threads
     # Try SDK thread first (has metadata attribute)
@@ -311,15 +245,11 @@ class WorkflowStateMachine:
             else:
                 node_title = current_node.slug
 
-            logger.info(
-                f"[TITLE_TRACE] Starting step {current_node.slug} with title: {node_title}"
-            )
             await _update_workflow_metadata(
                 context.runtime_vars.get("thread"),
                 current_node.slug,
                 node_title,
                 context.steps,
-                context.runtime_vars.get("agent_context"),
             )
 
             # Execute handler
@@ -330,30 +260,15 @@ class WorkflowStateMachine:
             steps_after = len(context.steps)
             if steps_after == steps_before and context.record_step is not None:
                 # Get step title
-                logger.info(
-                    f"[TITLE_TRACE] state_machine auto-recording step for slug={current_node.slug}, display_name={current_node.display_name}"
-                )
                 node_title = ""
                 if current_node.display_name:
                     node_title = current_node.display_name
-                    logger.info(
-                        f"[TITLE_TRACE] state_machine using display_name: {node_title}"
-                    )
                 elif current_node.parameters and current_node.parameters.get("title"):
                     node_title = str(current_node.parameters.get("title"))
-                    logger.info(
-                        f"[TITLE_TRACE] state_machine using parameters title: {node_title}"
-                    )
                 elif hasattr(handler, "_node_title"):
                     node_title = handler._node_title(current_node)
-                    logger.info(
-                        f"[TITLE_TRACE] state_machine using handler._node_title: {node_title}"
-                    )
                 else:
                     node_title = current_node.slug
-                    logger.info(
-                        f"[TITLE_TRACE] state_machine using slug fallback: {node_title}"
-                    )
 
                 # Record the step with minimal payload
                 await context.record_step(
@@ -377,22 +292,11 @@ class WorkflowStateMachine:
                 elif hasattr(handler, "_node_title"):
                     node_title = handler._node_title(current_node)
 
-                logger.info(
-                    f"[WORKFLOW_META] Updating metadata for step {current_node.slug}: "
-                    f"title='{node_title}', steps_count={len(context.steps)}"
-                )
-                agent_context = context.runtime_vars.get("agent_context")
                 await _update_workflow_metadata(
                     thread,
                     current_node.slug,
                     node_title,
                     context.steps,
-                    agent_context,
-                    context,
-                )
-            else:
-                logger.warning(
-                    f"[WORKFLOW_META] No thread in runtime_vars for step {current_node.slug}"
                 )
 
             if debug_enabled:
