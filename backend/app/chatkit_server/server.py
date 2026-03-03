@@ -2069,6 +2069,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             ) -> None:
                 header = f"{update.title}"
 
+                # Update workflow title if not yet set
+                if update.title:
+                    workflow_item = getattr(agent_context, "workflow_item", None)
+                    if workflow_item is not None and not workflow_item.workflow.title:
+                        workflow_item.workflow.title = update.title
+                        from chatkit.types import ThreadItemReplacedEvent
+                        await on_stream_event(ThreadItemReplacedEvent(item=workflow_item))
+
                 # Persist current step to metadata if it changed
                 current_step_slug = update.key
                 current_step_title = update.title

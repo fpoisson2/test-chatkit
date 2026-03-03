@@ -19,10 +19,11 @@ MAX_TOKEN_FIELD_NAMES = {
 UNSUPPORTED_REASONING_FIELDS = {
     # L'API attend la verbosité dans l'objet « text », pas sous « reasoning ».
     "verbosity",
-    # Groq et certains providers ne supportent pas summary dans reasoning
-    "summary",
+    # generate_summary n'est pas un champ standard de l'API
     "generate_summary",
 }
+# Note : "summary" est géré séparément via le paramètre allow_summary
+# pour permettre son exclusion par provider (ex: Groq)
 
 # Valeurs valides pour reasoning.effort (compatibles avec Groq et autres providers)
 VALID_REASONING_EFFORT_VALUES = {"none", "default", "low", "medium", "high"}

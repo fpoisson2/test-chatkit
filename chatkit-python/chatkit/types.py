@@ -727,6 +727,7 @@ class Workflow(BaseModel):
 
     type: Literal["custom", "reasoning"]
     tasks: list[Task]
+    title: str | None = None
     summary: WorkflowSummary | None = None
     expanded: bool = False
 

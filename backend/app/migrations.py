@@ -13,6 +13,7 @@ from .models import (
     LTIResourceLink,
     LTIUserSession,
     LTIWorkflowThread,
+    WorkflowResponseEvaluation,
 )
 
 logger = logging.getLogger(__name__)
@@ -486,6 +487,18 @@ def _add_workflow_shares_permission_column(connection) -> None:
     )
 
 
+def _workflow_response_evaluations_table_exists(connection) -> bool:
+    inspector = inspect(connection)
+    return inspector.has_table("workflow_response_evaluations")
+
+
+def _create_workflow_response_evaluations_table(connection) -> None:
+    Base.metadata.create_all(
+        bind=connection,
+        tables=[WorkflowResponseEvaluation.__table__],
+    )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -583,6 +596,12 @@ def check_and_apply_migrations():
             "description": "Create LTI workflow thread mapping table",
             "check_fn": _lti_workflow_threads_table_exists,
             "apply_fn": _create_lti_workflow_threads_table,
+        },
+        {
+            "id": "014_create_workflow_response_evaluations",
+            "description": "Create table for workflow agent response evaluations",
+            "check_fn": _workflow_response_evaluations_table_exists,
+            "apply_fn": _create_workflow_response_evaluations_table,
         },
     ]
 

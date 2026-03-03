@@ -302,6 +302,7 @@ export type WorkflowSummary = CustomSummary | DurationSummary;
 export interface Workflow {
   type: 'custom' | 'reasoning';
   tasks: Task[];
+  title?: string;
   summary?: WorkflowSummary;
   expanded?: boolean;
   completed?: boolean;

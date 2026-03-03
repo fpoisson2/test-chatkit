@@ -1177,7 +1177,6 @@ async def run_workflow_v2(
     try:
         from chatkit.types import (
             Workflow as ChatkitWorkflow,
-            CustomSummary,
             WorkflowItem,
         )
 
@@ -1185,8 +1184,7 @@ async def run_workflow_v2(
             default_workflow = ChatkitWorkflow(
                 type="reasoning",
                 tasks=[],
-                summary=CustomSummary(title="Workflow"),  # Titre par défaut
-                expanded=True,
+                expanded=False,
             )
             await agent_context.start_workflow(default_workflow)
 

@@ -84,6 +84,7 @@ type UseGraphEditorResult = {
   handleDuplicateSelection: () => boolean;
   handleDeleteSelection: () => boolean;
   resetCopySequence: () => void;
+  applyAutoLayout: () => void;
 };
 
 const useGraphEditor = ({
@@ -903,6 +904,33 @@ const useGraphEditor = ({
     [applySelection, selectedEdgeIdRef, selectedNodeIdRef],
   );
 
+  const applyAutoLayout = useCallback(() => {
+    const nodes = nodesRef.current;
+    const edges = edgesRef.current;
+    if (nodes.length <= 1) return;
+
+    const layoutPositions = computeAutoLayout(nodes, edges, {
+      direction: "TB",
+      nodeWidth: 280,
+      nodeHeight: 80,
+      rankSep: 100,
+      nodeSep: 60,
+    });
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        const newPos = layoutPositions.get(node.id);
+        return newPos ? { ...node, position: newPos } : node;
+      }),
+    );
+
+    updateHasPendingChanges(true);
+
+    requestAnimationFrame(() => {
+      reactFlowInstanceRef.current?.fitView({ padding: 0.1, duration: 300 });
+    });
+  }, [nodesRef, edgesRef, setNodes, updateHasPendingChanges, reactFlowInstanceRef]);
+
   return {
     applySelection,
     clearSelection,
@@ -913,6 +941,7 @@ const useGraphEditor = ({
     handleDuplicateSelection,
     handleDeleteSelection,
     resetCopySequence,
+    applyAutoLayout,
   };
 };
 

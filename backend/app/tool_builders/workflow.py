@@ -421,18 +421,19 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
                 return
             if agent_context.workflow_item is not None:
                 workflow_started = True
+                # Mettre à jour le titre si pas encore défini
+                if not agent_context.workflow_item.workflow.title:
+                    title = _summary_title()
+                    if title:
+                        agent_context.workflow_item.workflow.title = title
+                        from chatkit.types import ThreadItemReplacedEvent
+                        await agent_context.stream(ThreadItemReplacedEvent(item=agent_context.workflow_item))
                 return
-            summary_title = _summary_title()
-            summary_payload = (
-                CustomSummary(title=summary_title)
-                if summary_title is not None
-                else None
-            )
             workflow_model = Workflow(
                 type="reasoning",
                 tasks=[],
-                summary=summary_payload,
-                expanded=True,
+                title=_summary_title(),
+                expanded=False,
             )
             try:
                 await agent_context.start_workflow(workflow_model)
@@ -459,7 +460,6 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
                 return
 
             existing_index = task_indices.get(key)
-            logger.info(f"[TITLE_TRACE] _upsert_task creating ThoughtTask with title={title}, key={key}, status={status}")
             task_payload = ThoughtTask(
                 title=title,
                 content=content,
@@ -486,7 +486,6 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
         async def _handle_step_stream(update: WorkflowStepStreamUpdate) -> None:
             if not show_ui:
                 return
-            logger.info(f"[TITLE_TRACE] _handle_step_stream received update.title={update.title}, update.key={update.key}, update.index={update.index}")
             title = update.title or f"Étape {update.index}"
             current = task_texts.get(update.key, "")
             if update.delta:
@@ -546,7 +545,7 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
                 try:
                     await agent_context.end_workflow(
                         summary=summary_payload,
-                        expanded=True,
+                        expanded=False,
                     )
                 except Exception as exc:  # pragma: no cover - best effort
                     logger.debug(
@@ -564,7 +563,7 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
                 and agent_context.workflow_item is not None
             ):
                 try:
-                    await agent_context.end_workflow(expanded=True)
+                    await agent_context.end_workflow(expanded=False)
                 except Exception as exc:  # pragma: no cover - best effort
                     logger.debug(
                         "Impossible de finaliser le workflow côté UI (%s)",

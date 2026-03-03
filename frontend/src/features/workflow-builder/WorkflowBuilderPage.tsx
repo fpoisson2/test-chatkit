@@ -682,6 +682,7 @@ const WorkflowBuilderPage = () => {
     handleDuplicateSelection,
     handleDeleteSelection,
     resetCopySequence,
+    applyAutoLayout,
   } = useGraphEditor({
     nodeClassName: styles.flowNode,
     setNodes,
@@ -845,6 +846,7 @@ const WorkflowBuilderPage = () => {
         onOpenDeployModal={handleOpenDeployModalWithSetup}
         onOpenGenerationModal={openGenerationModal}
         onOpenGitHubModal={handleOpenGitHubModal}
+        onAutoLayout={applyAutoLayout}
         renderWorkflowDescription={renderWorkflowDescription}
         renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
         isMobileActionsOpen={isMobileActionsOpen}

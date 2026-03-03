@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
   Handle,
   MarkerType,
@@ -15,6 +16,8 @@ import { Modal } from "../Modal";
 import { useAuth } from "../../auth";
 import { workflowsApi } from "../../utils/backend";
 import { LoadingSpinner } from "../LoadingSpinner";
+import { buildNodeStyle, NODE_COLORS } from "../../features/workflow-builder/utils";
+import type { NodeKind } from "../../features/workflow-builder/types";
 
 interface WorkflowStepInfo {
   slug: string;
@@ -84,6 +87,16 @@ interface WorkflowVersion {
 
 type NodeStatus = "active" | "completed" | "pending";
 
+const KNOWN_NODE_KINDS = new Set<string>([
+  "start", "agent", "voice_agent", "outbound_call", "computer_use",
+  "condition", "state", "transform", "watch", "wait_for_user_input",
+  "assistant_message", "user_message", "docx_template", "json_vector_store",
+  "parallel_split", "parallel_join", "while", "widget", "end",
+]);
+
+const toNodeKind = (kind: string): NodeKind =>
+  KNOWN_NODE_KINDS.has(kind) ? (kind as NodeKind) : "agent";
+
 // Node personnalisé pour afficher les utilisateurs sur un step
 const CustomNode = ({
   data,
@@ -95,53 +108,36 @@ const CustomNode = ({
 }>) => {
   const [showUsersList, setShowUsersList] = useState(false);
 
-  const getNodeBaseColor = (kind: string) => {
-    const colors: Record<string, string> = {
-      start: "#10b981",
-      end: "#ef4444",
-      agent: "#3b82f6",
-      condition: "#f59e0b",
-      wait: "#8b5cf6",
-    };
-    return colors[kind] || "#6b7280";
-  };
+  const nodeKind = toNodeKind(data.kind);
+  const nodeColor = NODE_COLORS[nodeKind];
+  const baseStyle = buildNodeStyle(nodeKind);
 
-  const getNodeStyleByStatus = (nodeStatus: NodeStatus, kind: string) => {
-    const baseColor = getNodeBaseColor(kind);
-
-    switch (nodeStatus) {
+  const nodeStyle = (() => {
+    switch (data.nodeStatus) {
       case "active":
-        // Utilisateurs actuellement ici - border épais + background plus opaque
         return {
-          border: `3px solid ${baseColor}`,
-          background: `color-mix(in srgb, ${baseColor} 20%, var(--color-surface, white))`,
-          boxShadow: `0 0 0 3px color-mix(in srgb, ${baseColor} 30%, transparent)`,
+          ...baseStyle,
+          boxShadow: `${baseStyle.boxShadow ?? ""}, 0 0 0 3px ${nodeColor}50`.replace(/^,\s*/, ""),
         };
       case "completed":
-        // Déjà complété - border normale + background opaque
-        return {
-          border: `2px solid ${baseColor}`,
-          background: `color-mix(in srgb, ${baseColor} 10%, var(--color-surface, white))`,
-          boxShadow: "none",
-        };
+        return { ...baseStyle, opacity: 0.85 };
       case "pending":
-        // Pas encore atteint - gris + dashed
         return {
+          padding: baseStyle.padding,
+          borderRadius: baseStyle.borderRadius,
           border: "2px dashed var(--color-border-subtle, #d1d5db)",
           background: "var(--color-surface-subtle, #f9fafb)",
           boxShadow: "none",
-          opacity: 0.6,
+          minWidth: baseStyle.minWidth,
+          textAlign: baseStyle.textAlign,
+          transition: baseStyle.transition,
+          overflow: baseStyle.overflow,
+          opacity: 0.5,
         };
       default:
-        return {
-          border: `2px solid ${baseColor}`,
-          background: "var(--color-surface, white)",
-          boxShadow: "none",
-        };
+        return baseStyle;
     }
-  };
-
-  const nodeStyle = getNodeStyleByStatus(data.nodeStatus, data.kind);
+  })();
 
   return (
     <>
@@ -159,11 +155,7 @@ const CustomNode = ({
 
       <div
         style={{
-          padding: "10px 20px",
-          borderRadius: "8px",
-          minWidth: "150px",
           position: "relative",
-          transition: "all 0.3s ease",
           cursor: data.users && data.users.length > 0 ? "pointer" : "default",
           ...nodeStyle,
         }}
@@ -195,7 +187,7 @@ const CustomNode = ({
               position: "absolute",
               top: "-10px",
               right: "-10px",
-              background: getNodeBaseColor(data.kind),
+              background: nodeColor,
               color: "white",
               borderRadius: "50%",
               width: "28px",
@@ -515,10 +507,10 @@ export const WorkflowVisualizationModal = ({
                   <div style={{
                     width: "16px",
                     height: "16px",
-                    border: "3px solid #3b82f6",
+                    border: `3px solid ${NODE_COLORS.agent}`,
                     borderRadius: "4px",
-                    background: "#3b82f615",
-                    boxShadow: "0 0 0 2px #3b82f630",
+                    background: `${NODE_COLORS.agent}20`,
+                    boxShadow: `0 0 0 2px ${NODE_COLORS.agent}40`,
                     flexShrink: 0,
                   }} />
                   <span style={{ color: "var(--color-text, #1f2937)" }}>Actif</span>
@@ -527,9 +519,10 @@ export const WorkflowVisualizationModal = ({
                   <div style={{
                     width: "16px",
                     height: "16px",
-                    border: "2px solid #3b82f6",
+                    border: `2px solid ${NODE_COLORS.agent}`,
                     borderRadius: "4px",
-                    background: "#3b82f608",
+                    background: `${NODE_COLORS.agent}14`,
+                    opacity: 0.85,
                     flexShrink: 0,
                   }} />
                   <span style={{ color: "var(--color-text, #1f2937)" }}>Complété</span>
@@ -561,7 +554,7 @@ export const WorkflowVisualizationModal = ({
                     width: "20px",
                     height: "20px",
                     borderRadius: "50%",
-                    background: "#3b82f6",
+                    background: NODE_COLORS.agent,
                     color: "white",
                     display: "flex",
                     alignItems: "center",
@@ -607,7 +600,7 @@ export const WorkflowVisualizationModal = ({
                   background: "var(--color-surface-subtle, #f9fafb)",
                 }}
               >
-                <Background gap={18} size={1} color="#e5e7eb" />
+                <Background variant={BackgroundVariant.Dots} gap={16} size={1.5} color="var(--color-border-subtle, #d1d5db)" />
                 <Controls
                   showZoom={true}
                   showFitView={true}

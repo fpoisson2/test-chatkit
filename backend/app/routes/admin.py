@@ -43,6 +43,7 @@ from ..models import (
     User,
     Workflow,
     WorkflowDefinition,
+    WorkflowResponseEvaluation,
     WorkflowStep,
     WorkflowViewport,
 )
@@ -2456,3 +2457,315 @@ async def delete_workflow_generation_prompt(
     session.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ============================================================================
+# Workflow Response Evaluation Endpoints
+# ============================================================================
+
+
+class WorkflowThreadSummary(BaseModel):
+    thread_id: str
+    user_email: str
+    started_at: str
+    message_count: int
+
+
+class ThreadMessageItem(BaseModel):
+    id: str
+    role: str
+    content_text: str
+    step_slug: str | None = None
+    created_at: str
+
+
+class EvaluationSaveRequest(BaseModel):
+    thread_id: str
+    step_slug: str
+    workflow_id: int
+    user_message: str
+    agent_message: str
+    rating: str  # "good" or "bad"
+    notes: str | None = None
+
+
+class EvaluationResponse(BaseModel):
+    id: int
+    thread_id: str
+    step_slug: str
+    workflow_id: int
+    user_message: str
+    agent_message: str
+    rating: str
+    notes: str | None
+    evaluator_id: int
+    created_at: str
+    updated_at: str
+
+
+def _extract_text_from_content(content: object) -> str:
+    """Extract plain text from ChatKit message content (list of {type, text} parts)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, dict) and "text" in part:
+                parts.append(str(part["text"]))
+        return "\n".join(parts)
+    return str(content) if content is not None else ""
+
+
+@router.get(
+    "/api/admin/workflows/{workflow_id}/threads",
+    response_model=list[WorkflowThreadSummary],
+)
+async def list_workflow_threads(
+    workflow_id: int,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Liste tous les threads liés à un workflow donné."""
+    from sqlalchemy import func
+
+    threads = session.scalars(
+        select(ChatThread).order_by(ChatThread.created_at.desc())
+    ).all()
+
+    result = []
+    for thread in threads:
+        metadata = thread.payload.get("metadata", {}) if thread.payload else {}
+        wf_meta = metadata.get("workflow", {}) if isinstance(metadata, dict) else {}
+        if not isinstance(wf_meta, dict):
+            continue
+        # The workflow metadata key is "id" (set by chatkit_store._current_workflow_metadata)
+        if wf_meta.get("id") != workflow_id:
+            continue
+
+        # Resolve user email
+        user_email = thread.owner_id
+        try:
+            user = session.get(User, int(thread.owner_id))
+            if user:
+                user_email = user.email
+        except (ValueError, TypeError):
+            pass
+
+        # Count messages
+        msg_count = session.scalar(
+            select(func.count()).select_from(ChatThreadItem).where(
+                ChatThreadItem.thread_id == thread.id
+            )
+        ) or 0
+
+        result.append(
+            WorkflowThreadSummary(
+                thread_id=thread.id,
+                user_email=user_email,
+                started_at=thread.created_at.isoformat(),
+                message_count=msg_count,
+            )
+        )
+
+    return result
+
+
+@router.get(
+    "/api/admin/threads/{thread_id}/messages",
+    response_model=list[ThreadMessageItem],
+)
+async def get_thread_messages_admin(
+    thread_id: str,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Récupère les messages d'un thread pour l'admin."""
+    thread = session.get(ChatThread, thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    items = session.scalars(
+        select(ChatThreadItem)
+        .where(ChatThreadItem.thread_id == thread_id)
+        .order_by(ChatThreadItem.created_at)
+    ).all()
+
+    result = []
+    for item in items:
+        payload = item.payload or {}
+        # ChatKit items use "type" field: "user_message" / "assistant_message"
+        item_type = payload.get("type", "")
+        if item_type == "user_message":
+            role = "user"
+        elif item_type == "assistant_message":
+            role = "assistant"
+        else:
+            # Skip non-message items (workflow, end_of_turn, widget, etc.)
+            continue
+
+        content = payload.get("content", [])
+        content_text = _extract_text_from_content(content)
+
+        result.append(
+            ThreadMessageItem(
+                id=item.id,
+                role=role,
+                content_text=content_text,
+                created_at=item.created_at.isoformat(),
+            )
+        )
+
+    return result
+
+
+@router.post(
+    "/api/admin/evaluations",
+    response_model=EvaluationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def save_evaluation(
+    payload: EvaluationSaveRequest,
+    session: Session = Depends(get_session),
+    current_admin: User = Depends(require_admin),
+):
+    """Sauvegarde ou met à jour une évaluation de réponse d'agent."""
+    if payload.rating not in ("good", "bad"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="rating must be 'good' or 'bad'",
+        )
+
+    # Upsert: find existing or create new
+    existing = session.scalar(
+        select(WorkflowResponseEvaluation).where(
+            WorkflowResponseEvaluation.thread_id == payload.thread_id,
+            WorkflowResponseEvaluation.step_slug == payload.step_slug,
+        )
+    )
+
+    if existing:
+        existing.workflow_id = payload.workflow_id
+        existing.user_message = payload.user_message
+        existing.agent_message = payload.agent_message
+        existing.rating = payload.rating
+        existing.notes = payload.notes
+        existing.evaluator_id = current_admin.id
+        existing.updated_at = datetime.datetime.now(datetime.UTC)
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        evaluation = existing
+    else:
+        evaluation = WorkflowResponseEvaluation(
+            thread_id=payload.thread_id,
+            step_slug=payload.step_slug,
+            workflow_id=payload.workflow_id,
+            user_message=payload.user_message,
+            agent_message=payload.agent_message,
+            rating=payload.rating,
+            notes=payload.notes,
+            evaluator_id=current_admin.id,
+        )
+        session.add(evaluation)
+        session.commit()
+        session.refresh(evaluation)
+
+    return EvaluationResponse(
+        id=evaluation.id,
+        thread_id=evaluation.thread_id,
+        step_slug=evaluation.step_slug,
+        workflow_id=evaluation.workflow_id,
+        user_message=evaluation.user_message,
+        agent_message=evaluation.agent_message,
+        rating=evaluation.rating,
+        notes=evaluation.notes,
+        evaluator_id=evaluation.evaluator_id,
+        created_at=evaluation.created_at.isoformat(),
+        updated_at=evaluation.updated_at.isoformat(),
+    )
+
+
+@router.get(
+    "/api/admin/workflows/{workflow_id}/evaluations",
+    response_model=list[EvaluationResponse],
+)
+async def get_workflow_evaluations(
+    workflow_id: int,
+    step_slug: str | None = None,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Récupère les évaluations pour un workflow, avec filtre optionnel par step."""
+    query = select(WorkflowResponseEvaluation).where(
+        WorkflowResponseEvaluation.workflow_id == workflow_id
+    )
+    if step_slug:
+        query = query.where(WorkflowResponseEvaluation.step_slug == step_slug)
+    query = query.order_by(WorkflowResponseEvaluation.created_at.desc())
+
+    evaluations = session.scalars(query).all()
+
+    return [
+        EvaluationResponse(
+            id=e.id,
+            thread_id=e.thread_id,
+            step_slug=e.step_slug,
+            workflow_id=e.workflow_id,
+            user_message=e.user_message,
+            agent_message=e.agent_message,
+            rating=e.rating,
+            notes=e.notes,
+            evaluator_id=e.evaluator_id,
+            created_at=e.created_at.isoformat(),
+            updated_at=e.updated_at.isoformat(),
+        )
+        for e in evaluations
+    ]
+
+
+@router.get("/api/admin/workflows/{workflow_id}/evaluations/export")
+async def export_workflow_evaluations(
+    workflow_id: int,
+    step_slug: str | None = None,
+    rating: str | None = None,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Exporte les évaluations en format JSONL pour le fine-tuning."""
+    import json
+
+    query = select(WorkflowResponseEvaluation).where(
+        WorkflowResponseEvaluation.workflow_id == workflow_id
+    )
+    if step_slug:
+        query = query.where(WorkflowResponseEvaluation.step_slug == step_slug)
+    if rating:
+        query = query.where(WorkflowResponseEvaluation.rating == rating)
+    query = query.order_by(WorkflowResponseEvaluation.created_at)
+
+    evaluations = session.scalars(query).all()
+
+    lines = []
+    for e in evaluations:
+        entry = {
+            "messages": [
+                {"role": "user", "content": e.user_message},
+                {"role": "assistant", "content": e.agent_message},
+            ]
+        }
+        lines.append(json.dumps(entry, ensure_ascii=False))
+
+    jsonl_content = "\n".join(lines)
+
+    filename_parts = [f"workflow_{workflow_id}"]
+    if step_slug:
+        filename_parts.append(step_slug)
+    if rating:
+        filename_parts.append(rating)
+    filename = "_".join(filename_parts) + ".jsonl"
+
+    return Response(
+        content=jsonl_content,
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
