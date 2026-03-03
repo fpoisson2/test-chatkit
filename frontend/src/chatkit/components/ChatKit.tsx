@@ -129,12 +129,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   // Auto-dismiss errors
   useAutoDismissError(control.error, control.clearError);
 
-  // Reset local restart state when switching to another thread.
-  useEffect(() => {
-    setIsRestartingLtiThread(false);
-    setLtiRestartError(null);
-  }, [control.thread?.id]);
-
   // Clear the composer when switching threads
   useEffect(() => {
     setInputValue('');
