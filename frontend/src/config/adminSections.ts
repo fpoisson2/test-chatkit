@@ -10,6 +10,7 @@ export type AdminSectionKey =
   | "github"
   | "telephony"
   | "workflow-monitor"
+  | "workflow-evaluation"
   | "workflow-generation"
   | "browser-test"
   | "settings"
@@ -114,6 +115,16 @@ export const ADMIN_SECTIONS: AdminSection[] = [
     Component: lazy(() =>
       import("../pages/AdminWorkflowMonitorPage").then((module) => ({
         default: module.AdminWorkflowMonitorPage,
+      })),
+    ),
+    requireAdmin: true,
+  },
+  {
+    key: "workflow-evaluation",
+    labelKey: "admin.tabs.workflowEvaluation",
+    Component: lazy(() =>
+      import("../pages/AdminWorkflowEvaluationPage").then((module) => ({
+        default: module.AdminWorkflowEvaluationPage,
       })),
     ),
     requireAdmin: true,

@@ -1656,3 +1656,47 @@ Index(
     JsonChunk.store_id,
     JsonChunk.doc_id,
 )
+
+
+class WorkflowResponseEvaluation(Base):
+    """Évaluation d'une réponse d'agent dans un workflow, pour l'amélioration des prompts et le fine-tuning."""
+
+    __tablename__ = "workflow_response_evaluations"
+    __table_args__ = (
+        UniqueConstraint("thread_id", "step_slug", name="uq_eval_thread_step"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    thread_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("chat_threads.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    step_slug: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    workflow_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_message: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_message: Mapped[str] = mapped_column(Text, nullable=False)
+    rating: Mapped[str] = mapped_column(String(16), nullable=False)  # "good" or "bad"
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evaluator_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )

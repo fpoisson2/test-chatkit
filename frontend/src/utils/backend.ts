@@ -898,6 +898,44 @@ export const cancelMcpOAuthSession = async ({
 let hostedWorkflowCache: HostedWorkflowMetadata[] | null | undefined;
 let hostedWorkflowPromise: Promise<HostedWorkflowMetadata[] | null> | null = null;
 
+export type WorkflowThreadSummary = {
+  thread_id: string;
+  user_email: string;
+  started_at: string;
+  message_count: number;
+};
+
+export type ThreadMessageItem = {
+  id: string;
+  role: string;
+  content_text: string;
+  created_at: string;
+};
+
+export type EvaluationSavePayload = {
+  thread_id: string;
+  step_slug: string;
+  workflow_id: number;
+  user_message: string;
+  agent_message: string;
+  rating: "good" | "bad";
+  notes?: string | null;
+};
+
+export type EvaluationRecord = {
+  id: number;
+  thread_id: string;
+  step_slug: string;
+  workflow_id: number;
+  user_message: string;
+  agent_message: string;
+  rating: string;
+  notes: string | null;
+  evaluator_id: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export const adminApi = {
   async listUsers(token: string | null): Promise<EditableUser[]> {
     const response = await requestWithFallback("/api/admin/users", {
@@ -948,6 +986,51 @@ export const adminApi = {
       headers: withAuthHeaders(token),
     });
     return response.json();
+  },
+
+  async listWorkflowThreads(token: string | null, workflowId: number): Promise<WorkflowThreadSummary[]> {
+    const response = await requestWithFallback(`/api/admin/workflows/${workflowId}/threads`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async getThreadMessages(token: string | null, threadId: string): Promise<ThreadMessageItem[]> {
+    const response = await requestWithFallback(`/api/admin/threads/${encodeURIComponent(threadId)}/messages`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async saveEvaluation(token: string | null, data: EvaluationSavePayload): Promise<EvaluationRecord> {
+    const response = await requestWithFallback("/api/admin/evaluations", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(data),
+    });
+    return response.json();
+  },
+
+  async getEvaluations(token: string | null, workflowId: number, stepSlug?: string): Promise<EvaluationRecord[]> {
+    let url = `/api/admin/workflows/${workflowId}/evaluations`;
+    if (stepSlug) url += `?step_slug=${encodeURIComponent(stepSlug)}`;
+    const response = await requestWithFallback(url, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async exportEvaluations(token: string | null, workflowId: number, stepSlug?: string, rating?: string): Promise<Blob> {
+    let url = `/api/admin/workflows/${workflowId}/evaluations/export`;
+    const params = new URLSearchParams();
+    if (stepSlug) params.set("step_slug", stepSlug);
+    if (rating) params.set("rating", rating);
+    const qs = params.toString();
+    if (qs) url += `?${qs}`;
+    const response = await requestWithFallback(url, {
+      headers: withAuthHeaders(token),
+    });
+    return response.blob();
   },
 };
 

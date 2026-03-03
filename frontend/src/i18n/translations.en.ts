@@ -30,6 +30,7 @@ export const en: TranslationDictionary = {
   "admin.tabs.github": "GitHub Sync",
   "admin.tabs.telephony": "Telephony",
   "admin.tabs.workflowMonitor": "Active Workflows",
+  "admin.tabs.workflowEvaluation": "Response Evaluation",
   "admin.tabs.workflowGeneration": "Workflow Generation",
   "admin.tabs.browserTest": "Browser Test",
   "admin.tabs.settings": "General settings",
