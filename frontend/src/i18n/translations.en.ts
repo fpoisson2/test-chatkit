@@ -968,6 +968,7 @@ export const en: TranslationDictionary = {
   "workflowBuilder.localSection.deleteAction": "Delete",
   "workflowBuilder.localSection.missingProduction": "No production version",
   "workflowBuilder.actions.exportJson": "Export as JSON",
+  "workflowBuilder.actions.autoLayout": "Auto-layout",
   "workflowBuilder.export.preparing": "Preparing export…",
   "workflowBuilder.export.success": "JSON export downloaded.",
   "workflowBuilder.export.error": "Unable to export the workflow.",

@@ -1025,6 +1025,7 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.localSection.deleteAction": "Supprimer",
   "workflowBuilder.localSection.missingProduction": "Aucune version en production",
   "workflowBuilder.actions.exportJson": "Exporter en JSON",
+  "workflowBuilder.actions.autoLayout": "Ordonner",
   "workflowBuilder.export.preparing": "Préparation de l'export…",
   "workflowBuilder.export.success": "Export JSON téléchargé.",
   "workflowBuilder.export.error": "Impossible d'exporter le workflow.",

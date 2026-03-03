@@ -25,6 +25,7 @@ interface WorkflowBuilderHeaderProps {
   onOpenDeployModal: () => void;
   onOpenGenerationModal: () => void;
   onOpenGitHubModal: () => void;
+  onAutoLayout: () => void;
 
   // Render props pour description et publication reminder
   renderWorkflowDescription: (className?: string) => React.ReactNode;
@@ -58,6 +59,7 @@ export default function WorkflowBuilderHeader({
   onOpenDeployModal,
   onOpenGenerationModal,
   onOpenGitHubModal,
+  onAutoLayout,
   renderWorkflowDescription,
   renderWorkflowPublicationReminder,
   isMobileActionsOpen,
@@ -98,6 +100,7 @@ export default function WorkflowBuilderHeader({
     loading || !selectedWorkflowId || !selectedVersionId || isGenerating;
   const githubDisabled =
     loading || !selectedWorkflowId || !selectedVersionId;
+  const autoLayoutDisabled = loading || !selectedVersionId;
 
   // Labels dynamiques
   const importLabel = isImporting
@@ -144,6 +147,8 @@ export default function WorkflowBuilderHeader({
       onOpenDeployModal={onOpenDeployModal}
       onOpenGenerationModal={onOpenGenerationModal}
       onOpenGitHubModal={onOpenGitHubModal}
+      onAutoLayout={onAutoLayout}
+      autoLayoutDisabled={autoLayoutDisabled}
       mobileActionsTriggerRef={mobileActionsTriggerRef}
       mobileActionsMenuRef={mobileActionsMenuRef}
       isMobileActionsOpen={isMobileActionsOpen}

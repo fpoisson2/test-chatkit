@@ -1,4 +1,5 @@
 import type { ChangeEvent, MutableRefObject, ReactNode } from "react";
+import { useI18n } from "../../../i18n";
 
 import {
   getActionMenuStyle,
@@ -35,6 +36,8 @@ type WorkflowBuilderHeaderControlsProps = {
   onOpenDeployModal: () => void;
   onOpenGenerationModal: () => void;
   onOpenGitHubModal: () => void;
+  onAutoLayout: () => void;
+  autoLayoutDisabled: boolean;
   mobileActionsTriggerRef: MutableRefObject<HTMLButtonElement | null>;
   mobileActionsMenuRef: MutableRefObject<HTMLDivElement | null>;
   isMobileActionsOpen: boolean;
@@ -74,6 +77,8 @@ const WorkflowBuilderHeaderControls = ({
   onOpenDeployModal,
   onOpenGenerationModal,
   onOpenGitHubModal,
+  onAutoLayout,
+  autoLayoutDisabled,
   mobileActionsTriggerRef,
   mobileActionsMenuRef,
   isMobileActionsOpen,
@@ -90,6 +95,7 @@ const WorkflowBuilderHeaderControls = ({
   isImporting,
   isExporting,
 }: WorkflowBuilderHeaderControlsProps) => {
+  const { t } = useI18n();
   const versionSelect = (
     <div style={getHeaderLayoutStyle(isMobileLayout)}>
       <div style={getHeaderGroupStyle(isMobileLayout)}>
@@ -255,6 +261,18 @@ const WorkflowBuilderHeaderControls = ({
                     type="button"
                     role="menuitem"
                     onClick={() => {
+                      onAutoLayout();
+                      closeMobileActions();
+                    }}
+                    disabled={autoLayoutDisabled}
+                    style={getMobileActionButtonStyle({ disabled: autoLayoutDisabled })}
+                  >
+                    {t("workflowBuilder.actions.autoLayout")}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
                       onOpenGitHubModal();
                       closeMobileActions();
                     }}
@@ -328,6 +346,17 @@ const WorkflowBuilderHeaderControls = ({
           })}
         >
           {exportLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onAutoLayout}
+          disabled={autoLayoutDisabled}
+          title={t("workflowBuilder.actions.autoLayout")}
+          style={getDeployButtonStyle(false, {
+            disabled: autoLayoutDisabled,
+          })}
+        >
+          {t("workflowBuilder.actions.autoLayout")}
         </button>
         <button
           type="button"
