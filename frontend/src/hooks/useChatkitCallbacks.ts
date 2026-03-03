@@ -154,11 +154,11 @@ export function useChatkitCallbacks({
           const metadata = thread.metadata as Record<string, unknown> | undefined;
           setCurrentThread(thread);
         }
-        // Handle awaiting_action event to stop spinner when waiting for widget input
+        // Handle events that should stop the sidebar spinner early
         if ("event" in data && data.event) {
           const event = data.event as Record<string, unknown>;
+          // Stop spinner when waiting for widget input
           if (event.type === "awaiting_action") {
-            // Get the thread ID from the last snapshot or current thread
             const threadId = (lastThreadSnapshotRef.current?.id as string | undefined);
             if (threadId) {
               setStreamingThreadIds((prev) => {
@@ -166,6 +166,20 @@ export function useChatkitCallbacks({
                 next.delete(threadId);
                 return next;
               });
+            }
+          }
+          // Stop spinner as soon as the assistant message starts (first token)
+          if (event.type === "thread.item.added") {
+            const item = event.item as Record<string, unknown> | undefined;
+            if (item?.type === "assistant_message") {
+              const threadId = (lastThreadSnapshotRef.current?.id as string | undefined);
+              if (threadId) {
+                setStreamingThreadIds((prev) => {
+                  const next = new Set(prev);
+                  next.delete(threadId);
+                  return next;
+                });
+              }
             }
           }
         }

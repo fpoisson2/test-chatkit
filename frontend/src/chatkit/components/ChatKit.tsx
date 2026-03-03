@@ -1,7 +1,7 @@
 /**
  * ChatKit component - Main chat interface with all features
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type {
   ChatKitControl,
   ChatKitOptions,
@@ -425,7 +425,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         {/* Loading indicator */}
         <LoadingIndicator
           thread={control.thread}
-          loadingThreadIds={control.loadingThreadIds}
+          isLoading={control.isLoading}
         />
 
         <div ref={messagesEndRef} className="chatkit-scroll-anchor" />
@@ -662,32 +662,54 @@ function MessageList({
 
 interface LoadingIndicatorProps {
   thread: { id: string; items: ThreadItem[] } | null;
-  loadingThreadIds: Set<string>;
+  isLoading: boolean;
 }
 
-function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): JSX.Element | null {
+function LoadingIndicator({ thread, isLoading }: LoadingIndicatorProps): JSX.Element | null {
   const items = thread?.items || [];
   const lastItem = items[items.length - 1];
 
-  // Show typing indicator when:
-  // - Thread exists and is active (waiting for assistant)
-  // - Thread is being loaded (streaming in progress)
-  // - Last message is from user (no response started yet)
+  // Track the last item ID that existed *before* loading started.
+  // We update this ref whenever we're NOT loading so it always reflects
+  // the "pre-load" state. During loading we freeze it.
+  // This lets us distinguish an OLD assistant message (still last when loading
+  // kicks off) from a NEW one sent by the server during the current stream.
+  const preLoadLastItemIdRef = useRef<string | undefined>(undefined);
+  const isLoadingCurrentThread = isLoading;
+  if (!isLoadingCurrentThread) {
+    preLoadLastItemIdRef.current = lastItem?.id;
+  }
+
   const hasMessages = items.length > 0;
-  const isThreadActive = thread?.status?.type === 'active';
-  const isLoadingCurrentThread =
-    thread && loadingThreadIds.has(thread.id);
+  // Treat missing/undefined status as active — threads are only explicitly closed or locked
+  const isThreadActive = !thread?.status || thread.status.type === 'active';
   const lastItemIsUserMessage = lastItem?.type === 'user_message';
+  const lastItemIsAssistantMessage = lastItem?.type === 'assistant_message';
   const isWaitingForUserInput = Boolean(thread?.metadata?.workflow_wait_for_user_input);
 
+  // A new assistant message is one that arrived from the server *during* the
+  // current loading session (its ID differs from what was last seen when idle).
+  const lastItemIsNewFromServer = lastItem?.id !== preLoadLastItemIdRef.current;
+
+  // Suppress "..." only when the NEW streaming assistant message has visible text.
+  // Old messages (same ID as before loading) never suppress the indicator.
+  const streamingAssistantHasVisibleContent =
+    lastItemIsAssistantMessage &&
+    lastItemIsNewFromServer &&
+    (lastItem as any).content?.some(
+      (c: { type: string; text?: string }) => c.type === 'output_text' && (c.text?.length ?? 0) > 0
+    );
+
   // Show indicator if:
-  // 1. Thread is actively being loaded (streaming) AND thread is active
-  // 2. OR last item is user message AND thread is active
+  // 1. Thread is actively being loaded (streaming) AND the new assistant message
+  //    has no visible text yet (covers: waiting before first item, reasoning in
+  //    progress, or old message still shown as last item).
+  // 2. OR last item is a user message AND not waiting for user input (non-streaming fallback).
   const isWaitingForAssistant =
     thread &&
     isThreadActive &&
-    !isWaitingForUserInput &&
-    (isLoadingCurrentThread || (hasMessages && lastItemIsUserMessage));
+    !streamingAssistantHasVisibleContent &&
+    (isLoadingCurrentThread || (hasMessages && lastItemIsUserMessage && !isWaitingForUserInput));
 
 
   if (!isWaitingForAssistant) {
