@@ -1,0 +1,71 @@
+.label {
+  text-align: center;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.badgeContainer {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 10;
+  pointer-events: all;
+}
+
+.badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.badge:hover {
+  transform: scale(1.15);
+  background: #1d4ed8;
+}
+
+.tooltip {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 6px;
+  background: #1e293b;
+  color: #f8fafc;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0;
+  min-width: 180px;
+  max-width: 280px;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 100;
+  font-size: 0.8rem;
+  pointer-events: all;
+}
+
+.tooltipLink {
+  display: block;
+  padding: 0.35rem 0.75rem;
+  color: #93c5fd;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 100ms ease;
+}
+
+.tooltipLink:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #bfdbfe;
+  text-decoration: underline;
+}

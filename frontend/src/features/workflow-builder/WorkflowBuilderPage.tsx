@@ -226,6 +226,7 @@ import {
   GraphProvider,
   SelectionProvider,
   ViewportProvider,
+  ActiveSessionsProvider,
 } from "./contexts";
 
 const WorkflowBuilderPage = () => {
@@ -1620,6 +1621,11 @@ const WorkflowBuilderPage = () => {
             workflowMenuRef={workflowMenuRef}
             setWorkflowMenuPlacement={setWorkflowMenuPlacement}
           />
+          <ActiveSessionsProvider
+            token={token}
+            workflowId={selectedWorkflowId}
+            enabled={editingLocked && (selectedVersionDetail?.is_active ?? false) && (user?.is_admin ?? false)}
+          >
           <div
             style={{
               position: "relative",
@@ -1645,6 +1651,7 @@ const WorkflowBuilderPage = () => {
               editingLocked={editingLocked}
             />
           </div>
+          </ActiveSessionsProvider>
           <WorkflowBuilderToast />
           <WorkflowBuilderModals
             onSubmitCreateWorkflow={handleSubmitCreateWorkflow}
