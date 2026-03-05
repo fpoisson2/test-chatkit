@@ -138,6 +138,81 @@
   font-size: 1.1rem;
   color: var(--text-secondary-color, #64748b);
   margin: 0;
+  text-align: center;
+}
+
+/* Wear OS / small round screens (~200-450px) */
+@media (max-width: 450px), (max-height: 450px) {
+  .page {
+    padding: 0.5rem;
+    justify-content: center;
+  }
+
+  .header {
+    margin-bottom: 0.5rem;
+    gap: 0.4rem;
+  }
+
+  .title {
+    font-size: 0.9rem;
+  }
+
+  .select {
+    min-width: 0;
+    width: 90%;
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+  }
+
+  .center {
+    gap: 0.8rem;
+  }
+
+  .orbContainer {
+    width: 6rem;
+    height: 6rem;
+  }
+
+  .orb {
+    width: 6rem;
+    height: 6rem;
+  }
+
+  .micButton {
+    width: 5rem;
+    height: 5rem;
+    border-width: 2px;
+  }
+
+  .statusText {
+    font-size: 0.7rem;
+  }
+}
+
+/* Very small round watch (~200px) */
+@media (max-width: 220px) {
+  .header {
+    display: none;
+  }
+
+  .orbContainer {
+    width: 5rem;
+    height: 5rem;
+  }
+
+  .orb {
+    width: 5rem;
+    height: 5rem;
+  }
+
+  .micButton {
+    width: 4rem;
+    height: 4rem;
+  }
+
+  .statusText {
+    font-size: 0.6rem;
+  }
 }
 
 /* Dark mode */

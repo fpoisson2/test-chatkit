@@ -155,6 +155,8 @@ else:
         app.include_router(users.router)
         app.include_router(admin.router)
         app.include_router(workflow_monitor_ws.router)
+        from .routes import voice_relay_ws
+        app.include_router(voice_relay_ws.router)
         app.include_router(computer_routes.router)
         app.include_router(docs.router)
         app.include_router(github.router)
