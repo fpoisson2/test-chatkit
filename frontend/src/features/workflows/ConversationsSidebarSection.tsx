@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode, type MutableRefObject } from "react";
 import type { Thread, ChatKitAPIConfig } from "../../chatkit/types";
-import { listThreads, deleteThread, updateThreadTitle } from "../../chatkit/api/streaming/api";
+import { deleteThread, updateThreadTitle } from "../../chatkit/api/streaming/api";
 import {
   type ActionMenuPlacement,
   computeWorkflowActionMenuPlacement,
@@ -12,6 +12,7 @@ import {
 } from "./WorkflowActionMenu";
 import { TruncatedText } from "../../components/TruncatedText";
 import { AnimatedTitle } from "../../components/AnimatedTitle";
+import { useThreads } from "../../hooks/useThreads";
 import "./ConversationsSidebarSection.css";
 
 export interface ThreadWorkflowMetadata {
@@ -39,12 +40,6 @@ export interface ConversationsSidebarSectionProps {
   /** When true, a new conversation is being drafted (used for empty state logic) */
   isNewConversationActive?: boolean;
 }
-
-// Cache at module level to persist data between mounts
-let cachedThreads: Thread[] = [];
-let cachedHasMore = true;
-// Cache the last streaming snapshot to persist spinner across remounts
-let cachedLastStreamingSnapshot: Thread | null = null;
 
 const normalizeItems = (thread: Thread) =>
   Array.isArray(thread.items) ? thread.items : (thread.items as any)?.data || [];
@@ -102,12 +97,20 @@ export function ConversationsSidebarSection({
   isNewConversationActive = false,
   activeThreadSnapshot,
 }: ConversationsSidebarSectionProps): JSX.Element | null {
-  const [threads, setThreads] = useState<Thread[]>(cachedThreads);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(cachedHasMore);
-  const [after, setAfter] = useState<string | undefined>(undefined);
+  const {
+    threads,
+    isLoading,
+    isFetchingNextPage: isLoadingMore,
+    error,
+    hasMore,
+    fetchNextPage,
+    refetch,
+    updateThread,
+    addThread,
+    removeThread,
+    reset: resetThreads,
+  } = useThreads(api);
+
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -164,14 +167,7 @@ export function ConversationsSidebarSection({
   }, [streamingThreadIds, visibleSpinnerIds]);
 
   // Keep track of the last streaming thread snapshot to show spinner even after clicking "+"
-  // Initialize from cache to persist across remounts
-  const [lastStreamingSnapshot, setLastStreamingSnapshotState] = useState<Thread | null>(cachedLastStreamingSnapshot);
-
-  // Wrapper to update both state and cache
-  const setLastStreamingSnapshot = useCallback((snapshot: Thread | null) => {
-    cachedLastStreamingSnapshot = snapshot;
-    setLastStreamingSnapshotState(snapshot);
-  }, []);
+  const [lastStreamingSnapshot, setLastStreamingSnapshot] = useState<Thread | null>(null);
 
   // Action menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -179,121 +175,22 @@ export function ConversationsSidebarSection({
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const loadThreads = useCallback(async (isInitial = false, isRefresh = false) => {
-    if (!api) return;
-
-    if (isInitial && !isRefresh && cachedThreads.length === 0) {
-      setIsLoading(true);
-    } else if (!isInitial) {
-      setIsLoadingMore(true);
-    }
-    setError(null);
-
-    // Reset pagination cursor when doing initial load or refresh
-    const cursorToUse = (isInitial || isRefresh) ? undefined : after;
-
-    try {
-      const response = await listThreads({
-        url: api.url,
-        headers: api.headers,
-        limit: 20,
-        order: "desc",
-        after: cursorToUse,
-        allWorkflows: true,
-      });
-
-      const newThreads = response.data || [];
-      const updatedHasMore = newThreads.length === 20;
-
-      // For initial load or refresh, replace all threads; otherwise append
-      setThreads((currentThreads) => {
-        let updatedThreads = (isInitial || isRefresh) ? newThreads : [...currentThreads, ...newThreads];
-
-        // Apply latest snapshot if available (to preserve title updates that arrived during load)
-        // But skip if we just did a bulk delete - the snapshot thread no longer exists
-        const snapshot = latestSnapshotRef.current;
-        if (snapshot?.id && !postBulkDeleteRef.current) {
-          const snapshotIndex = updatedThreads.findIndex((t) => t.id === snapshot.id);
-          if (snapshotIndex !== -1) {
-            // Update existing thread with snapshot data
-            const existing = updatedThreads[snapshotIndex];
-            updatedThreads = [...updatedThreads];
-            updatedThreads[snapshotIndex] = { ...existing, ...snapshot, metadata: { ...existing.metadata, ...snapshot.metadata } };
-          } else {
-            // Thread not in list yet, add it at the top
-            updatedThreads = [snapshot, ...updatedThreads];
-          }
-        }
-
-        cachedThreads = updatedThreads;
-        return updatedThreads;
-      });
-
-      setHasMore(updatedHasMore);
-      cachedHasMore = updatedHasMore;
-
-      // Update pagination cursor - reset for initial/refresh, update for load more
-      if (isInitial || isRefresh) {
-        const newAfter = newThreads.length > 0 ? newThreads[newThreads.length - 1].id : undefined;
-        setAfter(newAfter);
-      } else {
-        setAfter((currentAfter) =>
-          newThreads.length > 0 ? newThreads[newThreads.length - 1].id : currentAfter
-        );
-      }
-    } catch {
-      setError("Impossible de charger les conversations");
-      if (isInitial && !isRefresh && cachedThreads.length === 0) {
-        setThreads([]);
-        cachedThreads = [];
-      }
-    } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-    }
-  }, [api, after]);
-
-  useEffect(() => {
-    if (api) {
-      loadThreads(true, cachedThreads.length > 0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api?.url]);
-
   // Listen for bulk conversation deletion events (from admin cleanup)
   useEffect(() => {
     const handleBulkDelete = () => {
-      // Clear module-level cache
-      cachedThreads = [];
-      cachedHasMore = true;
-      cachedLastStreamingSnapshot = null;
-      // Reset local state and reload
-      setThreads([]);
-      setHasMore(true);
-      setAfter(undefined);
+      resetThreads();
       setLastStreamingSnapshot(null);
       // Ignore stale snapshots from parent until a new conversation is created
-      // Set ref immediately (synchronous) for checks in other effects
       postBulkDeleteRef.current = true;
       setPostBulkDelete(true);
-      // Use onNewConversation to fully reset state (clears workflow selection, prevents auto-start)
-      // This is better than onThreadDeleted which only clears the thread ID
       onNewConversation?.();
-      if (api) {
-        loadThreads(true, false);
-      }
     };
 
     window.addEventListener("conversations-deleted", handleBulkDelete);
     return () => window.removeEventListener("conversations-deleted", handleBulkDelete);
-  }, [api, loadThreads, setLastStreamingSnapshot, onNewConversation]);
-
-  // Keep a ref to the latest snapshot for use after loadThreads completes
-  const latestSnapshotRef = useRef<Thread | null>(null);
-  latestSnapshotRef.current = activeThreadSnapshot ?? null;
+  }, [resetThreads, onNewConversation]);
 
   // Update lastStreamingSnapshot when activeThreadSnapshot is streaming
-  // This allows the spinner to persist even after clicking "+" to start a new conversation
   useEffect(() => {
     if (activeThreadSnapshot?.id && streamingThreadIds?.has(activeThreadSnapshot.id)) {
       setLastStreamingSnapshot(activeThreadSnapshot);
@@ -308,7 +205,6 @@ export function ConversationsSidebarSection({
   }, [lastStreamingSnapshot?.id, streamingThreadIds]);
 
   // Reset postBulkDelete when a new conversation starts streaming
-  // This indicates a new conversation is being created after the bulk delete
   useEffect(() => {
     if (postBulkDelete && activeThreadSnapshot?.id && streamingThreadIds?.has(activeThreadSnapshot.id)) {
       postBulkDeleteRef.current = false;
@@ -322,37 +218,26 @@ export function ConversationsSidebarSection({
       return;
     }
 
-    // Don't sync stale snapshot after bulk delete - it no longer exists in backend
-    // Use ref for synchronous check (state may not be updated yet)
+    // Don't sync stale snapshot after bulk delete
     if (postBulkDeleteRef.current) {
       return;
     }
 
-    setThreads((currentThreads) => {
-      const targetIndex = currentThreads.findIndex((thread) => thread.id === activeThreadSnapshot.id);
-
-      // If thread doesn't exist yet, add it at the top (it's a new thread created during this session)
-      if (targetIndex === -1) {
-        // Mark this thread as newly created for title animation
-        setNewlyCreatedThreadIds((prev) => new Set(prev).add(activeThreadSnapshot.id));
-        const nextThreads = [activeThreadSnapshot, ...currentThreads];
-        cachedThreads = nextThreads;
-        return nextThreads;
-      }
-
-      const existing = currentThreads[targetIndex];
-      const updated = { ...existing, ...activeThreadSnapshot, metadata: { ...existing.metadata, ...activeThreadSnapshot.metadata } };
-
-      const nextThreads = [...currentThreads];
-      nextThreads[targetIndex] = updated;
-      cachedThreads = nextThreads;
-      return nextThreads;
-    });
-    // Note: we use postBulkDeleteRef instead of postBulkDelete state for synchronous check
+    const exists = threads.some((t) => t.id === activeThreadSnapshot.id);
+    if (exists) {
+      updateThread(activeThreadSnapshot.id, (existing) => ({
+        ...existing,
+        ...activeThreadSnapshot,
+        metadata: { ...existing.metadata, ...activeThreadSnapshot.metadata },
+      }));
+    } else {
+      // Thread not in list yet, add it at the top (new thread created during this session)
+      setNewlyCreatedThreadIds((prev) => new Set(prev).add(activeThreadSnapshot.id));
+      addThread(activeThreadSnapshot);
+    }
   }, [activeThreadSnapshot]);
 
   // Auto-refresh when currentThreadId changes to a thread not in the list
-  // This handles the case when a new conversation is created via ChatKit
   const prevThreadIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!api || !currentThreadId) {
@@ -360,26 +245,19 @@ export function ConversationsSidebarSection({
       return;
     }
 
-    // Only trigger refresh if the thread ID actually changed
     if (prevThreadIdRef.current === currentThreadId) {
       return;
     }
 
     prevThreadIdRef.current = currentThreadId;
 
-    // Check if this thread exists in our cached list
     const threadExists = threads.some((thread) => thread.id === currentThreadId);
-
-    // Also check if the activeThreadSnapshot already has this thread
-    // This handles the race condition where the snapshot sync effect hasn't
-    // updated the threads state yet, but we already have the thread data
     const snapshotHasThread = activeThreadSnapshot?.id === currentThreadId;
 
-    // If the thread doesn't exist in our list AND we don't have it in the snapshot, refresh to fetch it
     if (!threadExists && !snapshotHasThread) {
-      loadThreads(true, true);
+      refetch();
     }
-  }, [api, currentThreadId, threads, loadThreads, activeThreadSnapshot]);
+  }, [api, currentThreadId, threads, refetch, activeThreadSnapshot]);
 
   const handleDeleteThread = useCallback(async (threadId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -397,9 +275,7 @@ export function ConversationsSidebarSection({
         threadId,
       });
 
-      const updatedThreads = threads.filter((thread) => thread.id !== threadId);
-      setThreads(updatedThreads);
-      cachedThreads = updatedThreads;
+      removeThread(threadId);
 
       if (currentThreadId === threadId) {
         onThreadDeleted?.(threadId);
@@ -409,7 +285,7 @@ export function ConversationsSidebarSection({
     } finally {
       setDeletingThreadId(null);
     }
-  }, [api, threads, currentThreadId, onThreadDeleted]);
+  }, [api, currentThreadId, onThreadDeleted, removeThread]);
 
   const handleRenameThread = useCallback(async (threadId: string, currentTitle: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -428,22 +304,11 @@ export function ConversationsSidebarSection({
         title: trimmedTitle,
       });
 
-      // Update local state - update thread.title directly
-      const updatedThreads = threads.map((thread) => {
-        if (thread.id === threadId) {
-          return {
-            ...thread,
-            title: trimmedTitle,
-          };
-        }
-        return thread;
-      });
-      setThreads(updatedThreads);
-      cachedThreads = updatedThreads;
+      updateThread(threadId, (thread) => ({ ...thread, title: trimmedTitle }));
     } catch {
       alert("Impossible de renommer la conversation.");
     }
-  }, [api, threads]);
+  }, [api, updateThread]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -506,9 +371,6 @@ export function ConversationsSidebarSection({
   }, [threads, searchQuery]);
 
   // Determine which threads to display
-  // Include activeThreadSnapshot and lastStreamingSnapshot at the top if not already in the list
-  // This ensures the streaming spinner shows immediately when a new conversation starts
-  // and persists even after clicking "+" to start a new conversation
   const displayedThreads = useMemo(() => {
     let result: Thread[];
     if (isExpanded || searchQuery.trim()) {
@@ -520,7 +382,6 @@ export function ConversationsSidebarSection({
     // Helper to check if a thread should be added and add it if so
     const maybeAddThread = (thread: Thread | null) => {
       if (thread?.id && !result.some((t) => t.id === thread.id)) {
-        // Only add if it passes the search filter (if any)
         const matchesSearch = !searchQuery.trim() ||
           getThreadTitle(thread).toLowerCase().includes(searchQuery.toLowerCase().trim());
         if (matchesSearch) {
@@ -529,15 +390,9 @@ export function ConversationsSidebarSection({
       }
     };
 
-    // Don't add stale snapshots after bulk delete (they no longer exist in backend)
+    // Don't add stale snapshots after bulk delete
     if (!postBulkDelete) {
-      // Add lastStreamingSnapshot first (will appear after activeThreadSnapshot if both exist)
-      // This handles the case where user clicked "+" while streaming
       maybeAddThread(lastStreamingSnapshot);
-
-      // Add activeThreadSnapshot (will appear at top)
-      // This handles the race condition where streamingThreadIds is updated
-      // before the useEffect adds the thread to the threads list
       maybeAddThread(activeThreadSnapshot);
     }
 
@@ -593,7 +448,7 @@ export function ConversationsSidebarSection({
           <button
             type="button"
             className="conversations-sidebar-section__retry"
-            onClick={() => loadThreads(true, true)}
+            onClick={() => refetch()}
           >
             Réessayer
           </button>
@@ -608,18 +463,12 @@ export function ConversationsSidebarSection({
               const isActive = thread.id === currentThreadId;
               const isDeleting = deletingThreadId === thread.id;
               const isStreaming = streamingThreadIds?.has(thread.id) ?? false;
-              // For active thread, prefer title from snapshot (most up-to-date source)
               const snapshotTitle = isActive && activeThreadSnapshot?.id === thread.id
                 ? (activeThreadSnapshot.title || (activeThreadSnapshot.metadata?.title as string | undefined))
                 : undefined;
-              // Only animate title for threads created during this session (not on initial page load)
-              // Also consider a thread newly created if it comes from a snapshot and is streaming
-              // (this handles the race condition before the useEffect adds it to newlyCreatedThreadIds)
               const isFromSnapshot = (activeThreadSnapshot?.id === thread.id || lastStreamingSnapshot?.id === thread.id)
                 && !threads.some((t) => t.id === thread.id);
               const isNewlyCreated = newlyCreatedThreadIds.has(thread.id) || (isFromSnapshot && isStreaming);
-              // For newly created threads that are streaming, use empty string instead of default
-              // This prevents the "Conversation sans titre" -> real title animation
               const rawTitle = getThreadTitle(thread);
               const shouldHideDefaultTitle = isNewlyCreated && isStreaming && rawTitle === "Conversation sans titre";
               const threadTitle = snapshotTitle || (shouldHideDefaultTitle ? "" : rawTitle);
@@ -629,7 +478,6 @@ export function ConversationsSidebarSection({
               const menuId = `conversation-menu-${thread.id}`;
               const disableTitleAnimation = isStreaming || !isNewlyCreated;
 
-              // Extract workflow metadata from thread
               const workflowMetadata = thread.metadata?.workflow as ThreadWorkflowMetadata | undefined;
 
               return (
@@ -734,7 +582,7 @@ export function ConversationsSidebarSection({
             <button
               type="button"
               className="conversations-sidebar-section__load-more"
-              onClick={() => loadThreads(false)}
+              onClick={() => fetchNextPage()}
               disabled={isLoadingMore}
             >
               {isLoadingMore ? "Chargement…" : "Charger plus"}

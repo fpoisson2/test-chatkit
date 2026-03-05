@@ -487,6 +487,45 @@ def _add_workflow_shares_permission_column(connection) -> None:
     )
 
 
+def _chat_threads_has_denormalized_columns(connection) -> bool:
+    inspector = inspect(connection)
+    columns = {c["name"] for c in inspector.get_columns("chat_threads")}
+    return "title" in columns and "workflow_slug" in columns
+
+
+def _add_chat_threads_denormalized_columns(connection) -> None:
+    connection.execute(text(
+        "ALTER TABLE chat_threads "
+        "ADD COLUMN IF NOT EXISTS title VARCHAR(512), "
+        "ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active', "
+        "ADD COLUMN IF NOT EXISTS workflow_slug VARCHAR(128), "
+        "ADD COLUMN IF NOT EXISTS workflow_definition_id VARCHAR(128)"
+    ))
+    # Backfill from JSONB payload
+    connection.execute(text("""
+        UPDATE chat_threads SET
+            title = payload->>'title',
+            status = COALESCE(payload->'status'->>'type', 'active'),
+            workflow_slug = payload->'metadata'->'workflow'->>'slug',
+            workflow_definition_id = payload->'metadata'->'workflow'->>'definition_id'
+        WHERE title IS NULL
+    """))
+
+
+def _chat_threads_owner_updated_index_exists(connection) -> bool:
+    result = connection.execute(text(
+        "SELECT 1 FROM pg_indexes WHERE indexname = 'ix_chat_threads_owner_updated'"
+    ))
+    return result.fetchone() is not None
+
+
+def _create_chat_threads_owner_updated_index(connection) -> None:
+    connection.execute(text(
+        "CREATE INDEX ix_chat_threads_owner_updated "
+        "ON chat_threads (owner_id, updated_at DESC, id)"
+    ))
+
+
 def _workflow_response_evaluations_table_exists(connection) -> bool:
     inspector = inspect(connection)
     return inspector.has_table("workflow_response_evaluations")
@@ -602,6 +641,18 @@ def check_and_apply_migrations():
             "description": "Create table for workflow agent response evaluations",
             "check_fn": _workflow_response_evaluations_table_exists,
             "apply_fn": _create_workflow_response_evaluations_table,
+        },
+        {
+            "id": "015_chat_threads_denormalized_columns",
+            "description": "Add denormalized title/status/workflow columns to chat_threads for fast listing",
+            "check_fn": _chat_threads_has_denormalized_columns,
+            "apply_fn": _add_chat_threads_denormalized_columns,
+        },
+        {
+            "id": "016_chat_threads_owner_updated_index",
+            "description": "Add composite index on chat_threads (owner_id, updated_at DESC, id)",
+            "check_fn": _chat_threads_owner_updated_index_exists,
+            "apply_fn": _create_chat_threads_owner_updated_index,
         },
     ]
 

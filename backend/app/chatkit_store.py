@@ -9,12 +9,13 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import TypeAdapter
+import sqlalchemy as sa
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from chatkit.store import NotFoundError, Store
-from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
+from chatkit.types import ActiveStatus, Attachment, Page, ThreadItem, ThreadMetadata
 
 from .models import ChatAttachment, ChatThread, ChatThreadBranch, ChatThreadItem
 from .workflows import WorkflowService
@@ -504,6 +505,65 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         return payload, matches
 
+    def _normalize_thread_record_no_commit(
+        self,
+        record: ChatThread,
+        *,
+        owner_id: str,
+        expected_workflow: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        """Like _normalize_thread_record but marks dirty without committing.
+
+        The caller is responsible for calling session.commit() once after
+        processing all records to batch-write any changes.
+        """
+        payload = dict(record.payload)
+        metadata = dict(payload.get("metadata") or {})
+        changed = False
+
+        if metadata.get("owner_id") != owner_id:
+            metadata["owner_id"] = owner_id
+            changed = True
+
+        workflow_metadata = metadata.get("workflow")
+        matches = self._workflow_matches(workflow_metadata, expected_workflow)
+        if not matches:
+            if (
+                isinstance(workflow_metadata, Mapping)
+                and workflow_metadata.get("slug") == expected_workflow.get("slug")
+            ):
+                metadata["workflow"] = dict(expected_workflow)
+                matches = True
+                changed = True
+            elif self._has_complete_workflow_metadata(workflow_metadata):
+                matches = True
+            elif not self._has_complete_workflow_metadata(workflow_metadata):
+                metadata["workflow"] = dict(expected_workflow)
+                matches = True
+                changed = True
+
+        payload["metadata"] = metadata
+
+        if changed:
+            record.payload = payload
+
+        return payload, matches
+
+    @staticmethod
+    def _sync_denormalized_columns(
+        record: ChatThread, payload: dict[str, Any]
+    ) -> None:
+        """Keep denormalized listing columns in sync with payload."""
+        record.title = payload.get("title")
+        status = payload.get("status")
+        record.status = status.get("type", "active") if isinstance(status, dict) else "active"
+        metadata = payload.get("metadata") or {}
+        workflow = metadata.get("workflow") or {}
+        record.workflow_slug = workflow.get("slug") if isinstance(workflow, dict) else None
+        record.workflow_definition_id = (
+            workflow.get("definition_id") if isinstance(workflow, dict) else None
+        )
+
     def _require_thread_record(
         self,
         session: Session,
@@ -574,15 +634,15 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             stmt = select(ChatThread).where(ChatThread.id == thread.id)
             existing = session.execute(stmt).scalar_one_or_none()
             if existing is None:
-                session.add(
-                    ChatThread(
-                        id=thread.id,
-                        owner_id=owner_id,
-                        created_at=created_at,
-                        updated_at=now,
-                        payload=payload,
-                    )
+                new_record = ChatThread(
+                    id=thread.id,
+                    owner_id=owner_id,
+                    created_at=created_at,
+                    updated_at=now,
+                    payload=payload,
                 )
+                self._sync_denormalized_columns(new_record, payload)
+                session.add(new_record)
             else:
                 if existing.owner_id != owner_id:
                     raise NotFoundError(f"Thread {thread.id} introuvable")
@@ -597,6 +657,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 existing.payload = payload
                 existing.created_at = created_at
                 existing.updated_at = now
+                self._sync_denormalized_columns(existing, payload)
             session.commit()
 
         await self._run(_save)
@@ -878,6 +939,42 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         await self._run(_delete)
 
+    def _keyset_filter(
+        self,
+        stmt,
+        session: Session,
+        after: str | None,
+        desc_order: bool,
+    ):
+        """Apply keyset pagination filter to the statement."""
+        if not after:
+            return stmt
+        cursor_row = session.execute(
+            select(ChatThread.updated_at, ChatThread.id).where(ChatThread.id == after)
+        ).one_or_none()
+        if cursor_row is None:
+            return stmt
+        cursor_ts, cursor_id = cursor_row
+        if desc_order:
+            return stmt.where(
+                sa.or_(
+                    ChatThread.updated_at < cursor_ts,
+                    sa.and_(
+                        ChatThread.updated_at == cursor_ts,
+                        ChatThread.id < cursor_id,
+                    ),
+                )
+            )
+        return stmt.where(
+            sa.or_(
+                ChatThread.updated_at > cursor_ts,
+                sa.and_(
+                    ChatThread.updated_at == cursor_ts,
+                    ChatThread.id > cursor_id,
+                ),
+            )
+        )
+
     async def load_threads(
         self,
         limit: int,
@@ -890,48 +987,123 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         def _load(session: Session) -> Page[ThreadMetadata]:
             expected = self._current_workflow_metadata()
+            effective_limit = limit or 20
+            desc_order = order == "desc"
 
-            stmt = select(ChatThread).where(ChatThread.owner_id == owner_id)
-            if order == "desc":
-                stmt = stmt.order_by(ChatThread.updated_at.desc(), ChatThread.id.desc())
-            else:
-                stmt = stmt.order_by(ChatThread.updated_at.asc(), ChatThread.id.asc())
-            records = session.execute(stmt).scalars().all()
-
-            matching: list[tuple[ChatThread, dict[str, Any]]] = []
-            for record in records:
-                payload, matches = self._normalize_thread_record(
-                    record,
-                    owner_id=owner_id,
-                    session=session,
-                    expected_workflow=expected,
+            if all_workflows:
+                return self._load_threads_lightweight(
+                    session, owner_id, effective_limit, after, desc_order,
                 )
-                # When all_workflows is True, include all threads regardless of workflow match
-                if all_workflows or matches:
-                    matching.append((record, payload))
 
-            filtered_records = [record for record, _payload in matching]
-
-            start_index = 0
-            if after:
-                for idx, record in enumerate(filtered_records):
-                    if record.id == after:
-                        start_index = idx + 1
-                        break
-
-            effective_limit = limit or max(len(filtered_records) - start_index, 0)
-            sliced_pairs = matching[start_index : start_index + effective_limit]
-            has_more = start_index + effective_limit < len(filtered_records)
-            next_after = (
-                sliced_pairs[-1][0].id if has_more and sliced_pairs else None
+            return self._load_threads_with_filter(
+                session, owner_id, expected, effective_limit, after, desc_order,
             )
-            data = [
-                ThreadMetadata.model_validate(payload)
-                for _record, payload in sliced_pairs
-            ]
-            return Page(data=data, has_more=has_more, after=next_after)
 
         return await self._run(_load)
+
+    def _load_threads_lightweight(
+        self,
+        session: Session,
+        owner_id: str,
+        effective_limit: int,
+        after: str | None,
+        desc_order: bool,
+    ) -> Page[ThreadMetadata]:
+        """Fast path: load thread listing without touching the JSONB payload."""
+        # Select only the denormalized columns — avoids detoasting large payloads
+        stmt = (
+            select(
+                ChatThread.id,
+                ChatThread.created_at,
+                ChatThread.title,
+                ChatThread.status,
+                ChatThread.workflow_slug,
+                ChatThread.workflow_definition_id,
+                ChatThread.updated_at,
+            )
+            .where(ChatThread.owner_id == owner_id)
+        )
+
+        if desc_order:
+            stmt = stmt.order_by(ChatThread.updated_at.desc(), ChatThread.id.desc())
+        else:
+            stmt = stmt.order_by(ChatThread.updated_at.asc(), ChatThread.id.asc())
+
+        stmt = self._keyset_filter(stmt, session, after, desc_order)
+        stmt = stmt.limit(effective_limit + 1)
+
+        rows = session.execute(stmt).all()
+        has_more = len(rows) > effective_limit
+        rows = rows[:effective_limit]
+
+        data: list[ThreadMetadata] = []
+        for row in rows:
+            metadata: dict[str, Any] = {"owner_id": owner_id}
+            if row.workflow_slug:
+                metadata["workflow"] = {
+                    "slug": row.workflow_slug,
+                    "definition_id": row.workflow_definition_id,
+                }
+            status_val = row.status or "active"
+            data.append(ThreadMetadata(
+                id=row.id,
+                title=row.title,
+                created_at=row.created_at,
+                status=ActiveStatus() if status_val == "active" else ActiveStatus(),
+                metadata=metadata,
+            ))
+
+        next_after = rows[-1].id if has_more and rows else None
+        return Page(data=data, has_more=has_more, after=next_after)
+
+    def _load_threads_with_filter(
+        self,
+        session: Session,
+        owner_id: str,
+        expected: Mapping[str, Any],
+        effective_limit: int,
+        after: str | None,
+        desc_order: bool,
+    ) -> Page[ThreadMetadata]:
+        """Slow path: load threads with workflow normalization/filtering."""
+        stmt = select(ChatThread).where(ChatThread.owner_id == owner_id)
+
+        if desc_order:
+            stmt = stmt.order_by(ChatThread.updated_at.desc(), ChatThread.id.desc())
+        else:
+            stmt = stmt.order_by(ChatThread.updated_at.asc(), ChatThread.id.asc())
+
+        stmt = self._keyset_filter(stmt, session, after, desc_order)
+
+        # Fetch in larger batches since we filter by workflow match
+        fetch_size = effective_limit * 3
+        stmt = stmt.limit(fetch_size + 1)
+        records = session.execute(stmt).scalars().all()
+
+        results: list[dict[str, Any]] = []
+        dirty = False
+        for record in records:
+            if len(results) >= effective_limit + 1:
+                break
+            payload, matches = self._normalize_thread_record_no_commit(
+                record,
+                owner_id=owner_id,
+                expected_workflow=expected,
+            )
+            if record in session.dirty:
+                self._sync_denormalized_columns(record, payload)
+                dirty = True
+            if matches:
+                results.append(payload)
+        if dirty:
+            session.commit()
+
+        has_more = len(results) > effective_limit
+        results = results[:effective_limit]
+
+        next_after = results[-1]["id"] if has_more and results else None
+        data = [ThreadMetadata.model_validate(p) for p in results]
+        return Page(data=data, has_more=has_more, after=next_after)
 
     async def add_thread_item(
         self,

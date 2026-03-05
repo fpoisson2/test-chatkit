@@ -111,6 +111,16 @@ class ChatThread(Base):
     )
     payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
 
+    # Denormalized columns for fast listing (avoid detoasting large JSONB payload)
+    title: Mapped[str | None] = mapped_column(String(512), nullable=True, default=None)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True, default="active")
+    workflow_slug: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    workflow_definition_id: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+
+    __table_args__ = (
+        Index("ix_chat_threads_owner_updated", "owner_id", updated_at.desc(), "id"),
+    )
+
 
 class ChatThreadItem(Base):
     __tablename__ = "chat_thread_items"
