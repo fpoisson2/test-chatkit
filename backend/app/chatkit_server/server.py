@@ -191,12 +191,25 @@ class StreamProcessor:
     def start(self, workflow_task: asyncio.Task[None]) -> None:
         if self._task is not None:
             logger.warning(
-                "StreamProcessor already started for thread %s; cancelling duplicate workflow task",
+                "StreamProcessor already started for thread %s; "
+                "stopping old loop to allow new workflow task",
                 self.thread.id,
             )
-            if not workflow_task.done():
-                workflow_task.cancel()
-            return
+            # Cancel the OLD workflow task (stuck on widget/wait) and loop,
+            # then start fresh with the new workflow task.
+            if self._workflow_task is not None and not self._workflow_task.done():
+                self._workflow_task.cancel()
+            if not self._task.done():
+                self._task.cancel()
+            self._task = None
+            self._workflow_task = None
+            # Drain the old event queue to avoid stale events leaking
+            # into the new workflow run.
+            while not self.event_queue.empty():
+                try:
+                    self.event_queue.get_nowait()
+                except Exception:
+                    break
         logger.info("Starting StreamProcessor loop for thread %s", self.thread.id)
         self._workflow_task = workflow_task
         self._task = asyncio.create_task(self._run_loop())
@@ -361,6 +374,14 @@ class StreamProcessor:
                     for listener in self.listeners:
                         await listener.put(event)
 
+        except asyncio.CancelledError:
+            logger.info(
+                "StreamProcessor loop cancelled for thread %s", self.thread.id
+            )
+            # Notify listeners so they don't hang
+            async with self._lock:
+                for listener in self.listeners:
+                    await listener.put(_STREAM_DONE)
         finally:
             logger.info("StreamProcessor loop finished for thread %s", self.thread.id)
             # Cleanup registry
