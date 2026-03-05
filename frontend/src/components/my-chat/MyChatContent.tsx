@@ -323,8 +323,8 @@ export function MyChatContent() {
     <>
       <LoadingOverlay isVisible={shouldShowLoadingOverlay} message="Chargement..." variant="fullscreen" />
       <ChatWorkflowSidebar mode={mode} setMode={setMode} onWorkflowActivated={handleWorkflowActivated} api={sidebarApiConfig}
-        currentThreadId={initialThreadId === null ? null : ((currentThread?.id as string | undefined) ?? initialThreadId)}
-        activeThreadSnapshot={initialThreadId === null ? null : (currentThread as Thread | null)} streamingThreadIds={streamingThreadIds}
+        currentThreadId={initialThreadId}
+        activeThreadSnapshot={initialThreadId === null ? null : (currentThread?.id === initialThreadId ? (currentThread as Thread | null) : null)} streamingThreadIds={streamingThreadIds}
         onThreadSelect={handleSidebarThreadSelect} onThreadDeleted={handleSidebarThreadDeleted} onNewConversation={handleNewConversation} hideWorkflows isNewConversationActive={initialThreadId === null} />
       <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", minHeight: 0, overflow: "hidden" }}>
         <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
