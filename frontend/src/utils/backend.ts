@@ -1861,6 +1861,23 @@ export const workflowsApi = {
     return response.json();
   },
 
+  async updateStepMessageLive(
+    token: string | null,
+    workflowId: number,
+    stepSlug: string,
+    message: string,
+  ): Promise<{ ok: boolean; step_slug: string }> {
+    const response = await requestWithFallback(
+      `/api/workflows/${workflowId}/steps/${encodeURIComponent(stepSlug)}/message`,
+      {
+        method: "PATCH",
+        headers: withAuthHeaders(token),
+        body: JSON.stringify({ message }),
+      },
+    );
+    return response.json();
+  },
+
   // Workflow sharing methods
   async listShares(token: string | null, workflowId: number): Promise<WorkflowSharedUser[]> {
     const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {

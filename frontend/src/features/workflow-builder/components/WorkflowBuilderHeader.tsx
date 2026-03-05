@@ -12,6 +12,10 @@ interface WorkflowBuilderHeaderProps {
   // Workflow data
   selectedWorkflow: WorkflowSummary | null;
 
+  // Editing lock state
+  editingLocked: boolean;
+  onCreateDraft: () => void;
+
   // Refs nécessaires (ne peuvent pas être dans les contextes)
   importFileInputRef: MutableRefObject<HTMLInputElement | null>;
   mobileActionsTriggerRef: MutableRefObject<HTMLButtonElement | null>;
@@ -49,6 +53,8 @@ interface WorkflowBuilderHeaderProps {
  */
 export default function WorkflowBuilderHeader({
   selectedWorkflow,
+  editingLocked,
+  onCreateDraft,
   importFileInputRef,
   mobileActionsTriggerRef,
   mobileActionsMenuRef,
@@ -128,6 +134,8 @@ export default function WorkflowBuilderHeader({
     <WorkflowBuilderHeaderControls
       isMobileLayout={isMobileLayout}
       loading={loading}
+      editingLocked={editingLocked}
+      onCreateDraft={onCreateDraft}
       versions={versions}
       selectedVersionId={selectedVersionId}
       draftVersionId={draftVersionId}

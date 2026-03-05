@@ -11,6 +11,7 @@ import { useThreadLoader } from './useThreadLoader';
 import { useMessageStreaming } from './useMessageStreaming';
 import { useThreadActions } from './useThreadActions';
 import { useBranches } from './useBranches';
+import { useLiveUpdates } from './useLiveUpdates';
 import { loadOlderItems as loadOlderItemsApi } from '../api/streaming/api';
 import { MAIN_BRANCH_ID } from '../types';
 
@@ -183,6 +184,15 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   useEffect(() => {
     branchIdRef.current = isBranchesLoaded ? (currentBranchId || null) : null;
   }, [currentBranchId, isBranchesLoaded]);
+
+  // Live content updates from admin edits
+  useLiveUpdates({
+    apiUrl: api.url,
+    headers: api.headers,
+    threadId: thread?.id,
+    setThread,
+    refreshThread: fetchUpdates,
+  });
 
   // Apply initial branch from URL/state once branches are loaded
   const appliedInitialBranchRef = useRef<string | null>(null);

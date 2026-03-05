@@ -96,6 +96,8 @@ export type NodeInspectorProps = {
   widgets: WidgetTemplateSummary[];
   widgetsLoading: boolean;
   widgetsError: string | null;
+  isActiveVersion?: boolean;
+  editingLocked?: boolean;
   onRemove: (nodeId: string) => void;
   onWorkflowUpdate?: () => void;
 };
@@ -119,6 +121,8 @@ const NodeInspector = ({
   widgets,
   widgetsLoading,
   widgetsError,
+  isActiveVersion,
+  editingLocked = false,
   onRemove,
   onWorkflowUpdate,
 }: NodeInspectorProps) => {
@@ -483,7 +487,7 @@ const NodeInspector = ({
         <div className={styles.nodeInspectorSummary}>
           <span className={styles.nodeInspectorSubtitle}>Identifiant : {node.data.slug}</span>
         </div>
-        {!isFixed ? (
+        {!isFixed && !editingLocked ? (
           <button
             type="button"
             onClick={() => onRemove(node.id)}
@@ -496,7 +500,7 @@ const NodeInspector = ({
         ) : null}
       </div>
 
-      {kind === "start" ? (
+      {kind === "start" && !editingLocked ? (
         <StartInspectorSection
           nodeId={node.id}
           startAutoRun={startAutoRun}
@@ -525,7 +529,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "condition" ? (
+      {kind === "condition" && !editingLocked ? (
         <ConditionInspectorSection
           nodeId={node.id}
           conditionPath={conditionPath}
@@ -539,7 +543,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "while" ? (
+      {kind === "while" && !editingLocked ? (
         <WhileInspectorSection
           nodeId={node.id}
           condition={whileCondition}
@@ -551,7 +555,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "parallel_split" ? (
+      {kind === "parallel_split" && !editingLocked ? (
         <ParallelSplitInspectorSection
           nodeId={node.id}
           joinSlug={parallelJoinSlug}
@@ -561,7 +565,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "widget" ? (
+      {kind === "widget" && !editingLocked ? (
         <WidgetInspectorSection
           nodeId={node.id}
           parameters={parameters}
@@ -580,6 +584,9 @@ const NodeInspector = ({
       {kind === "assistant_message" ? (
         <AssistantMessageInspectorSection
           nodeId={node.id}
+          stepSlug={node.data.slug}
+          workflowId={currentWorkflowId}
+          isActiveVersion={isActiveVersion ?? false}
           assistantMessage={assistantMessage}
           assistantMessageStreamEnabled={assistantMessageStreamEnabled}
           assistantMessageStreamDelay={assistantMessageStreamDelay}
@@ -589,7 +596,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "wait_for_user_input" ? (
+      {kind === "wait_for_user_input" && !editingLocked ? (
         <WaitForUserInputInspectorSection
           nodeId={node.id}
           waitForUserInputMessage={waitForUserInputMessage}
@@ -597,7 +604,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "user_message" ? (
+      {kind === "user_message" && !editingLocked ? (
         <UserMessageInspectorSection
           nodeId={node.id}
           userMessageDraft={userMessageDraft}
@@ -608,7 +615,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "end" ? (
+      {kind === "end" && !editingLocked ? (
         <EndInspectorSection
           nodeId={node.id}
           endMessage={endMessage}
@@ -677,7 +684,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "voice_agent" ? (
+      {kind === "voice_agent" && !editingLocked ? (
         <VoiceAgentInspectorSection
           nodeId={node.id}
           parameters={parameters}
@@ -704,7 +711,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "outbound_call" ? (
+      {kind === "outbound_call" && !editingLocked ? (
         <OutboundCallInspectorSection
           nodeId={node.id}
           parameters={parameters}
@@ -712,7 +719,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "computer_use" ? (
+      {kind === "computer_use" && !editingLocked ? (
         <ComputerUseInspectorSection
           nodeId={node.id}
           computerUseConfig={computerUseConfig}
@@ -726,7 +733,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "json_vector_store" ? (
+      {kind === "json_vector_store" && !editingLocked ? (
         <JsonVectorStoreInspectorSection
           nodeId={node.id}
           vectorStores={vectorStores}
@@ -742,7 +749,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "state" ? (
+      {kind === "state" && !editingLocked ? (
         <StateInspectorSection
           nodeId={node.id}
           globalAssignments={globalAssignments}
@@ -751,7 +758,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "transform" ? (
+      {kind === "transform" && !editingLocked ? (
         <TransformInspectorSection
           transformExpressionsText={transformExpressionsText}
           transformExpressionsError={transformExpressionsError}
@@ -761,7 +768,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "docx_template" ? (
+      {kind === "docx_template" && !editingLocked ? (
         <DocxTemplateInspectorSection
           templatePath={docxTemplatePath}
           outputPath={docxTemplateOutputPath}
@@ -777,7 +784,7 @@ const NodeInspector = ({
         />
       ) : null}
 
-      {kind === "watch" ? (
+      {kind === "watch" && !editingLocked ? (
         <WatchInspectorSection
           availableVariables={upstreamAvailableVariables}
           previousNodeLabel={upstreamSourceLabel ?? undefined}

@@ -121,6 +121,7 @@ export interface AssistantMessageItem {
   status?: 'in_progress' | 'completed' | 'failed';
   reasoning_id?: string;
   usage_metadata?: UsageMetadata;
+  step_slug?: string;
 }
 
 export interface ClientToolCallItem {

@@ -408,6 +408,31 @@
   transform: translateY(-1px);
 }
 
+.nodeInspectorPublishLiveButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #fff;
+  background-color: #16a34a;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.nodeInspectorPublishLiveButton:hover:not(:disabled) {
+  background-color: #15803d;
+}
+
+.nodeInspectorPublishLiveButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .nodeInspectorTextareaLarge {
   resize: vertical;
   min-height: 12rem;

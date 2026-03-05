@@ -89,6 +89,7 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
                     agent_context,
                     emit_stream_event,
                     delay_seconds=stream_config.delay_seconds,
+                    step_slug=node.slug,
                 )
             else:
                 # Send immediately
@@ -98,6 +99,7 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
                         thread_id=agent_context.thread.id,
                         created_at=datetime.now(),
                         content=[AssistantMessageContent(text=sanitized_message)],
+                        step_slug=node.slug,
                     )
                     await emit_stream_event(ThreadItemAddedEvent(item=assistant_message))
                     await emit_stream_event(ThreadItemDoneEvent(item=assistant_message))
@@ -183,6 +185,7 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
         agent_context: Any,
         emit_stream_event: Any,
         delay_seconds: float,
+        step_slug: str | None = None,
     ) -> None:
         """Stream assistant message with delay between chunks."""
         message_id = agent_context.generate_id("message")
@@ -195,6 +198,7 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
             created_at=datetime.now(),
             content=[AssistantMessageContent(text="")],
             status="in_progress",
+            step_slug=step_slug,
         )
         await emit_stream_event(ThreadItemAddedEvent(item=assistant_item))
 
@@ -220,6 +224,7 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
             created_at=datetime.now(),
             content=[AssistantMessageContent(text=message)],
             status=None,
+            step_slug=step_slug,
         )
         await emit_stream_event(ThreadItemDoneEvent(item=assistant_item))
 

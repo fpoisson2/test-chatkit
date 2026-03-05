@@ -590,6 +590,7 @@ const WorkflowBuilderPage = () => {
     lastTimestamp: 0,
   });
   const workflowBusyRef = useRef(false);
+  const editingLockedRef = useRef(false);
   // Note: nodesRef and edgesRef come from GraphContext (above)
 
   // Use workflow history hook for undo/redo functionality
@@ -832,6 +833,8 @@ const WorkflowBuilderPage = () => {
     return (
       <WorkflowBuilderHeader
         selectedWorkflow={selectedWorkflow ?? null}
+        editingLocked={editingLocked}
+        onCreateDraft={handleCreateDraft}
         importFileInputRef={importFileInputRef}
         mobileActionsTriggerRef={mobileActionsTriggerRef}
         mobileActionsMenuRef={mobileActionsMenuRef}
@@ -935,6 +938,30 @@ const WorkflowBuilderPage = () => {
     () => buildGraphPayloadFrom(nodes, edges),
     [edges, nodes],
   );
+
+  // Create a new draft version from the currently viewed version
+  const handleCreateDraft = useCallback(async () => {
+    if (!selectedWorkflowId || !selectedVersionId) return;
+    try {
+      const graphPayload = buildGraphPayload();
+      const response = await fetch(`/api/workflows/${selectedWorkflowId}/versions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader,
+        },
+        body: JSON.stringify({ graph: graphPayload, mark_as_active: false }),
+      });
+      if (!response.ok) return;
+      const created = await response.json();
+      draftVersionIdRef.current = created.id;
+      draftVersionSummaryRef.current = created;
+      await loadVersions(selectedWorkflowId);
+      setSelectedVersionId(created.id);
+    } catch {
+      // ignore
+    }
+  }, [selectedWorkflowId, selectedVersionId, buildGraphPayload, authHeader, loadVersions, setSelectedVersionId, draftVersionIdRef, draftVersionSummaryRef]);
 
   // Phase 1: Extract workflow CRUD operations into useWorkflowCRUD hook
   const {
@@ -1094,6 +1121,7 @@ const WorkflowBuilderPage = () => {
     copySelectionToClipboard,
     copySequenceRef,
     edgesRef,
+    editingLockedRef,
     nodesRef,
     pasteClipboardGraph,
     redoHistory,
@@ -1223,8 +1251,24 @@ const WorkflowBuilderPage = () => {
   // handleDuplicateWorkflow and handleRenameWorkflow
   // now provided by useWorkflowCRUD hook (Phase 1)
 
+  // Compute draft version ID from versions state (reactive, unlike ref)
+  const computedDraftId = useMemo(() => {
+    if (versions.length === 0) return null;
+    const activeVersion = versions.find((v) => v.is_active)?.version ?? 0;
+    const draftCandidates = versions.filter((v) => !v.is_active && v.version > activeVersion);
+    if (draftCandidates.length === 0) return null;
+    return draftCandidates.reduce((latest, cur) =>
+      cur.version > latest.version ? cur : latest
+    ).id;
+  }, [versions]);
+
   const disableSave = useMemo(() => {
     if (!selectedWorkflowId) {
+      return true;
+    }
+
+    // Disable auto-save when viewing a published/old version (not a draft)
+    if (selectedVersionId != null && selectedVersionId !== computedDraftId) {
       return true;
     }
 
@@ -1290,8 +1334,10 @@ const WorkflowBuilderPage = () => {
       return false;
     });
   }, [
+    computedDraftId,
     conditionGraphError,
     nodes,
+    selectedVersionId,
     selectedWorkflowId,
     vectorStores,
     vectorStoresError,
@@ -1402,10 +1448,16 @@ const WorkflowBuilderPage = () => {
   );
 
   const workflowBusy = loading || isImporting || isExporting;
-  const editingLocked = false;
-  const hasSelectedElement = !editingLocked && Boolean(selectedNode || selectedEdge);
-  const canDeleteSelection = hasSelectedElement && !workflowBusy;
-  const canDuplicateSelection = hasSelectedElement && !workflowBusy;
+  // Lock structure editing when NOT on a draft version.
+  // Only assistant message text and agent prompt/model remain editable on locked versions.
+  // User must click "+" to create a new draft for structural changes.
+  const isViewingDraft =
+    computedDraftId != null && selectedVersionId === computedDraftId;
+  const editingLocked = selectedVersionId != null && !isViewingDraft;
+  editingLockedRef.current = editingLocked;
+  const hasSelectedElement = Boolean(selectedNode || selectedEdge);
+  const canDeleteSelection = hasSelectedElement && !workflowBusy && !editingLocked;
+  const canDuplicateSelection = hasSelectedElement && !workflowBusy && !editingLocked;
   const canUndoHistory = !workflowBusy && !editingLocked && historyRef.current.past.length > 0;
   const canRedoHistory = !workflowBusy && !editingLocked && historyRef.current.future.length > 0;
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
@@ -1479,6 +1531,8 @@ const WorkflowBuilderPage = () => {
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
             currentWorkflow={selectedWorkflow}
+            isActiveVersion={selectedVersionDetail?.is_active ?? false}
+            editingLocked={editingLocked}
             hostedWorkflows={hostedWorkflows}
             hostedWorkflowsLoading={hostedLoading}
             hostedWorkflowsError={hostedError}
@@ -1495,7 +1549,7 @@ const WorkflowBuilderPage = () => {
             onRemove={handleRemoveNode}
             onWorkflowUpdate={() => loadWorkflows({ suppressLoadingState: true })}
           />
-        ) : selectedEdge ? (
+        ) : selectedEdge && !editingLocked ? (
           <EdgeInspector
             edge={selectedEdge}
             onConditionChange={handleConditionChange}
@@ -1588,6 +1642,7 @@ const WorkflowBuilderPage = () => {
               reactFlowContainerRef={reactFlowContainerRef}
               handleNodeDragStart={handleNodeDragStart}
               handleNodeDragStop={handleNodeDragStop}
+              editingLocked={editingLocked}
             />
           </div>
           <WorkflowBuilderToast />

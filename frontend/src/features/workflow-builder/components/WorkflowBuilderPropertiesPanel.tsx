@@ -50,6 +50,8 @@ interface WorkflowBuilderPropertiesPanelProps {
   widgetsLoading: boolean;
   widgetsError: string | null;
 
+  isActiveVersion?: boolean;
+
   // Handlers
   onRemoveNode: (id: string) => void;
   onRemoveEdge: (id: string) => void;
@@ -88,6 +90,7 @@ export default function WorkflowBuilderPropertiesPanel({
   widgets,
   widgetsLoading,
   widgetsError,
+  isActiveVersion,
   onRemoveNode,
   onRemoveEdge,
   onConditionChange,
@@ -149,6 +152,7 @@ export default function WorkflowBuilderPropertiesPanel({
             nodeHandlers={nodeHandlers}
             workflows={workflows}
             currentWorkflowId={currentWorkflowId}
+            isActiveVersion={isActiveVersion}
             hostedWorkflows={hostedWorkflows}
             hostedWorkflowsLoading={hostedWorkflowsLoading}
             hostedWorkflowsError={hostedWorkflowsError}

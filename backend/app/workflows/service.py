@@ -2884,6 +2884,120 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def update_step_message_live(
+        self,
+        workflow_id: int,
+        step_slug: str,
+        new_message: str,
+        *,
+        session: Session | None = None,
+    ) -> WorkflowStep:
+        """Update a step's message text in-place on the active definition.
+
+        This does NOT create a draft. It modifies the published version directly
+        so the change applies immediately to all active conversations.
+        Also updates already-stored thread items that reference this step.
+        """
+        from ..models import ChatThread, ChatThreadItem
+
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            definition = self._load_active_definition(workflow, db)
+            if definition is None:
+                raise WorkflowNotFoundError(workflow_id)
+
+            # Find the step
+            step = db.scalar(
+                select(WorkflowStep).where(
+                    WorkflowStep.definition_id == definition.id,
+                    WorkflowStep.slug == step_slug,
+                )
+            )
+            if step is None:
+                raise WorkflowValidationError(
+                    f"Step '{step_slug}' not found in active definition"
+                )
+
+            # Capture old message before updating (for fallback matching)
+            old_params = step.parameters or {}
+            old_message = (old_params.get("message") or old_params.get("text") or "") if isinstance(old_params, dict) else ""
+
+            # Update step parameters in-place
+            params = dict(step.parameters or {})
+            params["message"] = new_message
+            step.parameters = params
+            db.flush()
+
+            # Update stored thread items that came from this step.
+            # We find threads for this workflow and update items with matching step_slug.
+            thread_ids_q = (
+                select(ChatThread.id)
+                .where(ChatThread.workflow_slug == workflow.slug)
+            )
+            thread_ids = [r for r in db.scalars(thread_ids_q).all()]
+
+            if thread_ids:
+                items = db.scalars(
+                    select(ChatThreadItem).where(
+                        ChatThreadItem.thread_id.in_(thread_ids),
+                    )
+                ).all()
+                updated_count = 0
+                for item in items:
+                    payload = item.payload
+                    if not isinstance(payload, dict):
+                        continue
+                    if payload.get("type") != "assistant_message":
+                        continue
+
+                    item_step_slug = payload.get("step_slug")
+                    if item_step_slug is not None:
+                        # Match by step_slug
+                        if item_step_slug != step_slug:
+                            continue
+                    elif old_message:
+                        # Fallback for legacy items without step_slug:
+                        # match by the old message text content
+                        content = payload.get("content", [])
+                        item_text = ""
+                        if content and isinstance(content, list):
+                            for part in content:
+                                if isinstance(part, dict) and part.get("type") == "output_text":
+                                    item_text = part.get("text", "")
+                                    break
+                        if item_text != old_message:
+                            continue
+                    else:
+                        continue
+
+                    # Build a fresh payload via JSON round-trip to ensure
+                    # SQLAlchemy detects the JSONB change (avoids in-place
+                    # mutation of the tracked dict reference).
+                    import json as _json
+                    new_payload = _json.loads(_json.dumps(item.payload))
+                    new_content = new_payload.get("content", [])
+                    if new_content and isinstance(new_content, list):
+                        for part in new_content:
+                            if isinstance(part, dict) and part.get("type") == "output_text":
+                                part["text"] = new_message
+                        new_payload["step_slug"] = step_slug
+                        item.payload = new_payload
+                        updated_count += 1
+                logger.info(
+                    "Updated %s stored thread items for step %s in workflow %s",
+                    updated_count, step_slug, workflow_id,
+                )
+
+            db.commit()
+            db.refresh(step)
+            return step
+        finally:
+            if owns_session:
+                db.close()
+
     def set_production_version(
         self,
         workflow_id: int,

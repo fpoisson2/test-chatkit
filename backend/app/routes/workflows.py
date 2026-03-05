@@ -26,6 +26,7 @@ from ..schemas import (
     WorkflowShareRequest,
     WorkflowSharedUserResponse,
     WorkflowShareUpdateRequest,
+    WorkflowStepMessageUpdate,
     WorkflowSummaryResponse,
     WorkflowUnshareRequest,
     WorkflowUpdateRequest,
@@ -626,6 +627,50 @@ async def set_workflow_production_version(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+
+
+@router.patch("/api/workflows/{workflow_id}/steps/{step_slug}/message")
+async def update_step_message_live(
+    workflow_id: int,
+    step_slug: str,
+    payload: WorkflowStepMessageUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
+) -> dict[str, Any]:
+    """Update a step's message text in-place on the active definition.
+
+    This modifies the published version directly (no draft) and updates
+    all stored thread items. Connected clients are notified via SSE.
+    """
+    _ensure_admin(current_user)
+    from ..live_updates import LiveUpdateManager, StepContentUpdate, live_update_manager
+
+    try:
+        step = service.update_step_message_live(
+            workflow_id, step_slug, payload.message, session=session,
+        )
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+
+    # Broadcast to connected SSE clients
+    await live_update_manager.publish(
+        StepContentUpdate(
+            workflow_id=workflow_id,
+            step_slug=step_slug,
+            new_text=payload.message,
+        )
+    )
+
+    return {"ok": True, "step_slug": step_slug}
 
 
 @router.post("/api/workflows/chatkit", response_model=WorkflowSummaryResponse)

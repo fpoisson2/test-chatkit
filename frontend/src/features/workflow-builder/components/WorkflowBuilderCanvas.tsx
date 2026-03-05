@@ -94,6 +94,9 @@ interface WorkflowBuilderCanvasProps {
   // Drag handlers (complex external logic - remains as prop due to complexity)
   handleNodeDragStart: NodeDragHandler<FlowNode>;
   handleNodeDragStop: NodeDragHandler<FlowNode>;
+
+  // Editing lock (published/old version)
+  editingLocked?: boolean;
 }
 
 const WorkflowBuilderCanvas = ({
@@ -108,6 +111,7 @@ const WorkflowBuilderCanvas = ({
   reactFlowContainerRef,
   handleNodeDragStart,
   handleNodeDragStop,
+  editingLocked = false,
 }: WorkflowBuilderCanvasProps) => {
   const { t } = useI18n();
 
@@ -203,6 +207,23 @@ const WorkflowBuilderCanvas = ({
     }),
     [t]
   );
+
+  // When editing is locked, filter out remove/add changes to prevent structural modifications
+  const filteredOnNodesChange = useMemo(() => {
+    if (!editingLocked) return onNodesChange;
+    return (changes: NodeChange[]) => {
+      const filtered = changes.filter((c) => c.type !== "remove" && c.type !== "add");
+      if (filtered.length > 0) onNodesChange(filtered);
+    };
+  }, [editingLocked, onNodesChange]);
+
+  const filteredOnEdgesChange = useMemo(() => {
+    if (!editingLocked) return onEdgesChange;
+    return (changes: EdgeChange[]) => {
+      const filtered = changes.filter((c) => c.type !== "remove" && c.type !== "add");
+      if (filtered.length > 0) onEdgesChange(filtered);
+    };
+  }, [editingLocked, onEdgesChange]);
 
   // Computed selection state
   const hasSelectedElement = Boolean(selectedNodeId || selectedEdgeId);
@@ -357,18 +378,21 @@ const WorkflowBuilderCanvas = ({
                     edges={edges}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
+                    onNodesChange={filteredOnNodesChange}
+                    onEdgesChange={filteredOnEdgesChange}
                     onNodeDragStart={handleNodeDragStart}
                     onNodeDragStop={handleNodeDragStop}
                     onNodeClick={handleNodeClick}
                     onEdgeClick={handleEdgeClick}
                     onPaneClick={handleClearSelection}
-                    onConnect={onConnect}
+                    onConnect={editingLocked ? undefined : onConnect}
                     defaultEdgeOptions={defaultEdgeOptions}
                     connectionLineStyle={connectionLineStyle}
-                    nodesDraggable={!isMobileLayout}
-                    selectionOnDrag={!isMobileLayout}
+                    nodesConnectable={!editingLocked}
+                    nodesDraggable={!isMobileLayout && !editingLocked}
+                    edgesFocusable={!editingLocked}
+                    edgesReconnectable={!editingLocked}
+                    selectionOnDrag={!isMobileLayout && !editingLocked}
                     panOnDrag={isMobileLayout ? true : [1, 2]}
                     panOnScroll={!isMobileLayout}
                     multiSelectionKeyCode={["Meta", "Control"]}
@@ -413,7 +437,7 @@ const WorkflowBuilderCanvas = ({
             </div>
           </div>
         </div>
-        {isMobileLayout ? (
+        {editingLocked ? null : isMobileLayout ? (
           <>
             {isBlockLibraryOpen ? (
               <div

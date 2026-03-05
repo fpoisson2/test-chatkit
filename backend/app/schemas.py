@@ -1284,6 +1284,10 @@ class WorkflowVersionUpdateRequest(BaseModel):
     graph: WorkflowGraphInput
 
 
+class WorkflowStepMessageUpdate(BaseModel):
+    message: str
+
+
 class WorkflowProductionUpdate(BaseModel):
     version_id: int
 

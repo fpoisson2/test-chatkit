@@ -77,7 +77,7 @@ from ..config import Settings, get_settings
 from ..database import SessionLocal, get_session
 from ..dependencies import get_current_user, get_optional_user
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
-from ..models import User
+from ..models import ChatThread, User
 from ..rate_limit import get_rate_limit, limiter
 from ..realtime_gateway import (
     GatewayConnection,
@@ -1660,3 +1660,96 @@ async def get_thread_branch(
         )
 
     return result
+
+
+# =============================================================================
+# Live Content Updates (SSE)
+# =============================================================================
+
+
+@router.get("/api/chatkit/live-updates")
+async def live_updates_sse(
+    request: Request,
+    thread_id: str,
+    current_user: User | None = Depends(get_optional_user),
+):
+    """SSE endpoint for receiving live step content updates.
+
+    The client provides a thread_id; the backend resolves its workflow_id
+    and subscribes to live updates for that workflow.
+    """
+    import asyncio as _asyncio
+    import json as _json
+
+    from sqlalchemy import select as sa_select
+
+    from ..live_updates import live_update_manager
+    from ..models import Workflow as WorkflowModel
+
+    session = SessionLocal()
+    try:
+        thread = session.get(ChatThread, thread_id)
+        if thread is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Thread not found",
+            )
+        # Resolve workflow_id from thread metadata
+        workflow_slug = thread.workflow_slug
+        if not workflow_slug:
+            payload = thread.payload or {}
+            metadata = payload.get("metadata", {})
+            wf_meta = metadata.get("workflow", {})
+            workflow_slug = wf_meta.get("slug")
+
+        workflow_id: int | None = None
+        if workflow_slug:
+            wf = session.scalar(
+                sa_select(WorkflowModel).where(WorkflowModel.slug == workflow_slug)
+            )
+            if wf:
+                workflow_id = wf.id
+    finally:
+        session.close()
+
+    if workflow_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No workflow associated with this thread",
+        )
+
+    queue = live_update_manager.subscribe(workflow_id)
+
+    async def event_stream():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await _asyncio.wait_for(queue.get(), timeout=30.0)
+                except _asyncio.TimeoutError:
+                    # Send keepalive comment
+                    yield ": keepalive\n\n"
+                    continue
+
+                if event is None:
+                    break
+
+                data = _json.dumps({
+                    "type": "step.content.updated",
+                    "step_slug": event.step_slug,
+                    "new_text": event.new_text,
+                })
+                yield f"data: {data}\n\n"
+        finally:
+            live_update_manager.unsubscribe(workflow_id, queue)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

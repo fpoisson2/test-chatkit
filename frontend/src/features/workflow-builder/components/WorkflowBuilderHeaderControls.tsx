@@ -17,6 +17,8 @@ import type { WorkflowVersionSummary } from "../types";
 type WorkflowBuilderHeaderControlsProps = {
   isMobileLayout: boolean;
   loading: boolean;
+  editingLocked: boolean;
+  onCreateDraft: () => void;
   versions: WorkflowVersionSummary[];
   selectedVersionId: number | null;
   draftVersionId: number | null;
@@ -58,6 +60,8 @@ type WorkflowBuilderHeaderControlsProps = {
 const WorkflowBuilderHeaderControls = ({
   isMobileLayout,
   loading,
+  editingLocked,
+  onCreateDraft,
   versions,
   selectedVersionId,
   draftVersionId,
@@ -98,7 +102,7 @@ const WorkflowBuilderHeaderControls = ({
   const { t } = useI18n();
   const versionSelect = (
     <div style={getHeaderLayoutStyle(isMobileLayout)}>
-      <div style={getHeaderGroupStyle(isMobileLayout)}>
+      <div style={{ ...getHeaderGroupStyle(isMobileLayout), gap: "0.5rem" }}>
         <select
           id="version-select"
           aria-label="Sélectionner une révision"
@@ -138,6 +142,32 @@ const WorkflowBuilderHeaderControls = ({
             })
           )}
         </select>
+        {editingLocked && (
+          <button
+            type="button"
+            onClick={onCreateDraft}
+            disabled={loading}
+            title={t("workflowBuilder.actions.createDraft")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "2.25rem",
+              height: "2.25rem",
+              borderRadius: "0.5rem",
+              border: "1px solid var(--surface-border)",
+              background: "var(--surface-strong)",
+              color: "var(--text-color)",
+              fontSize: "1.25rem",
+              fontWeight: 600,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.5 : 1,
+              flexShrink: 0,
+            }}
+          >
+            +
+          </button>
+        )}
       </div>
     </div>
   );

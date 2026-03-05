@@ -24,6 +24,7 @@ type UseWorkflowKeyboardShortcutsParams = {
   removeElements: (args: RemoveElementsArgs) => void;
   nodesRef: MutableRefObject<FlowNode[]>;
   edgesRef: MutableRefObject<FlowEdge[]>;
+  editingLockedRef?: MutableRefObject<boolean>;
   selectedNodeIdsRef: MutableRefObject<Set<string>>;
   selectedEdgeIdsRef: MutableRefObject<Set<string>>;
   copySequenceRef: MutableRefObject<{ count: number; lastTimestamp: number }>;
@@ -40,6 +41,7 @@ export const useWorkflowKeyboardShortcuts = ({
   removeElements,
   nodesRef,
   edgesRef,
+  editingLockedRef,
   selectedNodeIdsRef,
   selectedEdgeIdsRef,
   copySequenceRef,
@@ -105,8 +107,10 @@ export const useWorkflowKeyboardShortcuts = ({
         return;
       }
 
+      const locked = editingLockedRef?.current ?? false;
+
       if (isCtrlOrMeta && key === "z") {
-        if (workflowBusy) {
+        if (workflowBusy || locked) {
           return;
         }
         const performed = event.shiftKey ? redoHistory() : undoHistory();
@@ -118,7 +122,7 @@ export const useWorkflowKeyboardShortcuts = ({
       }
 
       if (isCtrlOrMeta && key === "y") {
-        if (workflowBusy) {
+        if (workflowBusy || locked) {
           return;
         }
         const performed = redoHistory();
@@ -149,7 +153,7 @@ export const useWorkflowKeyboardShortcuts = ({
       }
 
       if (isCtrlOrMeta && key === "v") {
-        if (workflowBusy) {
+        if (workflowBusy || locked) {
           return;
         }
         event.preventDefault();
@@ -160,6 +164,7 @@ export const useWorkflowKeyboardShortcuts = ({
       }
 
       if (event.key === "Delete") {
+        if (locked) return;
         const hasSelection =
           selectedNodeIdsRef.current.size > 0 || selectedEdgeIdsRef.current.size > 0;
         if (!hasSelection) {
