@@ -370,6 +370,7 @@ const WorkflowBuilderCanvas = ({
                     nodesDraggable={!isMobileLayout}
                     selectionOnDrag={!isMobileLayout}
                     panOnDrag={isMobileLayout ? true : [1, 2]}
+                    panOnScroll={!isMobileLayout}
                     multiSelectionKeyCode={["Meta", "Control"]}
                     deleteKeyCode={null}
                     panActivationKeyCode={null}
