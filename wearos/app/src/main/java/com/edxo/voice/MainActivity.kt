@@ -116,6 +116,9 @@ class MainActivity : AppCompatActivity() {
                 arrayOf(Manifest.permission.RECORD_AUDIO),
                 PERMISSION_REQUEST_CODE
             )
+        } else if (intent?.getBooleanExtra("auto_start", false) == true) {
+            // Auto-start when launched from VoiceInteractionService (long-press home)
+            startSession()
         }
     }
 
@@ -124,7 +127,12 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.isEmpty() || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Permission just granted — auto-start if launched from assistant
+                if (intent?.getBooleanExtra("auto_start", false) == true) {
+                    startSession()
+                }
+            } else {
                 Toast.makeText(this, "Microphone permission required", Toast.LENGTH_LONG).show()
             }
         }
