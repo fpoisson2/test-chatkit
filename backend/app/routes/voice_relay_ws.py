@@ -37,7 +37,8 @@ from fastapi.responses import JSONResponse
 
 from ..database import SessionLocal
 from ..models import User, Workflow, WorkflowDefinition, WorkflowStep
-from ..security import decode_access_token, get_current_user
+from ..dependencies import get_current_user
+from ..security import decode_access_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ async def voice_relay_auth_exchange(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Admin required")
 
-        token = create_access_token({"sub": str(user.id), "is_admin": user.is_admin})
+        token = create_access_token(user)
         return {"token": token}
     finally:
         db.close()
