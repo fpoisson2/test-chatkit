@@ -5,7 +5,6 @@ import android.text.InputType
 import android.util.Log
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.wearable.PutDataMapRequest
@@ -21,10 +20,10 @@ import kotlin.concurrent.thread
 /**
  * Phone companion app for EDxo Voice.
  *
- * - Login with email/password
+ * - Login with email/password -> auto-syncs token to watch
  * - Configure server URL
- * - Select workflow
- * - Push config to Wear OS watch via Data Layer API
+ * - Select workflow -> auto-syncs to watch
+ * - The Wear OS app is embedded in this APK and auto-installs on paired watch
  */
 class CompanionActivity : AppCompatActivity() {
 
@@ -41,6 +40,7 @@ class CompanionActivity : AppCompatActivity() {
     private lateinit var passwordInput: EditText
     private lateinit var loginBtn: Button
     private lateinit var statusLabel: TextView
+    private lateinit var watchStatusLabel: TextView
     private lateinit var workflowSpinner: Spinner
     private lateinit var syncBtn: Button
     private lateinit var configSection: LinearLayout
@@ -68,7 +68,7 @@ class CompanionActivity : AppCompatActivity() {
         }, lp())
 
         root.addView(TextView(this).apply {
-            text = "Configuration de la montre"
+            text = "Configuration"
             textSize = 14f
             gravity = Gravity.CENTER
             setTextColor(0xFF888888.toInt())
@@ -123,11 +123,20 @@ class CompanionActivity : AppCompatActivity() {
         workflowSpinner = Spinner(this)
         configSection.addView(workflowSpinner, lp(topMargin = 4))
 
+        // Watch sync status
+        watchStatusLabel = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 12f
+            setTextColor(0xFF888888.toInt())
+        }
+        configSection.addView(watchStatusLabel, lp(topMargin = 16))
+
+        // Manual sync button (fallback)
         syncBtn = Button(this).apply {
-            text = "Envoyer a la montre"
+            text = "Re-synchroniser la montre"
             setOnClickListener { syncToWatch() }
         }
-        configSection.addView(syncBtn, lp(topMargin = 24))
+        configSection.addView(syncBtn, lp(topMargin = 8))
 
         root.addView(configSection, lp())
 
@@ -138,6 +147,7 @@ class CompanionActivity : AppCompatActivity() {
         token = prefs.getString("auth_token", "") ?: ""
         if (token.isNotEmpty()) {
             statusLabel.text = "Connecte"
+            statusLabel.setTextColor(0xFF44AA44.toInt())
             loadWorkflows()
         }
     }
@@ -170,6 +180,7 @@ class CompanionActivity : AppCompatActivity() {
 
         loginBtn.isEnabled = false
         statusLabel.text = "Connexion..."
+        statusLabel.setTextColor(0xFF888888.toInt())
 
         thread {
             try {
@@ -194,6 +205,9 @@ class CompanionActivity : AppCompatActivity() {
                         .putString("server_url", baseUrl)
                         .putString("email", email)
                         .apply()
+
+                    // Auto-sync token to watch immediately
+                    syncToWatch()
 
                     runOnUiThread {
                         loginBtn.isEnabled = true
@@ -259,7 +273,12 @@ class CompanionActivity : AppCompatActivity() {
 
                     workflowSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                         override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                            val prev = selectedWorkflow
                             selectedWorkflow = workflows.getOrNull(pos)
+                            // Auto-sync when workflow changes (not on first load)
+                            if (prev != null && selectedWorkflow != prev) {
+                                syncToWatch()
+                            }
                         }
                         override fun onNothingSelected(parent: AdapterView<*>?) {}
                     }
@@ -271,41 +290,57 @@ class CompanionActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Push current config (token, URL, workflow) to the paired watch.
+     * Called automatically on login and workflow change.
+     */
     private fun syncToWatch() {
-        val wf = selectedWorkflow
-        if (wf == null) {
-            Toast.makeText(this, "Selectionnez un workflow", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         val baseUrl = getBaseUrl()
         val wsUrl = baseUrl
             .replace("https://", "wss://")
             .replace("http://", "ws://") + "/api/voice-relay/ws"
 
+        val wf = selectedWorkflow
+
         // Save locally
-        getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
-            .putInt("workflow_id", wf.id)
-            .putString("workflow_name", wf.name)
-            .apply()
+        val prefs = getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
+        if (wf != null) {
+            prefs.putInt("workflow_id", wf.id)
+            prefs.putString("workflow_name", wf.name)
+        }
+        prefs.apply()
 
         // Push to watch via Data Layer
         val dataReq = PutDataMapRequest.create(CONFIG_PATH).apply {
             dataMap.putString("auth_token", token)
             dataMap.putString("server_url", wsUrl)
-            dataMap.putInt("workflow_id", wf.id)
-            dataMap.putString("workflow_name", wf.name)
+            if (wf != null) {
+                dataMap.putInt("workflow_id", wf.id)
+                dataMap.putString("workflow_name", wf.name)
+            }
+            // Timestamp forces update even if data unchanged
             dataMap.putLong("timestamp", System.currentTimeMillis())
         }.asPutDataRequest().setUrgent()
 
         Wearable.getDataClient(this).putDataItem(dataReq)
             .addOnSuccessListener {
-                Log.i(TAG, "Config sent to watch: workflow=${wf.name}, url=$wsUrl")
-                Toast.makeText(this, "Envoye a la montre!", Toast.LENGTH_SHORT).show()
+                val msg = if (wf != null) {
+                    "Montre synchronisee (${wf.name})"
+                } else {
+                    "Token envoye a la montre"
+                }
+                Log.i(TAG, "Synced to watch: url=$wsUrl, workflow=${wf?.name}")
+                runOnUiThread {
+                    watchStatusLabel.text = msg
+                    watchStatusLabel.setTextColor(0xFF44AA44.toInt())
+                }
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to send config to watch", e)
-                Toast.makeText(this, "Erreur: ${e.message}", Toast.LENGTH_LONG).show()
+                Log.e(TAG, "Failed to sync to watch", e)
+                runOnUiThread {
+                    watchStatusLabel.text = "Montre non connectee"
+                    watchStatusLabel.setTextColor(0xFFCC8800.toInt())
+                }
             }
     }
 }
