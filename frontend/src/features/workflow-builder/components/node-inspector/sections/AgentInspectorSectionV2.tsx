@@ -23,12 +23,14 @@ import {
   Monitor,
   Image as ImageIcon,
   Maximize2,
+  Radio,
 } from 'lucide-react';
 
 import {
   startMcpOAuthNegotiation,
   pollMcpOAuthSession,
   cancelMcpOAuthSession,
+  workflowsApi,
   type McpOAuthStartResponse,
   type McpOAuthSessionStatus,
 } from '../../../../../utils/backend';
@@ -156,6 +158,10 @@ type AgentResponseFormat = AgentInspectorStateSnapshot['responseFormat'];
 
 type AgentInspectorSectionV2Props = {
   nodeId: string;
+  stepSlug: string;
+  workflowId: number | null;
+  isActiveVersion: boolean;
+  editingLocked: boolean;
   parameters: FlowNode['data']['parameters'];
   token: string | null;
   workflows: WorkflowSummary[];
@@ -253,6 +259,10 @@ type AgentInspectorSectionV2Props = {
 };
 export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = ({
   nodeId,
+  stepSlug,
+  workflowId,
+  isActiveVersion,
+  editingLocked,
   parameters,
   token,
   workflows,
@@ -415,6 +425,11 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
         content: (
           <BasicSettingsTab
             nodeId={nodeId}
+            stepSlug={stepSlug}
+            workflowId={workflowId}
+            isActiveVersion={isActiveVersion}
+            editingLocked={editingLocked}
+            token={token}
             agentMessage={agentMessage}
             nestedWorkflowId={nestedWorkflowId}
             nestedWorkflowMode={nestedWorkflowMode}
@@ -437,6 +452,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
         content: (
           <ModelSettingsTab
             nodeId={nodeId}
+            editingLocked={editingLocked}
             agentModel={agentModel}
             agentProviderId={agentProviderId}
             agentProviderSlug={agentProviderSlug}
@@ -583,6 +599,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
       continueOnError,
       currentWorkflowId,
       displayResponseInChat,
+      editingLocked,
       fileSearchConfig,
       fileSearchEnabled,
       fileSearchValidationReason,
@@ -597,6 +614,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
       imageQualityValue,
       imageSizeValue,
       includeChatHistory,
+      isActiveVersion,
       matchedModel,
       maxOutputTokensValue,
       nestedWorkflowId,
@@ -648,11 +666,13 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
       selectedProviderValue,
       selectedVectorStoreSlug,
       showSearchSources,
+      stepSlug,
       storeResponses,
       supportsReasoning,
       t,
       temperatureValue,
       textVerbosityValue,
+      token,
       topPValue,
       updateImageTool,
       vectorStores,
@@ -666,6 +686,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
       widgets,
       widgetsError,
       widgetsLoading,
+      workflowId,
       workflowToolSlugs,
       workflows,
     ],
@@ -775,9 +796,13 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     ],
   );
 
+  const visibleTabs = editingLocked
+    ? tabs.filter((tab) => tab.id === 'basic' || tab.id === 'model')
+    : tabs;
+
   return (
     <TabSection
-      tabs={tabs}
+      tabs={visibleTabs}
       defaultTab={DEFAULT_TAB}
       tabsLabel={t('workflowBuilder.agentInspector.tabsLabel')}
     />
@@ -785,6 +810,11 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
 };
 interface BasicSettingsTabProps {
   nodeId: string;
+  stepSlug: string;
+  workflowId: number | null;
+  isActiveVersion: boolean;
+  editingLocked: boolean;
+  token: string | null;
   agentMessage: string;
   nestedWorkflowId: number | null;
   nestedWorkflowMode: 'local' | 'hosted' | 'custom';
@@ -804,6 +834,11 @@ interface BasicSettingsTabProps {
 
 const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
   nodeId,
+  stepSlug,
+  workflowId,
+  isActiveVersion,
+  editingLocked,
+  token,
   agentMessage,
   nestedWorkflowId,
   nestedWorkflowMode,
@@ -1089,6 +1124,25 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
     [t],
   );
 
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishStatus, setPublishStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handlePublishLive = useCallback(async () => {
+    if (!workflowId || !stepSlug || !agentMessage) return;
+    setIsPublishing(true);
+    setPublishStatus('idle');
+    try {
+      await workflowsApi.updateStepMessageLive(token, workflowId, stepSlug, agentMessage);
+      setPublishStatus('success');
+      setTimeout(() => setPublishStatus('idle'), 2000);
+    } catch {
+      setPublishStatus('error');
+      setTimeout(() => setPublishStatus('idle'), 3000);
+    } finally {
+      setIsPublishing(false);
+    }
+  }, [token, workflowId, stepSlug, agentMessage]);
+
   return (
     <div className={styles.tabContent}>
       <div className={styles.sectionCard}>
@@ -1123,6 +1177,25 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
           onChange={(value) => onAgentMessageChange(nodeId, value)}
         />
 
+        {isActiveVersion && workflowId ? (
+          <button
+            type="button"
+            className={styles.publishLiveButton}
+            onClick={handlePublishLive}
+            disabled={isPublishing || !agentMessage}
+            title={t('workflowBuilder.assistantMessageInspector.publishLiveTitle')}
+          >
+            <Radio size={14} />
+            {isPublishing
+              ? t('workflowBuilder.assistantMessageInspector.publishLivePublishing')
+              : publishStatus === 'success'
+                ? t('workflowBuilder.assistantMessageInspector.publishLiveSuccess')
+                : publishStatus === 'error'
+                  ? t('workflowBuilder.assistantMessageInspector.publishLiveError')
+                  : t('workflowBuilder.assistantMessageInspector.publishLive')}
+          </button>
+        ) : null}
+
         <InlineHelp
           title={t('workflowBuilder.agentInspector.systemPrompt.helpTitle')}
           examples={systemPromptExamples}
@@ -1135,6 +1208,7 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
         </InlineHelp>
       </div>
 
+      {!editingLocked ? (
       <div className={styles.sectionCard}>
         <div className={styles.sectionHeader}>
           <h4 className={styles.sectionTitle}>
@@ -1239,11 +1313,13 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
         ) : null}
 
       </div>
+      ) : null}
     </div>
   );
 };
 interface ModelSettingsTabProps {
   nodeId: string;
+  editingLocked: boolean;
   agentModel: string;
   agentProviderId: string;
   agentProviderSlug: string;
@@ -1290,6 +1366,7 @@ interface ModelSettingsTabProps {
 
 const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   nodeId,
+  editingLocked,
   agentModel,
   agentProviderId,
   agentProviderSlug,
@@ -1488,6 +1565,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   return (
     <div className={styles.tabContent}>
       {/* Mode de sélection du modèle */}
+      {!editingLocked ? (
       <div className={styles.sectionCard}>
         <div className={styles.sectionHeader}>
           <h4 className={styles.sectionTitle}>
@@ -1517,6 +1595,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
           </label>
         </div>
       </div>
+      ) : null}
 
       {/* Configuration du modèle spécifique ou liste des modèles pour l'utilisateur */}
       <div className={styles.sectionCard}>
@@ -1600,7 +1679,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
         ) : null}
 
         {/* Bouton pour ajouter le modèle à la liste (mode user_choice) */}
-        {modelSelectionMode === 'user_choice' && agentModel.trim() && (
+        {!editingLocked && modelSelectionMode === 'user_choice' && agentModel.trim() && (
           <button
             type="button"
             className={styles.addButton}
@@ -1612,7 +1691,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
       </div>
 
       {/* Liste des modèles configurés pour l'utilisateur */}
-      {modelSelectionMode === 'user_choice' && (
+      {!editingLocked && modelSelectionMode === 'user_choice' && (
         <div className={styles.sectionCard}>
           <div className={styles.sectionHeader}>
             <h4 className={styles.sectionTitle}>
@@ -1690,6 +1769,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
         </div>
       )}
 
+      {!editingLocked ? (
       <div className={styles.sectionCard}>
         <div className={styles.sectionHeader}>
           <h4 className={styles.sectionTitle}>
@@ -1801,6 +1881,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
              />
             </Field>
        </div>
+      ) : null}
     </div>
   );
 };

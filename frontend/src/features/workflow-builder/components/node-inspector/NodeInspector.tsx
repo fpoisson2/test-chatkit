@@ -632,6 +632,10 @@ const NodeInspector = ({
       {kind === "agent" ? (
         <AgentInspectorSection
           nodeId={node.id}
+          stepSlug={node.data.slug}
+          workflowId={currentWorkflowId}
+          isActiveVersion={isActiveVersion ?? false}
+          editingLocked={editingLocked ?? false}
           parameters={parameters}
           token={token}
           workflows={workflows}
