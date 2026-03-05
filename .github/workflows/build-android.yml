@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -34,14 +36,27 @@ jobs:
         working-directory: wearos
         run: ./gradlew :app:assembleDebug
 
-      - name: Upload phone APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: edxo-voice-phone
-          path: wearos/mobile/build/outputs/apk/debug/*.apk
+      - name: Rename APKs
+        run: |
+          cp wearos/mobile/build/outputs/apk/debug/*.apk edxo-voice-phone.apk
+          cp wearos/app/build/outputs/apk/debug/*.apk edxo-voice-watch.apk
 
-      - name: Upload watch APK
-        uses: actions/upload-artifact@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: edxo-voice-watch
-          path: wearos/app/build/outputs/apk/debug/*.apk
+          tag_name: android-v${{ github.run_number }}
+          name: EDxo Voice v1.0.${{ github.run_number }}
+          body: |
+            ## EDxo Voice - Android
+
+            **edxo-voice-phone.apk** - App telephone (installe aussi l'app montre automatiquement)
+            **edxo-voice-watch.apk** - App montre seule (si besoin)
+
+            ### Installation
+            1. Telecharger `edxo-voice-phone.apk` sur ton telephone
+            2. Ouvrir le fichier et installer (activer "Sources inconnues" si demande)
+            3. L'app montre s'installe automatiquement sur la montre jumelee
+            4. Ouvrir EDxo Voice sur le telephone, se connecter, choisir le workflow
+          files: |
+            edxo-voice-phone.apk
+            edxo-voice-watch.apk
