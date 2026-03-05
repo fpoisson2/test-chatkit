@@ -241,6 +241,7 @@ def get_active_sessions(
             "user": {
                 "id": user.id,
                 "email": user.email,
+                "display_name": user.display_name,
                 "is_admin": user.is_admin,
             },
             "workflow": {

@@ -8,6 +8,7 @@ import { useWorkflowMonitorWebSocket } from "../../../hooks/useWorkflowMonitorWe
 export interface ActiveSessionUser {
   id: number;
   email: string;
+  displayName: string | null;
   threadId: string;
 }
 
@@ -55,6 +56,7 @@ export const ActiveSessionsProvider: React.FC<ActiveSessionsProviderProps> = ({
       byStep[slug].push({
         id: session.user.id,
         email: session.user.email,
+        displayName: session.user.display_name ?? null,
         threadId: session.thread_id,
       });
     }

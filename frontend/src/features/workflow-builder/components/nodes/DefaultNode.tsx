@@ -49,18 +49,21 @@ export const DefaultNode = memo(({ data, id }: NodeProps<FlowNodeData>) => {
           </span>
           {showTooltip ? (
             <div className={styles.tooltip}>
-              {users.map((u) => (
-                <a
-                  key={u.threadId}
-                  className={styles.tooltipLink}
-                  href={`/c/${u.threadId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {u.email}
-                </a>
-              ))}
+              <div className={styles.tooltipInner}>
+                {users.map((u) => (
+                  <a
+                    key={u.threadId}
+                    className={styles.tooltipLink}
+                    href={`/c/${u.threadId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title={u.email}
+                  >
+                    {u.displayName || u.email}
+                  </a>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>

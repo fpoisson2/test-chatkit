@@ -1079,8 +1079,25 @@ class LTIService:
             subject = str(payload.get("sub") or secrets.token_hex(8))
             normalized_email = f"{subject}@lti.local"
 
+        # Build display name from LTI claims (given_name, family_name, name)
+        lti_display_name: str | None = None
+        given = payload.get("given_name")
+        family = payload.get("family_name")
+        full = payload.get("name")
+        if isinstance(given, str) and given.strip():
+            parts = [given.strip()]
+            if isinstance(family, str) and family.strip():
+                parts.append(family.strip())
+            lti_display_name = " ".join(parts)
+        elif isinstance(full, str) and full.strip():
+            lti_display_name = full.strip()
+
         user = self.session.scalar(select(User).where(User.email == normalized_email))
         if user:
+            # Update display_name if we got a better one from LTI
+            if lti_display_name and not user.display_name:
+                user.display_name = lti_display_name
+                self.session.flush()
             return user
 
         random_password = secrets.token_urlsafe(32)
@@ -1089,6 +1106,7 @@ class LTIService:
             password_hash=hash_password(random_password),
             is_admin=False,
             is_lti=True,
+            display_name=lti_display_name,
         )
         self.session.add(user)
         self.session.flush()

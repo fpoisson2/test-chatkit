@@ -1562,6 +1562,7 @@ class WorkflowUserInfo(BaseModel):
 
     id: int
     email: str
+    display_name: str | None = None
     is_admin: bool
 
 
