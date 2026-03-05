@@ -227,13 +227,45 @@ def get_active_sessions(
                     current_step_display = current_slug
 
         step_history_list = []
+        has_end_step = False
+        end_step_title = None
         for step in steps_history:
             if isinstance(step, dict):
+                step_key = step.get("key", "")
+                step_title = step.get("title", "")
                 step_history_list.append({
-                    "slug": step.get("key", ""),
-                    "display_name": step.get("title", ""),
+                    "slug": step_key,
+                    "display_name": step_title,
                     "timestamp": None,
                 })
+                # Check if the workflow reached an end node
+                if step_key.startswith("end") or step_key == "end":
+                    has_end_step = True
+                    end_step_title = step_title
+
+        # Also check thread metadata for end_state
+        end_state = workflow_meta.get("end_state")
+        if isinstance(end_state, dict):
+            has_end_step = True
+
+        # Check thread status (closed = workflow finished)
+        thread_status = thread_payload.get("status", {}) if isinstance(thread_payload, dict) else {}
+        if isinstance(thread_status, dict) and thread_status.get("type") in ("closed", "locked"):
+            has_end_step = True
+
+        # Determine status
+        if has_end_step:
+            session_status = "completed"
+            # Override current step to show the end step
+            if end_step_title:
+                current_step_display = end_step_title
+                current_slug = "end"
+            elif current_step_display == "unknown":
+                current_step_display = "Terminé"
+        elif wait_state:
+            session_status = "waiting_user"
+        else:
+            session_status = "active"
 
         active_sessions.append({
             "thread_id": thread.id,
@@ -258,12 +290,10 @@ def get_active_sessions(
             "step_history": step_history_list,
             "started_at": thread.created_at.isoformat(),
             "last_activity": thread.updated_at.isoformat(),
-            "status": "waiting_user" if wait_state else "active",
+            "status": session_status,
         })
 
-    # Déduplication: un seul thread "actif" par (utilisateur, workflow) dans le monitoring.
-    # Raison: un étudiant peut ouvrir plusieurs onglets / relancer un workflow, créant plusieurs threads
-    # très similaires, ce qui donne des doublons dans l'UI d'admin.
+    # Déduplication: un seul thread par (utilisateur, workflow) — le plus récent.
     deduped: dict[tuple[int, int], tuple[datetime, dict[str, Any]]] = {}
     for sess in active_sessions:
         key = (sess["user"]["id"], sess["workflow"]["id"])

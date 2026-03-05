@@ -22,6 +22,7 @@ const VectorStoresPage = lazy(() =>
   }))
 );
 const WidgetLibraryPage = lazy(() => import("./pages/WidgetLibraryPage"));
+const AdminVoicePage = lazy(() => import("./pages/AdminVoicePage"));
 const DocsPage = lazy(() =>
   import("./pages/docs/DocsPage").then((m) => ({ default: m.DocsPage }))
 );
@@ -210,6 +211,16 @@ export const App = () => (
             <SuspenseRoute>
               <RequireAdmin>
                 <WidgetLibraryPage />
+              </RequireAdmin>
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="voice"
+          element={
+            <SuspenseRoute>
+              <RequireAdmin>
+                <AdminVoicePage />
               </RequireAdmin>
             </SuspenseRoute>
           }

@@ -1663,8 +1663,53 @@ async def get_thread_branch(
 
 
 # =============================================================================
-# Live Content Updates (SSE)
+# Live Content Updates (SSE + Polling)
 # =============================================================================
+
+
+@router.get("/api/chatkit/live-updates/poll")
+async def live_updates_poll(
+    thread_id: str,
+    since: float = 0.0,
+    current_user: User | None = Depends(get_optional_user),
+):
+    """Lightweight polling endpoint for live updates.
+
+    Returns {"changed": true, "ts": <timestamp>} if the workflow has been
+    updated since the given `since` timestamp.  Clients poll every few seconds.
+    """
+    from sqlalchemy import select as sa_select
+
+    from ..live_updates import live_update_manager
+    from ..models import Workflow as WorkflowModel
+
+    session = SessionLocal()
+    try:
+        thread = session.get(ChatThread, thread_id)
+        if thread is None:
+            return {"changed": False, "ts": 0.0}
+        workflow_slug = thread.workflow_slug
+        if not workflow_slug:
+            payload = thread.payload or {}
+            metadata = payload.get("metadata", {})
+            wf_meta = metadata.get("workflow", {})
+            workflow_slug = wf_meta.get("slug")
+
+        workflow_id: int | None = None
+        if workflow_slug:
+            wf = session.scalar(
+                sa_select(WorkflowModel).where(WorkflowModel.slug == workflow_slug)
+            )
+            if wf:
+                workflow_id = wf.id
+    finally:
+        session.close()
+
+    if workflow_id is None:
+        return {"changed": False, "ts": 0.0}
+
+    last_updated = live_update_manager.get_last_updated(workflow_id)
+    return {"changed": last_updated > since, "ts": last_updated}
 
 
 @router.get("/api/chatkit/live-updates")
@@ -1720,16 +1765,32 @@ async def live_updates_sse(
 
     queue = live_update_manager.subscribe(workflow_id)
 
+    # Cloudflare Tunnel buffers small SSE chunks. We pad events to ~2KB
+    # so they exceed the buffering threshold and get flushed immediately.
+    _PAD_TARGET = 2048
+
+    def _pad_sse(raw: str) -> str:
+        """Pad an SSE frame with comment lines so the total exceeds _PAD_TARGET bytes."""
+        current = len(raw.encode())
+        if current >= _PAD_TARGET:
+            return raw
+        needed = _PAD_TARGET - current
+        # SSE comments (lines starting with ':') are ignored by clients
+        pad_line = ": " + "." * 250 + "\n"
+        pad_lines = pad_line * (needed // len(pad_line) + 1)
+        return raw + pad_lines
+
     async def event_stream():
+        # Initial padding to establish the stream through Cloudflare
+        yield _pad_sse(": connected\n\n")
         try:
             while True:
                 if await request.is_disconnected():
                     break
                 try:
-                    event = await _asyncio.wait_for(queue.get(), timeout=30.0)
+                    event = await _asyncio.wait_for(queue.get(), timeout=15.0)
                 except _asyncio.TimeoutError:
-                    # Send keepalive comment
-                    yield ": keepalive\n\n"
+                    yield _pad_sse(": keepalive\n\n")
                     continue
 
                 if event is None:
@@ -1740,7 +1801,7 @@ async def live_updates_sse(
                     "step_slug": event.step_slug,
                     "new_text": event.new_text,
                 })
-                yield f"data: {data}\n\n"
+                yield _pad_sse(f"data: {data}\n\n")
         finally:
             live_update_manager.unsubscribe(workflow_id, queue)
 
@@ -1748,8 +1809,9 @@ async def live_updates_sse(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Content-Type": "text/event-stream; charset=utf-8",
         },
     )

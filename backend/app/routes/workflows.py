@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
@@ -1297,34 +1300,50 @@ async def _run_ai_improve(
     content_type: str,
     user_instructions: str = "",
 ) -> str:
-    """Shared AI content improvement logic using Agents SDK with gpt-5-nano."""
+    """Shared AI content improvement logic using Agents SDK with gpt-5.4."""
     from agents import Agent, RunConfig, Runner
 
     from ..chatkit.agent_registry import create_litellm_model, get_agent_provider_binding
 
-    if content_type == "system_prompt":
-        instructions = (
-            "You are an expert at improving AI system prompts. "
-            "The user will give you a system prompt. Improve it to be clearer, "
-            "more precise, and more effective. Keep the same intent and language. "
-            "Return ONLY the improved text, nothing else."
-        )
-    else:
-        instructions = (
-            "You are an expert at improving instructional and conversational text. "
-            "The user will give you a message. Improve it to be clearer, "
-            "more engaging, and better structured. Keep the same intent and language. "
-            "Return ONLY the improved text, nothing else."
-        )
-
     if user_instructions:
-        instructions += f"\n\nAdditional instructions from the user: {user_instructions}"
+        # When specific instructions are given, prioritize them
+        if content_type == "system_prompt":
+            instructions = (
+                "You are an expert at editing AI system prompts. "
+                "The user will give you a system prompt and specific instructions for changes. "
+                "Apply the requested changes precisely. Keep the same language and overall structure. "
+                "Return ONLY the modified text, nothing else."
+                f"\n\nUser instructions: {user_instructions}"
+            )
+        else:
+            instructions = (
+                "You are an expert at editing instructional and conversational text. "
+                "The user will give you a message and specific instructions for changes. "
+                "Apply the requested changes precisely. Keep the same language and overall structure. "
+                "Return ONLY the modified text, nothing else."
+                f"\n\nUser instructions: {user_instructions}"
+            )
+    else:
+        if content_type == "system_prompt":
+            instructions = (
+                "You are an expert at improving AI system prompts. "
+                "The user will give you a system prompt. Improve it to be clearer, "
+                "more precise, and more effective. Keep the same intent and language. "
+                "Return ONLY the improved text, nothing else."
+            )
+        else:
+            instructions = (
+                "You are an expert at improving instructional and conversational text. "
+                "The user will give you a message. Improve it to be clearer, "
+                "more engaging, and better structured. Keep the same intent and language. "
+                "Return ONLY the improved text, nothing else."
+            )
 
     provider_binding = get_agent_provider_binding(None, "openai")
     if not provider_binding:
         raise RuntimeError("No OpenAI provider configured")
 
-    model_instance = create_litellm_model("gpt-5-nano", provider_binding)
+    model_instance = create_litellm_model("gpt-5.4", provider_binding)
     agent = Agent(
         name="Content Improver",
         model=model_instance,
@@ -1375,25 +1394,224 @@ async def ai_improve_content(
         )
 
 
+def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
+    """Return tool definitions for the admin voice session (sent to OpenAI)."""
+    return [
+        {
+            "type": "function",
+            "name": "list_workflow_steps",
+            "description": "List all steps in the current workflow with their slugs, titles, and types.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "type": "function",
+            "name": "improve_step_content",
+            "description": (
+                "Improve the content (system prompt or assistant message) of a specific "
+                "workflow step using AI and apply the changes immediately."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "step_slug": {"type": "string", "description": "The slug of the step to improve."},
+                    "instructions": {"type": "string", "description": "Instructions for how to improve the content."},
+                },
+                "required": ["step_slug", "instructions"],
+            },
+        },
+        {
+            "type": "function",
+            "name": "get_student_progress",
+            "description": "Get the current progress of all students in the workflow, showing who is at which step.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "type": "function",
+            "name": "publish_step_message",
+            "description": "Publish a new message for a specific step, updating it live for all active conversations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "step_slug": {"type": "string", "description": "The slug of the step to update."},
+                    "new_message": {"type": "string", "description": "The new message text to publish."},
+                },
+                "required": ["step_slug", "new_message"],
+            },
+        },
+        {
+            "type": "function",
+            "name": "unlock_student",
+            "description": "Unblock a student stuck at a wait step by clearing their wait state so the workflow can advance.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "description": "The thread ID of the student to unblock."},
+                },
+                "required": ["thread_id"],
+            },
+        },
+    ]
+
+
+async def _execute_admin_voice_tool(
+    tool_name: str,
+    arguments: dict[str, Any],
+    workflow_id: int,
+    session: Session,
+) -> str:
+    """Execute an admin voice tool and return the result string."""
+    from sqlalchemy import select as sa_select
+
+    from ..models import ChatThread, Workflow, WorkflowDefinition, WorkflowStep
+    from ..routes.workflow_monitor_ws import get_active_sessions
+
+    # Load workflow context
+    active_def = session.scalar(
+        sa_select(WorkflowDefinition).where(
+            WorkflowDefinition.workflow_id == workflow_id,
+            WorkflowDefinition.is_active == True,  # noqa: E712
+        )
+    )
+    if active_def is None:
+        return "Error: No active workflow definition found."
+
+    # Only these step types are editable via voice
+    EDITABLE_STEP_KINDS = {"message", "assistant_message", "agent"}
+
+    if tool_name == "list_workflow_steps":
+        steps = session.scalars(
+            sa_select(WorkflowStep)
+            .where(WorkflowStep.definition_id == active_def.id)
+            .order_by(WorkflowStep.position)
+        ).all()
+        lines: list[str] = []
+        for s in steps:
+            if s.kind not in EDITABLE_STEP_KINDS:
+                continue
+            params = s.parameters or {}
+            title = params.get("title", s.display_name or s.slug)
+            msg = params.get("message", "") or ""
+            lines.append(
+                f"- slug: {s.slug}, title: {title}, type: {s.kind}"
+                + (f", content: {msg}" if msg else "")
+            )
+        return "\n".join(lines) or "No editable steps found."
+
+    elif tool_name == "improve_step_content":
+        step_slug = arguments.get("step_slug", "")
+        instructions = arguments.get("instructions", "")
+        logger.info(f"[ADMIN_VOICE] improve_step_content: slug={step_slug}, instructions={instructions}")
+        step = session.scalar(
+            sa_select(WorkflowStep).where(
+                WorkflowStep.definition_id == active_def.id,
+                WorkflowStep.slug == step_slug,
+            )
+        )
+        if step is None:
+            return f"Error: Step '{step_slug}' not found."
+        if step.kind not in EDITABLE_STEP_KINDS:
+            return f"Error: Step '{step_slug}' is of type '{step.kind}' and cannot be edited via voice. Only 'message' and 'agent' steps can be modified."
+        params = step.parameters or {}
+        content = params.get("message", "") or ""
+        if not content:
+            return f"Error: Step '{step_slug}' has no message content to improve."
+        content_type = "system_prompt" if step.kind == "agent" else "assistant_message"
+        logger.info(f"[ADMIN_VOICE] improve_step_content: original content length={len(content)}")
+        improved = await _run_ai_improve(content, content_type, instructions)
+        logger.info(f"[ADMIN_VOICE] improve_step_content: improved content length={len(improved)}")
+
+        # Use the same live-update path as "Publier en direct" button:
+        # updates step, all stored thread items, and broadcasts SSE.
+        from ..live_updates import LiveUpdateManager, StepContentUpdate, live_update_manager
+
+        svc = WorkflowPersistenceService(session)
+        svc.update_step_message_live(workflow_id, step_slug, improved, session=session)
+        logger.info(f"[ADMIN_VOICE] improve_step_content: committed via update_step_message_live")
+
+        await live_update_manager.publish(
+            StepContentUpdate(
+                workflow_id=workflow_id,
+                step_slug=step_slug,
+                new_text=improved,
+            )
+        )
+
+        return f"Le contenu de l'étape '{step_slug}' a été amélioré et publié."
+
+    elif tool_name == "get_student_progress":
+        sessions_list = get_active_sessions(session)
+        relevant = [
+            s for s in sessions_list
+            if s.get("workflow", {}).get("id") == workflow_id
+        ]
+        if not relevant:
+            return "No active student sessions found for this workflow."
+        lines = []
+        for s in relevant:
+            user = s.get("user", {})
+            step_info = s.get("current_step", {})
+            name = user.get("display_name") or user.get("email", "Unknown")
+            step_name = step_info.get("display_name", step_info.get("slug", "unknown"))
+            s_slug = step_info.get("slug", "unknown")
+            tid = s.get("thread_id", "")
+            lines.append(f"- {name}: at step '{step_name}' (slug: {s_slug}), thread: {tid}")
+        return f"Active students ({len(relevant)}):\n" + "\n".join(lines)
+
+    elif tool_name == "publish_step_message":
+        step_slug = arguments.get("step_slug", "")
+        new_message = arguments.get("new_message", "")
+        from ..live_updates import StepContentUpdate, live_update_manager
+
+        svc = WorkflowPersistenceService(session)
+        try:
+            svc.update_step_message_live(workflow_id, step_slug, new_message, session=session)
+            await live_update_manager.publish(
+                StepContentUpdate(
+                    workflow_id=workflow_id,
+                    step_slug=step_slug,
+                    new_text=new_message,
+                )
+            )
+            return f"Successfully published new message for step '{step_slug}'."
+        except Exception as e:
+            return f"Error publishing message: {str(e)}"
+
+    elif tool_name == "unlock_student":
+        from ..chatkit_server.context import _get_wait_state_metadata, _set_wait_state_metadata
+
+        thread_id = arguments.get("thread_id", "")
+        thread = session.get(ChatThread, thread_id)
+        if thread is None:
+            return f"Error: Thread '{thread_id}' not found."
+        wait_state = _get_wait_state_metadata(thread)
+        if not wait_state:
+            return f"Student in thread '{thread_id}' is not in a waiting state."
+        current_slug = wait_state.get("slug", "unknown")
+        next_slug = wait_state.get("next_step_slug")
+        _set_wait_state_metadata(thread, None)
+        session.commit()
+        return (
+            f"Student in thread '{thread_id}' has been unblocked from step '{current_slug}'."
+            + (f" They will advance to '{next_slug}' on their next message." if next_slug else "")
+        )
+
+    else:
+        return f"Error: Unknown tool '{tool_name}'."
+
+
 @router.post("/api/workflows/{workflow_id}/admin-voice/session")
 async def create_admin_voice_session(
     workflow_id: int,
     request: Request,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
-    service: WorkflowPersistenceService = Depends(get_workflow_persistence_service),
 ):
-    """Create a Realtime voice session for the admin workflow assistant.
-
-    Returns a client_secret for the frontend to connect via the gateway.
-    The session has function tools for workflow management.
-    """
-    from agents import FunctionTool, function_tool
+    """Create a Realtime voice session for the admin workflow assistant."""
+    import httpx
     from sqlalchemy import select as sa_select
 
-    from ..models import ChatThread, Workflow, WorkflowDefinition, WorkflowStep
-    from ..realtime_runner import open_voice_session
-    from ..routes.workflow_monitor_ws import get_active_sessions
+    from ..admin_settings import get_settings
+    from ..models import Workflow, WorkflowDefinition, WorkflowStep
 
     _ensure_admin(current_user)
 
@@ -1401,7 +1619,6 @@ async def create_admin_voice_session(
     if workflow is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    # Load active definition and its steps
     active_def = session.scalar(
         sa_select(WorkflowDefinition).where(
             WorkflowDefinition.workflow_id == workflow_id,
@@ -1417,198 +1634,66 @@ async def create_admin_voice_session(
         .order_by(WorkflowStep.position)
     ).all()
 
-    # Build step info for the agent's context
     step_descriptions: list[str] = []
     for s in steps:
         params = s.parameters or {}
         title = params.get("title", s.display_name or s.slug)
-        msg = params.get("message", "")[:100] if params.get("message") else ""
+        msg = params.get("message", "") or ""
         step_descriptions.append(
-            f"- slug: {s.slug}, title: {title}, type: {s.step_type}"
-            + (f", message: {msg}..." if msg else "")
+            f"- slug: {s.slug}, title: {title}, type: {s.kind}"
+            + (f", message: {msg}" if msg else "")
         )
     steps_context = "\n".join(step_descriptions)
 
-    # ── Tool 1: list_steps ──────────────────────────────────────────────
-    @function_tool
-    def list_workflow_steps() -> str:
-        """List all steps in the current workflow with their slugs, titles, and types."""
-        return steps_context
-
-    # ── Tool 2: improve_step_content ────────────────────────────────────
-    @function_tool
-    async def improve_step_content(step_slug: str, instructions: str) -> str:
-        """Improve the content (system prompt or assistant message) of a specific workflow step using AI.
-
-        Args:
-            step_slug: The slug of the step to improve.
-            instructions: Instructions for how to improve the content.
-        """
-        from ..database import SessionLocal
-
-        db = SessionLocal()
-        try:
-            step = db.scalar(
-                sa_select(WorkflowStep).where(
-                    WorkflowStep.definition_id == active_def.id,
-                    WorkflowStep.slug == step_slug,
-                )
-            )
-            if step is None:
-                return f"Error: Step '{step_slug}' not found."
-
-            params = step.parameters or {}
-            content = params.get("message", "") or ""
-            if not content:
-                return f"Error: Step '{step_slug}' has no message content to improve."
-
-            content_type = "system_prompt" if step.step_type == "agent" else "assistant_message"
-
-            # Use the shared AI improvement function
-            improved = await _run_ai_improve(content, content_type, instructions)
-            return f"Improved content for step '{step_slug}':\n\n{improved}"
-        finally:
-            db.close()
-
-    # ── Tool 3: get_student_progress ────────────────────────────────────
-    @function_tool
-    def get_student_progress() -> str:
-        """Get the current progress of all students in the workflow, showing who is at which step."""
-        from ..database import SessionLocal
-
-        db = SessionLocal()
-        try:
-            sessions = get_active_sessions(db)
-            relevant = [
-                s for s in sessions
-                if s.get("workflow", {}).get("id") == workflow_id
-            ]
-            if not relevant:
-                return "No active student sessions found for this workflow."
-
-            lines: list[str] = []
-            for s in relevant:
-                user = s.get("user", {})
-                step = s.get("current_step", {})
-                name = user.get("display_name") or user.get("email", "Unknown")
-                step_name = step.get("display_name", step.get("slug", "unknown"))
-                step_slug = step.get("slug", "unknown")
-                thread_id = s.get("thread_id", "")
-                lines.append(
-                    f"- {name}: at step '{step_name}' (slug: {step_slug}), thread: {thread_id}"
-                )
-            return f"Active students ({len(relevant)}):\n" + "\n".join(lines)
-        finally:
-            db.close()
-
-    # ── Tool 4: publish_step_message ────────────────────────────────────
-    @function_tool
-    def publish_step_message(step_slug: str, new_message: str) -> str:
-        """Publish a new message for a specific step, updating it live for all active conversations.
-
-        Args:
-            step_slug: The slug of the step to update.
-            new_message: The new message text to publish.
-        """
-        from ..database import SessionLocal
-
-        db = SessionLocal()
-        try:
-            step = service.update_step_message_live(
-                workflow_id, step_slug, new_message, session=db,
-            )
-            return f"Successfully published new message for step '{step_slug}'."
-        except Exception as e:
-            return f"Error publishing message: {str(e)}"
-        finally:
-            db.close()
-
-    # ── Tool 5: unlock_student ──────────────────────────────────────────
-    @function_tool
-    def unlock_student(thread_id: str) -> str:
-        """Unblock a student stuck at a wait step by clearing their wait state so the workflow can advance.
-
-        Args:
-            thread_id: The thread ID of the student to unblock.
-        """
-        from ..chatkit_server.context import _get_wait_state_metadata, _set_wait_state_metadata
-        from ..database import SessionLocal
-
-        db = SessionLocal()
-        try:
-            thread = db.get(ChatThread, thread_id)
-            if thread is None:
-                return f"Error: Thread '{thread_id}' not found."
-
-            wait_state = _get_wait_state_metadata(thread)
-            if not wait_state:
-                return f"Student in thread '{thread_id}' is not in a waiting state."
-
-            current_slug = wait_state.get("slug", "unknown")
-            next_slug = wait_state.get("next_step_slug")
-
-            # Clear wait state to unblock - set next_step_slug so workflow advances
-            # The student's next message will resume the workflow at the next step
-            _set_wait_state_metadata(thread, None)
-            db.commit()
-
-            return (
-                f"Student in thread '{thread_id}' has been unblocked from step '{current_slug}'."
-                + (f" They will advance to '{next_slug}' on their next message." if next_slug else "")
-            )
-        except Exception as e:
-            db.rollback()
-            return f"Error unblocking student: {str(e)}"
-        finally:
-            db.close()
-
-    # ── Build tools list ────────────────────────────────────────────────
-    tools: list[FunctionTool] = [
-        list_workflow_steps,
-        improve_step_content,
-        get_student_progress,
-        publish_step_message,
-        unlock_student,
-    ]
-
-    # ── Create voice session ────────────────────────────────────────────
     instructions = (
-        f"You are an admin assistant for the workflow '{workflow.display_name}'. "
-        "You help the teacher manage this workflow in real time. "
-        "You can list steps, check student progress, improve content, "
-        "publish changes, and unblock stuck students. "
-        "Always confirm before publishing changes. "
-        "Respond in the same language as the user."
-        f"\n\nWorkflow steps:\n{steps_context}"
+        f"Tu es un assistant administrateur concis pour le workflow '{workflow.display_name}'. "
+        "Sois extrêmement bref et direct. Donne uniquement l'information essentielle, "
+        "pas de formules de politesse, pas de suggestions non sollicitées. "
+        "Maximum une ou deux phrases courtes. "
+        "RÈGLE CRITIQUE sur les appels d'outils : "
+        "AVANT d'appeler un outil, dis une courte phrase comme 'OK, je m'en occupe, un instant...' ou 'Hmm, laisse-moi faire ça...'. "
+        "Ne confirme JAMAIS que c'est fait avant d'avoir reçu le résultat de l'outil. "
+        "APRÈS avoir reçu le résultat, confirme brièvement : 'C'est fait !' ou décris ce qui a été changé en une phrase. "
+        "Quand l'utilisateur mentionne une étape par son contenu plutôt que son slug, "
+        "utilise list_workflow_steps pour retrouver le bon slug à partir du contenu affiché. "
+        "Réponds dans la même langue que l'utilisateur."
+        f"\n\nÉtapes du workflow:\n{steps_context}"
     )
 
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     voice = body.get("voice", "ash")
-    model = body.get("model", "gpt-4o-realtime-preview")
+    model = body.get("model", "gpt-realtime-1.5")
 
-    user_id = f"user:{current_user.id}"
-    handle = await open_voice_session(
-        user_id=user_id,
-        model=model,
-        instructions=instructions,
-        voice=voice,
-        tools=tools,
-        metadata={
-            "user_id": user_id,
-            "admin_workflow_assistant": True,
-            "workflow_id": workflow_id,
-        },
-    )
+    settings = get_settings()
+    api_key = settings.openai_api_key or settings.model_api_key
 
-    # Extract client_secret
-    secret_payload = handle.payload
-    client_secret = None
-    if isinstance(secret_payload, dict):
-        cs = secret_payload.get("client_secret")
-        if isinstance(cs, dict):
-            client_secret = cs.get("value")
-        elif isinstance(cs, str):
-            client_secret = cs
+    session_payload: dict[str, Any] = {
+        "model": model,
+        "instructions": instructions,
+        "voice": voice,
+        "tools": _get_admin_voice_tools_definitions(),
+        "input_audio_transcription": {"model": "gpt-4o-mini-transcribe"},
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.openai.com/v1/realtime/sessions",
+            json=session_payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=500,
+            detail=f"OpenAI Realtime session creation failed: {resp.text[:500]}",
+        )
+
+    data = resp.json()
+    cs = data.get("client_secret", {})
+    client_secret = cs.get("value") if isinstance(cs, dict) else cs
 
     if not client_secret:
         raise HTTPException(
@@ -1617,9 +1702,46 @@ async def create_admin_voice_session(
         )
 
     return {
-        "session_id": handle.session_id,
+        "session_id": data.get("id", ""),
         "client_secret": client_secret,
         "model": model,
         "voice": voice,
         "instructions": instructions,
     }
+
+
+@router.post("/api/workflows/{workflow_id}/admin-voice/execute-tool")
+async def execute_admin_voice_tool(
+    workflow_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Execute a tool call from the admin voice assistant.
+
+    The frontend intercepts function_call events from the WebRTC data channel,
+    forwards them here for execution, and sends the result back to OpenAI.
+    """
+    _ensure_admin(current_user)
+
+    body = await request.json()
+    tool_name = body.get("tool_name", "")
+    arguments = body.get("arguments", {})
+
+    logger.info(f"[ADMIN_VOICE] execute-tool called: tool={tool_name}, args={arguments}")
+
+    if isinstance(arguments, str):
+        import json as json_mod
+        try:
+            arguments = json_mod.loads(arguments)
+        except (json_mod.JSONDecodeError, TypeError):
+            arguments = {}
+
+    try:
+        result = await _execute_admin_voice_tool(tool_name, arguments, workflow_id, session)
+        logger.info(f"[ADMIN_VOICE] tool result: {result[:200]}")
+    except Exception as e:
+        logger.error(f"[ADMIN_VOICE] tool error: {e}", exc_info=True)
+        result = f"Error executing tool '{tool_name}': {str(e)}"
+
+    return {"result": result}

@@ -1914,6 +1914,23 @@ export const workflowsApi = {
     return response.json();
   },
 
+  async executeAdminVoiceTool(
+    token: string | null,
+    workflowId: number,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<{ result: string }> {
+    const response = await requestWithFallback(
+      `/api/workflows/${workflowId}/admin-voice/execute-tool`,
+      {
+        method: "POST",
+        headers: withAuthHeaders(token),
+        body: JSON.stringify({ tool_name: toolName, arguments: args }),
+      },
+    );
+    return response.json();
+  },
+
   // Workflow sharing methods
   async listShares(token: string | null, workflowId: number): Promise<WorkflowSharedUser[]> {
     const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {

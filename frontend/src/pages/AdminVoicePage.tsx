@@ -1,23 +1,17 @@
-/**
- * Floating admin voice button for the workflow builder.
- * Single click to start/stop. Shows a pulsing circle that reacts to agent audio level.
- * Tool calls are relayed through the backend execute-tool endpoint.
- */
-import { Mic } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Mic } from "lucide-react";
 
-import { useAuth } from "../../../auth";
-import { workflowsApi } from "../../../utils/backend";
-import styles from "./AdminVoicePanel.module.css";
-
-type AdminVoicePanelProps = {
-  workflowId: number;
-};
+import { useAuth } from "../auth";
+import { useWorkflows } from "../hooks/useWorkflows";
+import { workflowsApi } from "../utils/backend";
+import styles from "./AdminVoicePage.module.css";
 
 type VoiceStatus = "idle" | "connecting" | "connected" | "error";
 
-export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
+export default function AdminVoicePage() {
   const { token } = useAuth();
+  const { data: workflows } = useWorkflows(token);
+  const [workflowId, setWorkflowId] = useState<number | null>(null);
   const [status, setStatus] = useState<VoiceStatus>("idle");
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -29,7 +23,16 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
   const orbRef = useRef<HTMLDivElement | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
-  const handleRealtimeEventRef = useRef<(event: Record<string, unknown>) => void>(() => {});
+  const handleRealtimeEventRef = useRef<(e: Record<string, unknown>) => void>(
+    () => {},
+  );
+
+  // Auto-select first workflow
+  useEffect(() => {
+    if (!workflowId && workflows?.length) {
+      setWorkflowId(workflows[0].id);
+    }
+  }, [workflows, workflowId]);
 
   const cleanup = useCallback(() => {
     if (animFrameRef.current) {
@@ -54,7 +57,6 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
     analyserRef.current = null;
   }, []);
 
-  // Audio level visualization loop
   const startAudioVisualization = useCallback(
     (audioElement: HTMLAudioElement) => {
       try {
@@ -72,14 +74,12 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
           if (!analyserRef.current) return;
           analyserRef.current.getByteFrequencyData(dataArray);
 
-          // Average amplitude
           let sum = 0;
           for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-          const avg = sum / dataArray.length / 255; // 0..1
+          const avg = sum / dataArray.length / 255;
 
-          // Scale the orb: base 1.0, max ~2.2
-          const scale = 1.0 + avg * 1.2;
-          const opacity = 0.4 + avg * 0.6;
+          const scale = 1.0 + avg * 1.5;
+          const opacity = 0.3 + avg * 0.7;
           if (orbRef.current) {
             orbRef.current.style.transform = `translate(-50%, -50%) scale(${scale})`;
             orbRef.current.style.opacity = `${opacity}`;
@@ -107,6 +107,7 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
 
   const handleToolCall = useCallback(
     async (callId: string, toolName: string, args: string) => {
+      if (!workflowId) return;
       console.log("[AdminVoice] Tool call:", toolName, args);
       let result: string;
       try {
@@ -114,7 +115,6 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
         try {
           parsed = JSON.parse(args || "{}");
         } catch {
-          // OpenAI sometimes sends malformed JSON args — fallback to empty
           console.warn("[AdminVoice] Malformed tool args, using {}:", args);
           parsed = {};
         }
@@ -141,7 +141,6 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
       });
       sendDataChannelEvent({ type: "response.create" });
 
-      // Notify any open chat windows to refresh after content-modifying tools
       if (
         toolName === "improve_step_content" ||
         toolName === "publish_step_message"
@@ -158,9 +157,8 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
     (event: Record<string, unknown>) => {
       const type = event.type as string;
 
-      // Log all non-audio events for debugging
       if (type && !type.includes("audio_buffer") && !type.includes("audio.delta")) {
-        console.log("[AdminVoice] Event:", type, event);
+        console.log("[AdminVoice] Event:", type);
       }
 
       if (type === "response.function_call_arguments.done") {
@@ -181,11 +179,13 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
 
   const startSession = useCallback(async () => {
     if (!token || !workflowId) return;
-
     setStatus("connecting");
 
     try {
-      const session = await workflowsApi.createAdminVoiceSession(token, workflowId);
+      const session = await workflowsApi.createAdminVoiceSession(
+        token,
+        workflowId,
+      );
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
@@ -232,8 +232,6 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
       );
 
       if (!sdpResponse.ok) {
-        const errorBody = await sdpResponse.text();
-        console.error("Realtime SDP error:", sdpResponse.status, errorBody);
         throw new Error(`Connection failed: ${sdpResponse.status}`);
       }
 
@@ -245,10 +243,9 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
       cleanup();
       console.error("Voice session error:", err);
       setStatus("error");
-      // Auto-reset to idle after a short delay
       setTimeout(() => setStatus("idle"), 2000);
     }
-  }, [token, workflowId, cleanup, handleRealtimeEvent, startAudioVisualization]);
+  }, [token, workflowId, cleanup, startAudioVisualization]);
 
   const stopSession = useCallback(() => {
     cleanup();
@@ -265,29 +262,63 @@ export const AdminVoicePanel = ({ workflowId }: AdminVoicePanelProps) => {
 
   useEffect(() => () => cleanup(), [cleanup]);
 
-  return (
-    <div className={styles.voiceContainer}>
-      {/* Audio reactive orb — visible only when connected */}
-      {status === "connected" && (
-        <div ref={orbRef} className={styles.orb} />
-      )}
+  const selectedWorkflow = workflows?.find((w) => w.id === workflowId);
 
-      <button
-        type="button"
-        className={`${styles.floatingButton} ${
-          status === "connected"
-            ? styles.floatingButtonActive
-            : status === "connecting"
-              ? styles.floatingButtonConnecting
-              : status === "error"
-                ? styles.floatingButtonError
-                : ""
-        }`}
-        onClick={toggle}
-        disabled={status === "connecting"}
-      >
-        <Mic size={20} />
-      </button>
+  return (
+    <div className={styles.page}>
+      <div className={styles.header}>
+        <h1 className={styles.title}>Assistant vocal</h1>
+        <select
+          className={styles.select}
+          value={workflowId ?? ""}
+          onChange={(e) => {
+            const val = e.target.value;
+            setWorkflowId(val ? Number(val) : null);
+            if (status === "connected") stopSession();
+          }}
+        >
+          <option value="" disabled>
+            Choisir un workflow...
+          </option>
+          {workflows?.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.display_name || w.slug}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.center}>
+        <div className={styles.orbContainer}>
+          {status === "connected" && (
+            <div ref={orbRef} className={styles.orb} />
+          )}
+          <button
+            type="button"
+            className={`${styles.micButton} ${
+              status === "connected"
+                ? styles.micButtonActive
+                : status === "connecting"
+                  ? styles.micButtonConnecting
+                  : status === "error"
+                    ? styles.micButtonError
+                    : ""
+            }`}
+            onClick={toggle}
+            disabled={status === "connecting" || !workflowId}
+          >
+            <Mic size={48} />
+          </button>
+        </div>
+
+        <p className={styles.statusText}>
+          {status === "idle" && "Appuie pour parler"}
+          {status === "connecting" && "Connexion..."}
+          {status === "connected" &&
+            `Connect\u00e9 \u2014 ${selectedWorkflow?.display_name ?? ""}`}
+          {status === "error" && "Erreur de connexion"}
+        </p>
+      </div>
     </div>
   );
-};
+}

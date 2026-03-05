@@ -91,9 +91,6 @@ def _normalize_realtime_tools_payload(
             parameters = getattr(entry, "params_json_schema", None)
             if isinstance(parameters, Mapping):
                 tool_entry["parameters"] = dict(parameters)
-            strict_schema = getattr(entry, "strict_json_schema", None)
-            if isinstance(strict_schema, bool):
-                tool_entry["strict"] = strict_schema
             response = getattr(entry, "response", None)
             if isinstance(response, Mapping):
                 tool_entry["response"] = dict(response)
@@ -477,10 +474,6 @@ def _normalize_function_tool_payload(value: Any) -> dict[str, Any]:
     parameters = value.get("parameters")
     if isinstance(parameters, Mapping):
         normalized["parameters"] = dict(parameters)
-
-    strict = value.get("strict")
-    if isinstance(strict, bool):
-        normalized["strict"] = strict
 
     cache_control = value.get("cache_control")
     if isinstance(cache_control, Mapping):
