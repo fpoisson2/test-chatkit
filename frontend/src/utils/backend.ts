@@ -1892,6 +1892,28 @@ export const workflowsApi = {
     return response.json();
   },
 
+  async createAdminVoiceSession(
+    token: string | null,
+    workflowId: number,
+    options?: { voice?: string; model?: string },
+  ): Promise<{
+    session_id: string;
+    client_secret: string;
+    model: string;
+    voice: string;
+    instructions: string;
+  }> {
+    const response = await requestWithFallback(
+      `/api/workflows/${workflowId}/admin-voice/session`,
+      {
+        method: "POST",
+        headers: withAuthHeaders(token),
+        body: JSON.stringify(options ?? {}),
+      },
+    );
+    return response.json();
+  },
+
   // Workflow sharing methods
   async listShares(token: string | null, workflowId: number): Promise<WorkflowSharedUser[]> {
     const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {

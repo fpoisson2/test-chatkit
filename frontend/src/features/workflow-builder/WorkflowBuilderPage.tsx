@@ -228,6 +228,7 @@ import {
   ViewportProvider,
   ActiveSessionsProvider,
 } from "./contexts";
+import { AdminVoicePanel } from "./components/AdminVoicePanel";
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
@@ -1650,6 +1651,9 @@ const WorkflowBuilderPage = () => {
               handleNodeDragStop={handleNodeDragStop}
               editingLocked={editingLocked}
             />
+            {editingLocked && (selectedVersionDetail?.is_active ?? false) && (user?.is_admin ?? false) && selectedWorkflowId != null ? (
+              <AdminVoicePanel workflowId={selectedWorkflowId} />
+            ) : null}
           </div>
           </ActiveSessionsProvider>
           <WorkflowBuilderToast />
