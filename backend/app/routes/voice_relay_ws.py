@@ -8,12 +8,15 @@ Protocol (client ↔ backend):
   Client sends:
     {"type": "start", "workflow_id": 30}          — start session
     {"type": "audio", "data": "<base64 PCM16>"}   — user audio chunk
+    {"type": "switch_workflow", "workflow_id": 42} — switch active workflow
     {"type": "stop"}                               — end session
 
   Backend sends:
     {"type": "ready"}                              — session established
+    {"type": "ready", "workflow_name": "..."}      — session re-established after switch
     {"type": "audio", "data": "<base64 PCM16>"}   — agent audio chunk
     {"type": "status", "text": "..."}              — status message
+    {"type": "workflows", "data": [...]}           — list of available workflows
     {"type": "error", "message": "..."}            — error
 """
 
@@ -29,12 +32,68 @@ import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
+from fastapi import Depends, HTTPException
+from fastapi.responses import JSONResponse
+
 from ..database import SessionLocal
 from ..models import User, Workflow, WorkflowDefinition, WorkflowStep
-from ..security import decode_access_token
+from ..security import decode_access_token, get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# REST endpoints for Wear OS
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/voice-relay/workflows")
+async def list_workflows_for_voice(user: User = Depends(get_current_user)):
+    """List workflows available for voice control (admin only)."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin required")
+    db = SessionLocal()
+    try:
+        workflows = db.scalars(
+            select(Workflow).order_by(Workflow.display_name)
+        ).all()
+        return [
+            {"id": w.id, "name": w.display_name}
+            for w in workflows
+        ]
+    finally:
+        db.close()
+
+
+@router.post("/api/voice-relay/auth")
+async def voice_relay_auth_exchange(
+    body: dict,
+):
+    """Exchange email/password for a JWT token (for Wear OS login).
+
+    Body: {"email": "...", "password": "..."}
+    Returns: {"token": "..."}
+    """
+    from ..security import create_access_token, verify_password
+
+    email = body.get("email", "").strip()
+    password = body.get("password", "")
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+
+    db = SessionLocal()
+    try:
+        user = db.scalar(select(User).where(User.email == email))
+        if not user or not verify_password(password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin required")
+
+        token = create_access_token({"sub": str(user.id), "is_admin": user.is_admin})
+        return {"token": token}
+    finally:
+        db.close()
 
 OPENAI_REALTIME_WS = "wss://api.openai.com/v1/realtime"
 
@@ -61,6 +120,28 @@ def _build_session_config(
                 + (f", content: {msg}" if msg else "")
             )
     steps_context = "\n".join(step_descriptions)
+
+    # Add switch_workflow tool
+    switch_tool = {
+        "type": "function",
+        "name": "switch_workflow",
+        "description": (
+            "Switch to a different workflow. Use this when the user asks to "
+            "change or switch to another workflow. Returns the list of available "
+            "workflows if no workflow_id is provided."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {
+                    "type": "integer",
+                    "description": "The ID of the workflow to switch to. Omit to list available workflows.",
+                },
+            },
+            "required": [],
+        },
+    }
+    tools = list(tools) + [switch_tool]
 
     instructions = (
         f"Tu es un assistant administrateur concis pour le workflow '{workflow.display_name}'. "
@@ -121,6 +202,47 @@ async def voice_relay_websocket(websocket: WebSocket):
 
     openai_ws = None
 
+    async def _load_workflow_context(wf_id: int):
+        """Load workflow, steps, tools and build session config. Returns (config, workflow_name) or raises."""
+        db = SessionLocal()
+        try:
+            workflow = db.get(Workflow, wf_id)
+            if not workflow:
+                return None, None
+
+            active_def = db.scalar(
+                select(WorkflowDefinition).where(
+                    WorkflowDefinition.workflow_id == wf_id,
+                    WorkflowDefinition.is_active == True,  # noqa: E712
+                )
+            )
+            if not active_def:
+                return None, None
+
+            steps = db.scalars(
+                select(WorkflowStep)
+                .where(WorkflowStep.definition_id == active_def.id)
+                .order_by(WorkflowStep.position)
+            ).all()
+
+            tools_defs = _get_admin_voice_tools_definitions()
+            config = _build_session_config(workflow, steps, tools_defs)
+            return config, workflow.display_name
+        finally:
+            db.close()
+
+    async def _list_all_workflows():
+        """Return JSON string listing all workflows."""
+        db = SessionLocal()
+        try:
+            workflows = db.scalars(
+                select(Workflow).order_by(Workflow.display_name)
+            ).all()
+            items = [{"id": w.id, "name": w.display_name} for w in workflows]
+            return json.dumps(items, ensure_ascii=False)
+        finally:
+            db.close()
+
     try:
         # Wait for "start" message with workflow_id
         raw = await asyncio.wait_for(websocket.receive_json(), timeout=30)
@@ -133,34 +255,10 @@ async def voice_relay_websocket(websocket: WebSocket):
             await websocket.send_json({"type": "error", "message": "Missing workflow_id"})
             return
 
-        # Load workflow context
-        db = SessionLocal()
-        try:
-            workflow = db.get(Workflow, workflow_id)
-            if not workflow:
-                await websocket.send_json({"type": "error", "message": "Workflow not found"})
-                return
-
-            active_def = db.scalar(
-                select(WorkflowDefinition).where(
-                    WorkflowDefinition.workflow_id == workflow_id,
-                    WorkflowDefinition.is_active == True,  # noqa: E712
-                )
-            )
-            if not active_def:
-                await websocket.send_json({"type": "error", "message": "No active definition"})
-                return
-
-            steps = db.scalars(
-                select(WorkflowStep)
-                .where(WorkflowStep.definition_id == active_def.id)
-                .order_by(WorkflowStep.position)
-            ).all()
-
-            tools = _get_admin_voice_tools_definitions()
-            session_config = _build_session_config(workflow, steps, tools)
-        finally:
-            db.close()
+        session_config, wf_name = await _load_workflow_context(workflow_id)
+        if not session_config:
+            await websocket.send_json({"type": "error", "message": "Workflow not found or no active definition"})
+            return
 
         # Connect to OpenAI Realtime WebSocket
         settings = get_settings()
@@ -181,22 +279,31 @@ async def voice_relay_websocket(websocket: WebSocket):
 
         # Configure the session
         await openai_ws.send(json.dumps(session_config))
-        await websocket.send_json({"type": "ready"})
+        await websocket.send_json({"type": "ready", "workflow_name": wf_name})
+
+        # Shared state for workflow switching
+        switch_event = asyncio.Event()
+        switch_target = {"workflow_id": None}
 
         # Relay tasks
         async def client_to_openai():
             """Forward audio from watch client to OpenAI."""
+            nonlocal workflow_id
             try:
                 while True:
                     msg = await websocket.receive_json()
                     msg_type = msg.get("type")
 
                     if msg_type == "audio":
-                        # Forward audio to OpenAI
                         await openai_ws.send(json.dumps({
                             "type": "input_audio_buffer.append",
                             "audio": msg["data"],
                         }))
+                    elif msg_type == "switch_workflow":
+                        # Client explicitly requests workflow switch
+                        switch_target["workflow_id"] = msg.get("workflow_id")
+                        switch_event.set()
+                        return
                     elif msg_type == "stop":
                         break
             except WebSocketDisconnect:
@@ -206,13 +313,13 @@ async def voice_relay_websocket(websocket: WebSocket):
 
         async def openai_to_client():
             """Forward audio from OpenAI to watch client, handle tool calls."""
+            nonlocal workflow_id
             try:
                 async for raw_msg in openai_ws:
                     event = json.loads(raw_msg)
                     event_type = event.get("type", "")
 
                     if event_type == "response.audio.delta":
-                        # Forward audio chunk to client
                         delta = event.get("delta", "")
                         if delta:
                             await websocket.send_json({
@@ -221,7 +328,6 @@ async def voice_relay_websocket(websocket: WebSocket):
                             })
 
                     elif event_type == "response.function_call_arguments.done":
-                        # Handle tool call server-side
                         call_id = event.get("call_id", "")
                         tool_name = event.get("name", "")
                         args_str = event.get("arguments", "{}")
@@ -237,7 +343,39 @@ async def voice_relay_websocket(websocket: WebSocket):
                         except json.JSONDecodeError:
                             args = {}
 
-                        # Execute tool with fresh DB session
+                        # Handle switch_workflow tool
+                        if tool_name == "switch_workflow":
+                            target_id = args.get("workflow_id")
+                            if target_id:
+                                switch_target["workflow_id"] = target_id
+                                # Send result to OpenAI before switching
+                                await openai_ws.send(json.dumps({
+                                    "type": "conversation.item.create",
+                                    "item": {
+                                        "type": "function_call_output",
+                                        "call_id": call_id,
+                                        "output": f"Switching to workflow {target_id}...",
+                                    },
+                                }))
+                                switch_event.set()
+                                return
+                            else:
+                                # List workflows
+                                result = await _list_all_workflows()
+                                await openai_ws.send(json.dumps({
+                                    "type": "conversation.item.create",
+                                    "item": {
+                                        "type": "function_call_output",
+                                        "call_id": call_id,
+                                        "output": result,
+                                    },
+                                }))
+                                await openai_ws.send(json.dumps({
+                                    "type": "response.create",
+                                }))
+                                continue
+
+                        # Execute other tools
                         tool_db = SessionLocal()
                         try:
                             result = await _execute_admin_voice_tool(
@@ -250,7 +388,6 @@ async def voice_relay_websocket(websocket: WebSocket):
 
                         logger.info(f"[VOICE_RELAY] Tool result: {result[:100]}")
 
-                        # Send result back to OpenAI
                         await openai_ws.send(json.dumps({
                             "type": "conversation.item.create",
                             "item": {
@@ -276,16 +413,52 @@ async def voice_relay_websocket(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"[VOICE_RELAY] OpenAI→Client error: {e}")
 
-        # Run both relay tasks concurrently
-        done, pending = await asyncio.wait(
-            [
-                asyncio.create_task(client_to_openai()),
-                asyncio.create_task(openai_to_client()),
-            ],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        for task in pending:
-            task.cancel()
+        # Main loop: supports workflow switching by reconnecting to OpenAI
+        while True:
+            switch_event.clear()
+
+            done, pending = await asyncio.wait(
+                [
+                    asyncio.create_task(client_to_openai()),
+                    asyncio.create_task(openai_to_client()),
+                ],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+
+            # Check if we need to switch workflows
+            if not switch_event.is_set():
+                break
+
+            new_wf_id = switch_target["workflow_id"]
+            logger.info(f"[VOICE_RELAY] Switching to workflow {new_wf_id}")
+
+            # Close old OpenAI connection
+            await openai_ws.close()
+
+            new_config, new_name = await _load_workflow_context(new_wf_id)
+            if not new_config:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": f"Workflow {new_wf_id} not found",
+                })
+                break
+
+            workflow_id = new_wf_id
+
+            # Reconnect to OpenAI with new config
+            openai_ws = await websockets.connect(
+                f"{OPENAI_REALTIME_WS}?model={model}",
+                additional_headers=headers,
+                max_size=None,
+            )
+            await openai_ws.send(json.dumps(new_config))
+            await websocket.send_json({
+                "type": "ready",
+                "workflow_name": new_name,
+            })
+            logger.info(f"[VOICE_RELAY] Switched to workflow '{new_name}' (id={new_wf_id})")
 
     except WebSocketDisconnect:
         logger.info("[VOICE_RELAY] Client disconnected")

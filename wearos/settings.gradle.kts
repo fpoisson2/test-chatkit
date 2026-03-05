@@ -12,4 +12,5 @@ dependencyResolution {
     }
 }
 rootProject.name = "EDxoVoice"
-include(":app")
+include(":app")     // Wear OS watch app
+include(":mobile")  // Phone companion app

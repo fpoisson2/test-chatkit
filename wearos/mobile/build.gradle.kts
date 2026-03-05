@@ -4,18 +4,15 @@ plugins {
 }
 
 android {
-    namespace = "com.edxo.voice"
+    namespace = "com.edxo.voice.mobile"
     compileSdk = 34
 
     defaultConfig {
         applicationId = "com.edxo.voice"
-        minSdk = 30
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-
-        // Set your backend URL here
-        buildConfigField("String", "BACKEND_WS_URL", "\"wss://chatkit.ve2fpd.com/api/voice-relay/ws\"")
     }
 
     buildFeatures {
@@ -32,10 +29,10 @@ android {
 }
 
 dependencies {
-    implementation("androidx.wear:wear:1.3.0")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.activity:activity-ktx:1.8.2")
+    implementation("com.google.android.material:material:1.11.0")
     implementation("com.google.android.gms:play-services-wearable:18.1.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.json:json:20231013")

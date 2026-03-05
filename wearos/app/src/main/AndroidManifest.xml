@@ -32,6 +32,11 @@
             android:exported="false"
             android:label="Token Setup" />
 
+        <activity
+            android:name=".WorkflowPickerActivity"
+            android:exported="false"
+            android:label="Workflows" />
+
         <!-- VoiceInteractionService: allows EDxo to be selected as
              "Default digital assistant" in system settings.
              Once selected, long-press home/crown launches EDxo Voice. -->
@@ -51,5 +56,17 @@
             android:name=".EdxoVoiceInteractionSessionService"
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <!-- Receives config (token, URL, workflow) from phone app via Data Layer -->
+        <service
+            android:name=".PhoneConfigReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/edxo-voice-config" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
