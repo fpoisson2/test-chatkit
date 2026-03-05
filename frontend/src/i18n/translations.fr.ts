@@ -612,6 +612,8 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.assistantMessageInspector.publishLivePublishing": "Publication…",
   "workflowBuilder.assistantMessageInspector.publishLiveSuccess": "Publié !",
   "workflowBuilder.assistantMessageInspector.publishLiveError": "Erreur",
+  "workflowBuilder.improveWithAI": "Améliorer avec l'IA",
+  "workflowBuilder.improveWithAIPlaceholder": "Instructions pour l'amélioration (optionnel)...",
   "workflowBuilder.agentInspector.nestedWorkflowSectionTitle": "Déléguer à un autre workflow",
   "workflowBuilder.agentInspector.nestedWorkflowMode.custom": "Configurer localement",
   "workflowBuilder.agentInspector.nestedWorkflowMode.local": "Utiliser un workflow de cet espace",

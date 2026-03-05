@@ -24,6 +24,8 @@ import {
   Image as ImageIcon,
   Maximize2,
   Radio,
+  Send,
+  Sparkles,
 } from 'lucide-react';
 
 import {
@@ -1124,8 +1126,29 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
     [t],
   );
 
+  const [isImproving, setIsImproving] = useState(false);
+  const [showImproveInput, setShowImproveInput] = useState(false);
+  const [improveInstructions, setImproveInstructions] = useState('');
+  const improveInputRef = React.useRef<HTMLInputElement>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleImproveWithAI = useCallback(async () => {
+    if (!agentMessage.trim()) return;
+    setIsImproving(true);
+    try {
+      const result = await workflowsApi.improveContent(
+        token, agentMessage, 'system_prompt', improveInstructions.trim() || undefined,
+      );
+      onAgentMessageChange(nodeId, result.improved_content);
+      setShowImproveInput(false);
+      setImproveInstructions('');
+    } catch {
+      // silently fail
+    } finally {
+      setIsImproving(false);
+    }
+  }, [token, agentMessage, nodeId, onAgentMessageChange, improveInstructions]);
 
   const handlePublishLive = useCallback(async () => {
     if (!workflowId || !stepSlug || !agentMessage) return;
@@ -1158,16 +1181,56 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
               rows={8}
               placeholder={t('workflowBuilder.agentInspector.messagePlaceholder')}
             />
-            <button
-              type="button"
-              className={styles.expandButton}
-              onClick={() => setIsPromptModalOpen(true)}
-              title={t('workflowBuilder.agentInspector.promptModal.expand')}
-              aria-label={t('workflowBuilder.agentInspector.promptModal.expand')}
-            >
-              <Maximize2 size={16} />
-            </button>
+            <div className={styles.textareaActions}>
+              <button
+                type="button"
+                className={`${styles.expandButton}${showImproveInput ? ` ${styles.expandButtonActive}` : ''}`}
+                onClick={() => {
+                  setShowImproveInput((v) => !v);
+                  setTimeout(() => improveInputRef.current?.focus(), 0);
+                }}
+                disabled={isImproving}
+                title={t('workflowBuilder.improveWithAI')}
+                aria-label={t('workflowBuilder.improveWithAI')}
+              >
+                <Sparkles size={16} className={isImproving ? styles.spinning : ''} />
+              </button>
+              <button
+                type="button"
+                className={styles.expandButton}
+                onClick={() => setIsPromptModalOpen(true)}
+                title={t('workflowBuilder.agentInspector.promptModal.expand')}
+                aria-label={t('workflowBuilder.agentInspector.promptModal.expand')}
+              >
+                <Maximize2 size={16} />
+              </button>
+            </div>
           </div>
+          {showImproveInput ? (
+            <div className={styles.improveRow}>
+              <input
+                ref={improveInputRef}
+                type="text"
+                className={styles.improveInput}
+                value={improveInstructions}
+                onChange={(e) => setImproveInstructions(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleImproveWithAI(); }}
+                placeholder={t('workflowBuilder.improveWithAIPlaceholder')}
+                disabled={isImproving}
+              />
+              <button
+                type="button"
+                className={styles.improveSendButton}
+                onClick={handleImproveWithAI}
+                disabled={isImproving || !agentMessage.trim()}
+                title={t('workflowBuilder.improveWithAI')}
+              >
+                {isImproving
+                  ? <Sparkles size={14} className={styles.spinning} />
+                  : <Send size={14} />}
+              </button>
+            </div>
+          ) : null}
         </Field>
 
         <AgentPromptModal

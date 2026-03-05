@@ -1,5 +1,5 @@
-import { Maximize2, Radio } from "lucide-react";
-import { useCallback, useState } from "react";
+import { Maximize2, Radio, Send, Sparkles } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 
 import { useAuth } from "../../../../../auth";
 import { useI18n } from "../../../../../i18n";
@@ -37,6 +37,10 @@ export const AssistantMessageInspectorSection = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState<"idle" | "success" | "error">("idle");
+  const [isImproving, setIsImproving] = useState(false);
+  const [showImproveInput, setShowImproveInput] = useState(false);
+  const [improveInstructions, setImproveInstructions] = useState("");
+  const improveInputRef = useRef<HTMLInputElement>(null);
 
   const handlePublishLive = useCallback(async () => {
     if (!workflowId || !stepSlug || !assistantMessage) return;
@@ -54,6 +58,23 @@ export const AssistantMessageInspectorSection = ({
     }
   }, [token, workflowId, stepSlug, assistantMessage]);
 
+  const handleImproveWithAI = useCallback(async () => {
+    if (!assistantMessage.trim()) return;
+    setIsImproving(true);
+    try {
+      const result = await workflowsApi.improveContent(
+        token, assistantMessage, "assistant_message", improveInstructions.trim() || undefined,
+      );
+      onAssistantMessageChange(nodeId, result.improved_content);
+      setShowImproveInput(false);
+      setImproveInstructions("");
+    } catch {
+      // silently fail
+    } finally {
+      setIsImproving(false);
+    }
+  }, [token, assistantMessage, nodeId, onAssistantMessageChange, improveInstructions]);
+
   return (
     <>
       <label className={styles.nodeInspectorField}>
@@ -68,16 +89,56 @@ export const AssistantMessageInspectorSection = ({
             placeholder={t("workflowBuilder.assistantMessageInspector.messagePlaceholder")}
             className={styles.nodeInspectorTextarea}
           />
-          <button
-            type="button"
-            className={styles.nodeInspectorExpandButton}
-            onClick={() => setIsModalOpen(true)}
-            title={t("workflowBuilder.assistantMessageInspector.modal.expand")}
-            aria-label={t("workflowBuilder.assistantMessageInspector.modal.expand")}
-          >
-            <Maximize2 size={16} />
-          </button>
+          <div className={styles.nodeInspectorTextareaActions}>
+            <button
+              type="button"
+              className={`${styles.nodeInspectorExpandButton}${showImproveInput ? ` ${styles.nodeInspectorExpandButtonActive}` : ""}`}
+              onClick={() => {
+                setShowImproveInput((v) => !v);
+                setTimeout(() => improveInputRef.current?.focus(), 0);
+              }}
+              disabled={isImproving}
+              title={t("workflowBuilder.improveWithAI")}
+              aria-label={t("workflowBuilder.improveWithAI")}
+            >
+              <Sparkles size={16} className={isImproving ? styles.nodeInspectorSpinning : ""} />
+            </button>
+            <button
+              type="button"
+              className={styles.nodeInspectorExpandButton}
+              onClick={() => setIsModalOpen(true)}
+              title={t("workflowBuilder.assistantMessageInspector.modal.expand")}
+              aria-label={t("workflowBuilder.assistantMessageInspector.modal.expand")}
+            >
+              <Maximize2 size={16} />
+            </button>
+          </div>
         </div>
+        {showImproveInput ? (
+          <div className={styles.nodeInspectorImproveRow}>
+            <input
+              ref={improveInputRef}
+              type="text"
+              className={styles.nodeInspectorImproveInput}
+              value={improveInstructions}
+              onChange={(e) => setImproveInstructions(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleImproveWithAI(); }}
+              placeholder={t("workflowBuilder.improveWithAIPlaceholder")}
+              disabled={isImproving}
+            />
+            <button
+              type="button"
+              className={styles.nodeInspectorImproveSendButton}
+              onClick={handleImproveWithAI}
+              disabled={isImproving || !assistantMessage.trim()}
+              title={t("workflowBuilder.improveWithAI")}
+            >
+              {isImproving
+                ? <Sparkles size={14} className={styles.nodeInspectorSpinning} />
+                : <Send size={14} />}
+            </button>
+          </div>
+        ) : null}
         <p className={styles.nodeInspectorHintTextTight}>
           {t("workflowBuilder.assistantMessageInspector.messageHint")}
         </p>

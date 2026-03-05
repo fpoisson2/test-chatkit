@@ -1878,6 +1878,20 @@ export const workflowsApi = {
     return response.json();
   },
 
+  async improveContent(
+    token: string | null,
+    content: string,
+    contentType: "assistant_message" | "system_prompt",
+    instructions?: string,
+  ): Promise<{ improved_content: string }> {
+    const response = await requestWithFallback("/api/workflows/ai/improve-content", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ content, content_type: contentType, instructions }),
+    });
+    return response.json();
+  },
+
   // Workflow sharing methods
   async listShares(token: string | null, workflowId: number): Promise<WorkflowSharedUser[]> {
     const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {

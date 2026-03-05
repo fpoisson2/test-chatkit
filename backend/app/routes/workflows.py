@@ -1290,3 +1290,84 @@ async def generate_workflow_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/api/workflows/ai/improve-content")
+async def ai_improve_content(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Use AI (Agents SDK) to improve text content (assistant messages or system prompts)."""
+    from agents import Agent, RunConfig, Runner
+
+    from ..chatkit.agent_registry import create_litellm_model, get_agent_provider_binding
+
+    _ensure_admin(current_user)
+
+    body = await request.json()
+    content: str = body.get("content", "").strip()
+    content_type: str = body.get("content_type", "assistant_message")
+    user_instructions: str = (body.get("instructions") or "").strip()
+
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Content is required",
+        )
+
+    if content_type == "system_prompt":
+        instructions = (
+            "You are an expert at improving AI system prompts. "
+            "The user will give you a system prompt. Improve it to be clearer, "
+            "more precise, and more effective. Keep the same intent and language. "
+            "Return ONLY the improved text, nothing else."
+        )
+    else:
+        instructions = (
+            "You are an expert at improving instructional and conversational text. "
+            "The user will give you a message. Improve it to be clearer, "
+            "more engaging, and better structured. Keep the same intent and language. "
+            "Return ONLY the improved text, nothing else."
+        )
+
+    if user_instructions:
+        instructions += f"\n\nAdditional instructions from the user: {user_instructions}"
+
+    provider_binding = get_agent_provider_binding(None, "openai")
+    if not provider_binding:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No OpenAI provider configured",
+        )
+
+    model_instance = create_litellm_model("gpt-5-nano", provider_binding)
+    agent = Agent(
+        name="Content Improver",
+        model=model_instance,
+        instructions=instructions,
+    )
+    agent._chatkit_provider_binding = provider_binding
+
+    run_config_kwargs: dict[str, Any] = {}
+    if provider_binding.provider is not None:
+        run_config_kwargs["model_provider"] = provider_binding.provider
+
+    try:
+        run_config = RunConfig(**run_config_kwargs)
+    except TypeError:
+        run_config_kwargs.pop("model_provider", None)
+        run_config = RunConfig(**run_config_kwargs)
+
+    try:
+        result = await Runner.run(
+            agent,
+            input=content,
+            run_config=run_config,
+        )
+        improved = result.final_output or content
+        return {"improved_content": improved}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AI improvement failed: {str(e)}",
+        )
