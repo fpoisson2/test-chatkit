@@ -86,7 +86,7 @@ async def voice_relay_auth_exchange(
     db = SessionLocal()
     try:
         user = db.scalar(select(User).where(User.email == email))
-        if not user or not verify_password(password, user.hashed_password):
+        if not user or not verify_password(password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Admin required")
