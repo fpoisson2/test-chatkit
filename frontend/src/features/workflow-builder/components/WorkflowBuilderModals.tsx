@@ -62,15 +62,11 @@ export default function WorkflowBuilderModals({
   const {
     // Create Modal
     isCreateModalOpen,
-    createWorkflowKind,
     createWorkflowName,
-    createWorkflowRemoteId,
     createWorkflowError,
     isCreatingWorkflow,
     closeCreateModal,
-    setCreateWorkflowKind,
     setCreateWorkflowName,
-    setCreateWorkflowRemoteId,
 
     // Deploy Modal
     isDeployModalOpen,
@@ -94,16 +90,12 @@ export default function WorkflowBuilderModals({
 
       <CreateWorkflowModal
         isOpen={isCreateModalOpen}
-        kind={createWorkflowKind}
         name={createWorkflowName}
-        remoteId={createWorkflowRemoteId}
         error={createWorkflowError}
         isSubmitting={isCreatingWorkflow}
         onClose={closeCreateModal}
         onSubmit={onSubmitCreateWorkflow}
-        onKindChange={setCreateWorkflowKind}
         onNameChange={setCreateWorkflowName}
-        onRemoteIdChange={setCreateWorkflowRemoteId}
       />
 
       <DeployWorkflowModal

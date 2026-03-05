@@ -1735,6 +1735,14 @@ export type WorkflowVersionResponse = {
   updated_at: string;
 };
 
+export type CreateWorkflowResponse = {
+  id: number;
+  workflow_id: number;
+  name: string;
+  version: number;
+  is_active: boolean;
+};
+
 export type CreateWorkflowPayload = {
   slug: string;
   display_name: string;
@@ -1761,7 +1769,7 @@ export const workflowsApi = {
     return response.json();
   },
 
-  async create(token: string | null, payload: CreateWorkflowPayload): Promise<WorkflowSummary> {
+  async create(token: string | null, payload: CreateWorkflowPayload): Promise<CreateWorkflowResponse> {
     const response = await requestWithFallback("/api/workflows", {
       method: "POST",
       headers: withAuthHeaders(token),

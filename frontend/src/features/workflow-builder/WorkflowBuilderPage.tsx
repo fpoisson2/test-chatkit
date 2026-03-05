@@ -275,12 +275,8 @@ const WorkflowBuilderPage = () => {
   } = useUIContext();
 
   const {
-    createWorkflowKind,
-    setCreateWorkflowKind,
     createWorkflowName,
     setCreateWorkflowName,
-    createWorkflowRemoteId,
-    setCreateWorkflowRemoteId,
     createWorkflowError,
     setCreateWorkflowError,
     isCreatingWorkflow,
@@ -1126,12 +1122,10 @@ const WorkflowBuilderPage = () => {
 
   // Override handleOpenCreateModal to include form reset logic
   const handleOpenCreateModalWithReset = useCallback(() => {
-    setCreateWorkflowKind("local");
     setCreateWorkflowName("");
-    setCreateWorkflowRemoteId("");
     setCreateWorkflowError(null);
     handleOpenCreateModal();
-  }, [handleOpenCreateModal]);
+  }, [handleOpenCreateModal, setCreateWorkflowName, setCreateWorkflowError]);
 
   // Auto-open create modal if navigated from chat with ?create=true
   useEffect(() => {

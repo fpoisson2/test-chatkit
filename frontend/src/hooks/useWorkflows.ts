@@ -6,6 +6,7 @@ import {
   type WorkflowVersionSummary,
   type WorkflowVersionResponse,
   type CreateWorkflowPayload,
+  type CreateWorkflowResponse,
   type CreateWorkflowWithGraphPayload,
   type UpdateWorkflowPayload,
   type HostedWorkflowMetadata,

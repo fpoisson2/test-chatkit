@@ -3,42 +3,28 @@ import { FormEvent, useId } from "react";
 import { Modal } from "../../../components/Modal";
 import { useI18n } from "../../../i18n";
 
-export type CreateWorkflowKind = "local" | "hosted";
-
 type CreateWorkflowModalProps = {
   isOpen: boolean;
-  kind: CreateWorkflowKind;
   name: string;
-  remoteId: string;
   error: string | null;
   isSubmitting: boolean;
   onClose: () => void;
   onSubmit: () => void;
-  onKindChange: (kind: CreateWorkflowKind) => void;
   onNameChange: (value: string) => void;
-  onRemoteIdChange: (value: string) => void;
 };
 
 export const CreateWorkflowModal = ({
   isOpen,
-  kind,
   name,
-  remoteId,
   error,
   isSubmitting,
   onClose,
   onSubmit,
-  onKindChange,
   onNameChange,
-  onRemoteIdChange,
 }: CreateWorkflowModalProps) => {
   const { t } = useI18n();
   const formId = useId();
   const nameId = useId();
-  const remoteIdId = useId();
-  const localInputId = useId();
-  const hostedInputId = useId();
-  const radioName = `${formId}-kind`;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -75,35 +61,6 @@ export const CreateWorkflowModal = ({
       open={isOpen}
     >
       <form id={formId} onSubmit={handleSubmit} className="create-workflow-modal__form">
-        <fieldset className="create-workflow-modal__fieldset">
-          <legend className="create-workflow-modal__legend">
-            {t("workflowBuilder.createWorkflow.modal.typeLabel")}
-          </legend>
-          <label className="create-workflow-modal__radio" htmlFor={localInputId}>
-            <input
-              id={localInputId}
-              type="radio"
-              name={radioName}
-              value="local"
-              checked={kind === "local"}
-              onChange={() => onKindChange("local")}
-              disabled={isSubmitting}
-            />
-            <span>{t("workflowBuilder.createWorkflow.modal.typeLocal")}</span>
-          </label>
-          <label className="create-workflow-modal__radio" htmlFor={hostedInputId}>
-            <input
-              id={hostedInputId}
-              type="radio"
-              name={radioName}
-              value="hosted"
-              checked={kind === "hosted"}
-              onChange={() => onKindChange("hosted")}
-              disabled={isSubmitting}
-            />
-            <span>{t("workflowBuilder.createWorkflow.modal.typeHosted")}</span>
-          </label>
-        </fieldset>
         <div className="create-workflow-modal__field">
           <label htmlFor={nameId}>{t("workflowBuilder.createWorkflow.modal.nameLabel")}</label>
           <input
@@ -115,20 +72,6 @@ export const CreateWorkflowModal = ({
             disabled={isSubmitting}
           />
         </div>
-        {kind === "hosted" ? (
-          <div className="create-workflow-modal__field">
-            <label htmlFor={remoteIdId}>
-              {t("workflowBuilder.createWorkflow.modal.remoteIdLabel")}
-            </label>
-            <input
-              id={remoteIdId}
-              type="text"
-              value={remoteId}
-              onChange={(event) => onRemoteIdChange(event.target.value)}
-              disabled={isSubmitting}
-            />
-          </div>
-        ) : null}
         {error ? (
           <p className="create-workflow-modal__error" role="alert">
             {error}

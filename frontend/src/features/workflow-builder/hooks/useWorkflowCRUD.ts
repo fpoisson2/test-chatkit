@@ -36,7 +36,6 @@ import type {
 } from "../types";
 import {
   useCreateWorkflow,
-  useCreateHostedWorkflow,
   useCreateWorkflowWithGraph,
   useDeleteWorkflow,
   useDeleteHostedWorkflow,
@@ -119,14 +118,11 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
   // Access contexts
   const { setSaveState, setSaveMessage } = useSaveContext();
   const {
-    createWorkflowKind,
     createWorkflowName,
-    createWorkflowRemoteId,
     setCreateWorkflowError,
     setIsCreatingWorkflow,
     closeCreateModal,
     setCreateWorkflowName,
-    setCreateWorkflowRemoteId,
   } = useModalContext();
   const {
     workflows,
@@ -137,7 +133,6 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
 
   // React Query mutations
   const createWorkflowMutation = useCreateWorkflow();
-  const createHostedWorkflowMutation = useCreateHostedWorkflow();
   const createWorkflowWithGraphMutation = useCreateWorkflowWithGraph();
   const deleteWorkflowMutation = useDeleteWorkflow();
   const deleteHostedWorkflowMutation = useDeleteHostedWorkflow();
@@ -156,68 +151,12 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       return;
     }
 
-    if (createWorkflowKind === "hosted") {
-      const remoteId = createWorkflowRemoteId.trim();
-      if (!remoteId) {
-        setCreateWorkflowError(t("workflowBuilder.createWorkflow.errorMissingRemoteId"));
-        return;
-      }
-      if (!token) {
-        const message = t("workflowBuilder.createWorkflow.errorAuthentication");
-        setSaveState("error");
-        setSaveMessage(message);
-        setCreateWorkflowError(message);
-        return;
-      }
-
-      setIsCreatingWorkflow(true);
-      const slug = slugifyWorkflowName(trimmedName);
-      setSaveState("saving");
-      setSaveMessage(t("workflowBuilder.createWorkflow.creatingHosted"));
-
-      try {
-        const created = await createHostedWorkflowMutation.mutateAsync({
-          token,
-          payload: {
-            slug,
-            workflow_id: remoteId,
-            label: trimmedName,
-            description: undefined,
-          },
-        });
-
-        // React Query handles cache invalidation automatically
-        await loadHostedWorkflows();
-
-        setSaveState("saved");
-        setSaveMessage(
-          t("workflowBuilder.createWorkflow.successHosted", { label: created.label }),
-        );
-        setTimeout(() => setSaveState("idle"), 1500);
-        closeCreateModal();
-        setCreateWorkflowName("");
-        setCreateWorkflowRemoteId("");
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : t("workflowBuilder.createWorkflow.errorCreateHosted");
-        setSaveState("error");
-        setSaveMessage(message);
-        setCreateWorkflowError(message);
-      } finally {
-        setIsCreatingWorkflow(false);
-      }
-      return;
-    }
-
-    // Local workflow creation
     setIsCreatingWorkflow(true);
     setSaveState("saving");
     setSaveMessage(t("workflowBuilder.createWorkflow.creatingLocal"));
 
     try {
-      const workflow = await createWorkflowMutation.mutateAsync({
+      const created = await createWorkflowMutation.mutateAsync({
         token,
         payload: {
           slug: slugifyWorkflowName(trimmedName),
@@ -226,10 +165,9 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
         },
       });
 
-      // React Query handles cache invalidation, but we need to load the created workflow
       await loadWorkflows({
-        selectWorkflowId: workflow.id,
-        selectVersionId: workflow.active_version_id,
+        selectWorkflowId: created.workflow_id,
+        selectVersionId: created.id,
       });
 
       setSaveState("saved");
@@ -239,7 +177,6 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       setTimeout(() => setSaveState("idle"), 1500);
       closeCreateModal();
       setCreateWorkflowName("");
-      setCreateWorkflowRemoteId("");
     } catch (error) {
       const message =
         error instanceof Error
@@ -254,16 +191,11 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
   }, [
     token,
     closeCreateModal,
-    createWorkflowKind,
     createWorkflowName,
-    createWorkflowRemoteId,
     createWorkflowMutation,
-    createHostedWorkflowMutation,
-    loadHostedWorkflows,
     loadWorkflows,
     setCreateWorkflowError,
     setCreateWorkflowName,
-    setCreateWorkflowRemoteId,
     setIsCreatingWorkflow,
     setSaveMessage,
     setSaveState,

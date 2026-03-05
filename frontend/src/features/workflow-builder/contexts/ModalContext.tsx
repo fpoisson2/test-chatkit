@@ -4,9 +4,7 @@ import { createContext, useContext, useState, useCallback, useMemo, type ReactNo
 type ModalContextValue = {
   // Create Modal State
   isCreateModalOpen: boolean;
-  createWorkflowKind: "local" | "hosted";
   createWorkflowName: string;
-  createWorkflowRemoteId: string;
   createWorkflowError: string | null;
   isCreatingWorkflow: boolean;
 
@@ -25,11 +23,9 @@ type ModalContextValue = {
   generationError: string | null;
 
   // Create Modal Methods
-  openCreateModal: (kind?: "local" | "hosted") => void;
+  openCreateModal: () => void;
   closeCreateModal: () => void;
-  setCreateWorkflowKind: (kind: "local" | "hosted") => void;
   setCreateWorkflowName: (name: string) => void;
-  setCreateWorkflowRemoteId: (id: string) => void;
   setCreateWorkflowError: (error: string | null) => void;
   setIsCreatingWorkflow: (creating: boolean) => void;
 
@@ -68,9 +64,7 @@ type ModalProviderProps = {
 export const ModalProvider = ({ children }: ModalProviderProps) => {
   // Create Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [createWorkflowKind, setCreateWorkflowKind] = useState<"local" | "hosted">("local");
   const [createWorkflowName, setCreateWorkflowName] = useState("");
-  const [createWorkflowRemoteId, setCreateWorkflowRemoteId] = useState("");
   const [createWorkflowError, setCreateWorkflowError] = useState<string | null>(null);
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
 
@@ -89,10 +83,8 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   // Create Modal Methods
-  const openCreateModal = useCallback((kind: "local" | "hosted" = "local") => {
-    setCreateWorkflowKind(kind);
+  const openCreateModal = useCallback(() => {
     setCreateWorkflowName("");
-    setCreateWorkflowRemoteId("");
     setCreateWorkflowError(null);
     setIsCreateModalOpen(true);
   }, []);
@@ -140,9 +132,7 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
     () => ({
       // Create Modal State
       isCreateModalOpen,
-      createWorkflowKind,
       createWorkflowName,
-      createWorkflowRemoteId,
       createWorkflowError,
       isCreatingWorkflow,
 
@@ -163,9 +153,7 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
       // Create Modal Methods
       openCreateModal,
       closeCreateModal,
-      setCreateWorkflowKind,
       setCreateWorkflowName,
-      setCreateWorkflowRemoteId,
       setCreateWorkflowError,
       setIsCreatingWorkflow,
 
@@ -188,9 +176,7 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
     }),
     [
       isCreateModalOpen,
-      createWorkflowKind,
       createWorkflowName,
-      createWorkflowRemoteId,
       createWorkflowError,
       isCreatingWorkflow,
       isDeployModalOpen,
