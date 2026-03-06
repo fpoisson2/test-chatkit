@@ -21,14 +21,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle 8.5
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.5'
 
       - name: Build watch APK first
         working-directory: wearos
-        run: gradle :app:assembleDebug
+        run: ./gradlew :app:assembleDebug
 
       - name: Embed watch APK in phone assets
         run: |
@@ -37,7 +35,7 @@ jobs:
 
       - name: Build phone APK (with embedded watch APK)
         working-directory: wearos
-        run: gradle :mobile:assembleDebug
+        run: ./gradlew :mobile:assembleDebug
 
       - name: Rename APKs
         run: |
