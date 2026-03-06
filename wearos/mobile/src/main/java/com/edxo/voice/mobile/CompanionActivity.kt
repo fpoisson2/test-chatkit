@@ -7,6 +7,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import okhttp3.MediaType.Companion.toMediaType
@@ -15,6 +16,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import kotlin.concurrent.thread
 
 /**
@@ -23,13 +26,15 @@ import kotlin.concurrent.thread
  * - Login with email/password -> auto-syncs token to watch
  * - Configure server URL
  * - Select workflow -> auto-syncs to watch
- * - The Wear OS app is embedded in this APK and auto-installs on paired watch
+ * - "Installer sur la montre" button pushes the watch APK via Channel API
  */
 class CompanionActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "EDxoCompanion"
         private const val CONFIG_PATH = "/edxo-voice-config"
+        private const val APK_CHANNEL_PATH = "/edxo-voice-apk"
+        private const val WATCH_APK_ASSET = "edxo-voice-watch.apk"
         private const val DEFAULT_URL = "https://chatkit.ve2fpd.com"
     }
 
@@ -43,6 +48,7 @@ class CompanionActivity : AppCompatActivity() {
     private lateinit var watchStatusLabel: TextView
     private lateinit var workflowSpinner: Spinner
     private lateinit var syncBtn: Button
+    private lateinit var installWatchBtn: Button
     private lateinit var configSection: LinearLayout
 
     private var token: String = ""
@@ -131,6 +137,13 @@ class CompanionActivity : AppCompatActivity() {
         }
         configSection.addView(watchStatusLabel, lp(topMargin = 16))
 
+        // Install on watch button
+        installWatchBtn = Button(this).apply {
+            text = "Installer sur la montre"
+            setOnClickListener { installOnWatch() }
+        }
+        configSection.addView(installWatchBtn, lp(topMargin = 8))
+
         // Manual sync button (fallback)
         syncBtn = Button(this).apply {
             text = "Re-synchroniser la montre"
@@ -167,6 +180,8 @@ class CompanionActivity : AppCompatActivity() {
         if (url.endsWith("/")) url = url.dropLast(1)
         return url
     }
+
+    // --- Login ---
 
     private fun doLogin() {
         val email = emailInput.text.toString().trim()
@@ -206,7 +221,6 @@ class CompanionActivity : AppCompatActivity() {
                         .putString("email", email)
                         .apply()
 
-                    // Auto-sync token to watch immediately
                     syncToWatch()
 
                     runOnUiThread {
@@ -234,6 +248,8 @@ class CompanionActivity : AppCompatActivity() {
             }
         }
     }
+
+    // --- Workflows ---
 
     private fun loadWorkflows() {
         thread {
@@ -265,7 +281,6 @@ class CompanionActivity : AppCompatActivity() {
                         this, android.R.layout.simple_spinner_dropdown_item, names
                     )
 
-                    // Restore last selection
                     val lastId = getSharedPreferences("edxo_voice", MODE_PRIVATE)
                         .getInt("workflow_id", 0)
                     val idx = workflows.indexOfFirst { it.id == lastId }
@@ -275,7 +290,6 @@ class CompanionActivity : AppCompatActivity() {
                         override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
                             val prev = selectedWorkflow
                             selectedWorkflow = workflows.getOrNull(pos)
-                            // Auto-sync when workflow changes (not on first load)
                             if (prev != null && selectedWorkflow != prev) {
                                 syncToWatch()
                             }
@@ -290,10 +304,8 @@ class CompanionActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Push current config (token, URL, workflow) to the paired watch.
-     * Called automatically on login and workflow change.
-     */
+    // --- Sync config to watch ---
+
     private fun syncToWatch() {
         val baseUrl = getBaseUrl()
         val wsUrl = baseUrl
@@ -302,7 +314,6 @@ class CompanionActivity : AppCompatActivity() {
 
         val wf = selectedWorkflow
 
-        // Save locally
         val prefs = getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
         if (wf != null) {
             prefs.putInt("workflow_id", wf.id)
@@ -310,7 +321,6 @@ class CompanionActivity : AppCompatActivity() {
         }
         prefs.apply()
 
-        // Push to watch via Data Layer
         val dataReq = PutDataMapRequest.create(CONFIG_PATH).apply {
             dataMap.putString("auth_token", token)
             dataMap.putString("server_url", wsUrl)
@@ -318,17 +328,12 @@ class CompanionActivity : AppCompatActivity() {
                 dataMap.putInt("workflow_id", wf.id)
                 dataMap.putString("workflow_name", wf.name)
             }
-            // Timestamp forces update even if data unchanged
             dataMap.putLong("timestamp", System.currentTimeMillis())
         }.asPutDataRequest().setUrgent()
 
         Wearable.getDataClient(this).putDataItem(dataReq)
             .addOnSuccessListener {
-                val msg = if (wf != null) {
-                    "Montre synchronisee (${wf.name})"
-                } else {
-                    "Token envoye a la montre"
-                }
+                val msg = if (wf != null) "Montre synchronisee (${wf.name})" else "Token envoye a la montre"
                 Log.i(TAG, "Synced to watch: url=$wsUrl, workflow=${wf?.name}")
                 runOnUiThread {
                     watchStatusLabel.text = msg
@@ -341,6 +346,113 @@ class CompanionActivity : AppCompatActivity() {
                     watchStatusLabel.text = "Montre non connectee"
                     watchStatusLabel.setTextColor(0xFFCC8800.toInt())
                 }
+            }
+    }
+
+    // --- Install APK on watch ---
+
+    private fun installOnWatch() {
+        // Check if watch APK is bundled in assets
+        val assetExists = try {
+            assets.open(WATCH_APK_ASSET).close()
+            true
+        } catch (_: Exception) {
+            false
+        }
+
+        if (!assetExists) {
+            Toast.makeText(this, "APK montre non inclus dans cette version", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        installWatchBtn.isEnabled = false
+        installWatchBtn.text = "Envoi en cours..."
+        watchStatusLabel.text = "Recherche de la montre..."
+        watchStatusLabel.setTextColor(0xFF888888.toInt())
+
+        // Find connected watch nodes
+        Wearable.getNodeClient(this).connectedNodes
+            .addOnSuccessListener { nodes ->
+                if (nodes.isEmpty()) {
+                    installWatchBtn.isEnabled = true
+                    installWatchBtn.text = "Installer sur la montre"
+                    watchStatusLabel.text = "Aucune montre connectee"
+                    watchStatusLabel.setTextColor(0xFFCC4444.toInt())
+                    return@addOnSuccessListener
+                }
+
+                // Send to first connected watch
+                val watchNode = nodes.first()
+                watchStatusLabel.text = "Envoi vers ${watchNode.displayName}..."
+
+                thread {
+                    try {
+                        // Copy APK from assets to a temp file
+                        val tempFile = File(cacheDir, WATCH_APK_ASSET)
+                        assets.open(WATCH_APK_ASSET).use { input ->
+                            FileOutputStream(tempFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+
+                        val uri = android.net.Uri.fromFile(tempFile)
+
+                        // Open a channel to the watch and send the file
+                        val channelClient = Wearable.getChannelClient(this)
+                        val channelTask = channelClient.openChannel(watchNode.id, APK_CHANNEL_PATH)
+
+                        channelTask
+                            .addOnSuccessListener { channel ->
+                                channelClient.sendFile(channel, uri)
+                                    .addOnSuccessListener {
+                                        channelClient.close(channel)
+                                        tempFile.delete()
+                                        Log.i(TAG, "APK sent to watch: ${watchNode.displayName}")
+                                        runOnUiThread {
+                                            installWatchBtn.isEnabled = true
+                                            installWatchBtn.text = "Installer sur la montre"
+                                            watchStatusLabel.text = "APK envoye! Installation en cours sur la montre..."
+                                            watchStatusLabel.setTextColor(0xFF44AA44.toInt())
+                                        }
+                                    }
+                                    .addOnFailureListener { e ->
+                                        channelClient.close(channel)
+                                        tempFile.delete()
+                                        Log.e(TAG, "Failed to send APK", e)
+                                        runOnUiThread {
+                                            installWatchBtn.isEnabled = true
+                                            installWatchBtn.text = "Installer sur la montre"
+                                            watchStatusLabel.text = "Erreur envoi: ${e.message}"
+                                            watchStatusLabel.setTextColor(0xFFCC4444.toInt())
+                                        }
+                                    }
+                            }
+                            .addOnFailureListener { e ->
+                                tempFile.delete()
+                                Log.e(TAG, "Failed to open channel", e)
+                                runOnUiThread {
+                                    installWatchBtn.isEnabled = true
+                                    installWatchBtn.text = "Installer sur la montre"
+                                    watchStatusLabel.text = "Erreur canal: ${e.message}"
+                                    watchStatusLabel.setTextColor(0xFFCC4444.toInt())
+                                }
+                            }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error preparing APK", e)
+                        runOnUiThread {
+                            installWatchBtn.isEnabled = true
+                            installWatchBtn.text = "Installer sur la montre"
+                            watchStatusLabel.text = "Erreur: ${e.message}"
+                            watchStatusLabel.setTextColor(0xFFCC4444.toInt())
+                        }
+                    }
+                }
+            }
+            .addOnFailureListener { e ->
+                installWatchBtn.isEnabled = true
+                installWatchBtn.text = "Installer sur la montre"
+                watchStatusLabel.text = "Erreur: ${e.message}"
+                watchStatusLabel.setTextColor(0xFFCC4444.toInt())
             }
     }
 }
