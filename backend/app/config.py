@@ -775,7 +775,7 @@ class Settings:
                 ),
             ),
             access_token_expire_minutes=int(
-                env.get("ACCESS_TOKEN_EXPIRE_MINUTES", "120")
+                env.get("ACCESS_TOKEN_EXPIRE_MINUTES", "5256000")
             ),
             admin_email=env.get("ADMIN_EMAIL"),
             admin_password=env.get("ADMIN_PASSWORD"),

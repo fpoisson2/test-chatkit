@@ -1,5 +1,6 @@
-package com.edxo.voice
+package com.edxo.voice.mobile
 
+import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -18,105 +19,150 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import kotlin.concurrent.thread
 
-class TokenSetupActivity : AppCompatActivity() {
+class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // If already logged in, go straight to main
+        val prefs = getSharedPreferences("edxo_voice", MODE_PRIVATE)
+        if (!prefs.getString("auth_token", null).isNullOrEmpty()) {
+            startMain()
+            return
+        }
+
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF000000.toInt())
+            setBackgroundColor(0xFF0D1117.toInt())
         }
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(24, 24, 24, 24)
+            setPadding(48, 120, 48, 48)
         }
 
         val title = TextView(this).apply {
             text = "EDxo"
             setTextColor(0xFFFFFFFF.toInt())
-            textSize = 16f
+            textSize = 28f
             gravity = Gravity.CENTER
         }
         layout.addView(title)
 
-        val prefs = getSharedPreferences("edxo_voice", MODE_PRIVATE)
+        val subtitle = TextView(this).apply {
+            text = "Connectez-vous a votre serveur"
+            setTextColor(0xFFAAAAAA.toInt())
+            textSize = 14f
+            gravity = Gravity.CENTER
+        }
+        layout.addView(subtitle, lp(topMargin = 8))
 
         // Server URL
+        val urlLabel = TextView(this).apply {
+            text = "Adresse du serveur"
+            setTextColor(0xFF8899BB.toInt())
+            textSize = 12f
+        }
+        layout.addView(urlLabel, lp(topMargin = 40))
+
         val urlInput = EditText(this).apply {
-            hint = "https://..."
+            hint = "https://chatkit.example.com"
             setText(prefs.getString("server_base_url", ""))
             setTextColor(0xFFFFFFFF.toInt())
-            setHintTextColor(0xFF888888.toInt())
-            textSize = 11f
+            setHintTextColor(0xFF555555.toInt())
+            textSize = 15f
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             imeOptions = EditorInfo.IME_ACTION_NEXT
             maxLines = 1
+            setBackgroundColor(0xFF161B22.toInt())
+            setPadding(24, 20, 24, 20)
         }
-        layout.addView(urlInput, lp(topMargin = 12))
+        layout.addView(urlInput, lp(topMargin = 4))
 
         // Email
+        val emailLabel = TextView(this).apply {
+            text = "Email"
+            setTextColor(0xFF8899BB.toInt())
+            textSize = 12f
+        }
+        layout.addView(emailLabel, lp(topMargin = 24))
+
         val emailInput = EditText(this).apply {
-            hint = "Email"
+            hint = "admin@example.com"
             setText(prefs.getString("saved_email", ""))
             setTextColor(0xFFFFFFFF.toInt())
-            setHintTextColor(0xFF888888.toInt())
-            textSize = 12f
+            setHintTextColor(0xFF555555.toInt())
+            textSize = 15f
             inputType = InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
             imeOptions = EditorInfo.IME_ACTION_NEXT
             maxLines = 1
+            setBackgroundColor(0xFF161B22.toInt())
+            setPadding(24, 20, 24, 20)
         }
-        layout.addView(emailInput, lp(topMargin = 8))
+        layout.addView(emailInput, lp(topMargin = 4))
 
         // Password
+        val pwLabel = TextView(this).apply {
+            text = "Mot de passe"
+            setTextColor(0xFF8899BB.toInt())
+            textSize = 12f
+        }
+        layout.addView(pwLabel, lp(topMargin = 24))
+
         val passwordInput = EditText(this).apply {
             hint = "Mot de passe"
             setTextColor(0xFFFFFFFF.toInt())
-            setHintTextColor(0xFF888888.toInt())
-            textSize = 12f
+            setHintTextColor(0xFF555555.toInt())
+            textSize = 15f
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             imeOptions = EditorInfo.IME_ACTION_DONE
             maxLines = 1
+            setBackgroundColor(0xFF161B22.toInt())
+            setPadding(24, 20, 24, 20)
         }
-        layout.addView(passwordInput, lp(topMargin = 8))
+        layout.addView(passwordInput, lp(topMargin = 4))
 
         val loginBtn = Button(this).apply {
-            text = "Connexion"
+            text = "Se connecter"
             setOnClickListener {
                 val serverUrl = urlInput.text.toString().trim().trimEnd('/')
                 val email = emailInput.text.toString().trim()
                 val password = passwordInput.text.toString()
 
                 if (serverUrl.isEmpty()) {
-                    Toast.makeText(this@TokenSetupActivity, "URL serveur requise", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@LoginActivity, "Adresse du serveur requise", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 if (email.isEmpty() || password.isEmpty()) {
-                    Toast.makeText(this@TokenSetupActivity, "Email et mot de passe requis", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@LoginActivity, "Email et mot de passe requis", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
 
                 isEnabled = false
-                text = "..."
+                text = "Connexion..."
                 doLogin(serverUrl, email, password) { success, message ->
                     runOnUiThread {
                         isEnabled = true
-                        text = "Connexion"
+                        text = "Se connecter"
                         if (success) {
-                            Toast.makeText(this@TokenSetupActivity, "Connecte!", Toast.LENGTH_SHORT).show()
-                            finish()
+                            Toast.makeText(this@LoginActivity, "Connecte!", Toast.LENGTH_SHORT).show()
+                            startMain()
                         } else {
-                            Toast.makeText(this@TokenSetupActivity, message, Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@LoginActivity, message, Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
             }
         }
-        layout.addView(loginBtn, lp(topMargin = 12))
+        layout.addView(loginBtn, lp(topMargin = 32))
 
         scroll.addView(layout)
         setContentView(scroll)
+    }
+
+    private fun startMain() {
+        startActivity(Intent(this, MainActivity::class.java))
+        finish()
     }
 
     private fun lp(topMargin: Int = 0) = LinearLayout.LayoutParams(
@@ -153,8 +199,8 @@ class TokenSetupActivity : AppCompatActivity() {
                         .putString("saved_email", email)
                         .apply()
 
-                    // Sync to phone
-                    WearSyncService.pushConfigToPhone(this, token = token, serverUrl = wsUrl)
+                    // Sync to watch
+                    WearSyncHelper.pushConfigToWatch(this, token = token, serverUrl = wsUrl)
 
                     callback(true, "OK")
                 } else {

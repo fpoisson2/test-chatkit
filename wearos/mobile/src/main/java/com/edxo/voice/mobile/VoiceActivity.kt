@@ -1,8 +1,8 @@
-package com.edxo.voice
+package com.edxo.voice.mobile
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
-import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.drawable.GradientDrawable
 import android.media.AudioFormat
@@ -34,7 +34,11 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-class MainActivity : AppCompatActivity() {
+/**
+ * Full-screen voice assistant activity for the phone.
+ * Same voice engine as the Wear OS app.
+ */
+class VoiceActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "EDxoVoice"
@@ -61,78 +65,83 @@ class MainActivity : AppCompatActivity() {
     private var workflowId: Int = 0
     private var workflowName: String = ""
 
-    // Activity result launcher for workflow picker
     private val pickWorkflow = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val data = result.data ?: return@registerForActivityResult
-            workflowId = data.getIntExtra(WorkflowPickerActivity.EXTRA_WORKFLOW_ID, 0)
-            workflowName = data.getStringExtra(WorkflowPickerActivity.EXTRA_WORKFLOW_NAME) ?: ""
+            workflowId = data.getIntExtra("workflow_id", 0)
+            workflowName = data.getStringExtra("workflow_name") ?: ""
             saveSelectedWorkflow()
             workflowText.text = workflowName.ifEmpty { "Choisir workflow" }
 
-            // If connected, send switch command
-            if (isConnected && webSocket != null) {
-                val msg = JSONObject()
-                    .put("type", "switch_workflow")
-                    .put("workflow_id", workflowId)
-                webSocket?.send(msg.toString())
-            }
+            // Sync workflow choice to watch
+            WearSyncHelper.pushConfigToWatch(this, workflowId = workflowId, workflowName = workflowName)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Load saved workflow
         loadSelectedWorkflow()
 
         val root = FrameLayout(this).apply {
-            setBackgroundColor(0xFF000000.toInt())
+            setBackgroundColor(0xFF0D1117.toInt())
         }
 
-        // Workflow name (tap to change)
+        // Close button (top-left)
+        val closeBtn = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setBackgroundColor(0x00000000)
+            setColorFilter(0xFFFFFFFF.toInt())
+            setOnClickListener { finish() }
+        }
+        root.addView(closeBtn, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.TOP or Gravity.START; topMargin = 48; marginStart = 16 })
+
+        // Workflow name
         workflowText = TextView(this).apply {
             text = workflowName.ifEmpty { "Choisir workflow" }
             setTextColor(0xFF6688CC.toInt())
-            textSize = 11f
+            textSize = 16f
             gravity = Gravity.CENTER
             setOnClickListener { openWorkflowPicker() }
         }
         root.addView(workflowText, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = 8 })
+        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = 120 })
 
-        // Status text
+        // Status
         statusText = TextView(this).apply {
-            text = "EDxo"
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 12f
+            text = "Appuyez pour parler"
+            setTextColor(0xFFAAAAAA.toInt())
+            textSize = 14f
             gravity = Gravity.CENTER
         }
         root.addView(statusText, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = 30 })
+        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = 160 })
 
-        // Mic button — round shape for round watch screens
+        // Mic button — large round
         micButton = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_btn_speak_now)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(0xFF1A1A2E.toInt())
-                setStroke((2 * resources.displayMetrics.density).toInt(), 0xFF6688CC.toInt())
+                setStroke((3 * resources.displayMetrics.density).toInt(), 0xFF6688CC.toInt())
             }
             scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-            val pad = (20 * resources.displayMetrics.density).toInt()
+            val pad = (28 * resources.displayMetrics.density).toInt()
             setPadding(pad, pad, pad, pad)
             contentDescription = "Microphone"
             setColorFilter(0xFFFFFFFF.toInt())
             setOnClickListener { toggleRecording() }
         }
-        val btnPx = (88 * resources.displayMetrics.density).toInt()
+        val btnPx = (120 * resources.displayMetrics.density).toInt()
         root.addView(micButton, FrameLayout.LayoutParams(btnPx, btnPx).apply {
             gravity = Gravity.CENTER
         })
@@ -143,74 +152,29 @@ class MainActivity : AppCompatActivity() {
         root.addView(progressBar, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = 24 })
+        ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = 80 })
 
         setContentView(root)
 
-        // Long-press status text to open manual login (fallback)
-        statusText.setOnLongClickListener {
-            startActivity(Intent(this, TokenSetupActivity::class.java))
-            true
-        }
-
-        // Check auth — if no token, show message to connect on phone
-        if (getStoredToken().isNullOrEmpty()) {
-            showNotConnectedState()
-        }
-
-        // Request audio permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                PERMISSION_REQUEST_CODE
-            )
-        } else if (intent?.getBooleanExtra("auto_start", false) == true && workflowId > 0) {
-            startSession()
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSION_REQUEST_CODE)
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
-    ) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                if (intent?.getBooleanExtra("auto_start", false) == true && workflowId > 0) {
-                    startSession()
-                }
-            } else {
-                Toast.makeText(this, "Microphone permission required", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun showNotConnectedState() {
-        micButton.visibility = View.GONE
-        workflowText.visibility = View.GONE
-        statusText.text = "Connectez-vous\nsur votre telephone\n\n(appui long pour\nlogin manuel)"
-        statusText.textSize = 13f
-        statusText.gravity = Gravity.CENTER
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Check if token was synced from phone while we were away
-        if (!getStoredToken().isNullOrEmpty() && micButton.visibility == View.GONE) {
-            micButton.visibility = View.VISIBLE
-            workflowText.visibility = View.VISIBLE
-            loadSelectedWorkflow()
-            workflowText.text = workflowName.ifEmpty { "Choisir workflow" }
-            statusText.text = "EDxo"
-            statusText.textSize = 12f
+        if (requestCode == PERMISSION_REQUEST_CODE && grantResults.isNotEmpty()
+            && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Permission micro requise", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun openWorkflowPicker() {
-        if (getStoredToken().isNullOrEmpty()) {
-            showNotConnectedState()
+        val token = getSharedPreferences("edxo_voice", MODE_PRIVATE).getString("auth_token", null)
+        if (token.isNullOrEmpty()) {
+            Toast.makeText(this, "Connectez-vous d'abord", Toast.LENGTH_SHORT).show()
             return
         }
         pickWorkflow.launch(Intent(this, WorkflowPickerActivity::class.java))
@@ -231,12 +195,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun startSession() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            Toast.makeText(this, "Microphone permission required", Toast.LENGTH_SHORT).show()
+            != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Permission micro requise", Toast.LENGTH_SHORT).show()
             return
         }
-
         isRecording = true
         updateUI(recording = true, status = "Connexion...")
         acquireWakeLock()
@@ -245,17 +207,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun stopSession() {
         isRecording = false
-        updateUI(recording = false, status = "EDxo")
-
+        updateUI(recording = false, status = "Appuyez pour parler")
         stopAudioCapture()
         stopAudioPlayback()
-
         webSocket?.let {
-            try {
-                it.send(JSONObject().put("type", "stop").toString())
-            } catch (e: Exception) {
-                Log.w(TAG, "Error sending stop", e)
-            }
+            try { it.send(JSONObject().put("type", "stop").toString()) } catch (_: Exception) {}
             it.close(1000, "User stopped")
         }
         webSocket = null
@@ -264,12 +220,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun connectWebSocket() {
-        val token = getStoredToken()
+        val token = getSharedPreferences("edxo_voice", MODE_PRIVATE).getString("auth_token", null)
         if (token.isNullOrEmpty()) {
-            runOnUiThread {
-                updateUI(recording = false, status = "Non connecte")
-                startActivity(Intent(this, TokenSetupActivity::class.java))
-            }
+            runOnUiThread { updateUI(recording = false, status = "Non connecte") }
             isRecording = false
             releaseWakeLock()
             return
@@ -278,23 +231,14 @@ class MainActivity : AppCompatActivity() {
         val serverUrl = getSharedPreferences("edxo_voice", MODE_PRIVATE)
             .getString("server_url", BuildConfig.BACKEND_WS_URL) ?: BuildConfig.BACKEND_WS_URL
         val url = "$serverUrl?token=$token"
-        Log.d(TAG, "Connecting to WS, workflow=$workflowId, url=$serverUrl")
 
-        val client = OkHttpClient.Builder()
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .build()
-
+        val client = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build()
         client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.i(TAG, "WebSocket connected")
                 webSocket = ws
                 isConnected = true
-
-                ws.send(JSONObject()
-                    .put("type", "start")
-                    .put("workflow_id", workflowId)
-                    .toString())
-
+                ws.send(JSONObject().put("type", "start").put("workflow_id", workflowId).toString())
                 runOnUiThread { updateUI(recording = true, status = "Connexion...") }
             }
 
@@ -306,7 +250,7 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TAG, "WebSocket failure: ${t.message}", t)
                 runOnUiThread {
                     updateUI(recording = false, status = "Erreur connexion")
-                    Toast.makeText(this@MainActivity, "Connexion echouee", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@VoiceActivity, "Connexion echouee", Toast.LENGTH_SHORT).show()
                 }
                 isRecording = false
                 isConnected = false
@@ -314,7 +258,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onClosing(ws: WebSocket, code: Int, reason: String) {
-                Log.i(TAG, "WebSocket closing: $code $reason")
                 ws.close(1000, null)
                 isConnected = false
                 if (isRecording) {
@@ -331,7 +274,6 @@ class MainActivity : AppCompatActivity() {
             val json = JSONObject(text)
             when (json.optString("type")) {
                 "ready" -> {
-                    Log.i(TAG, "Server ready")
                     val wfName = json.optString("workflow_name", "")
                     if (wfName.isNotEmpty()) {
                         workflowName = wfName
@@ -347,12 +289,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 "status" -> {
                     val msg = json.optString("text", "")
-                    Log.d(TAG, "Status: $msg")
                     runOnUiThread { updateUI(recording = true, status = msg) }
                 }
                 "error" -> {
                     val msg = json.optString("message", "Erreur")
-                    Log.e(TAG, "Server error: $msg")
                     runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
                 }
             }
@@ -361,17 +301,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- Audio ---
-
     private fun startAudioCapture() {
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_IN, ENCODING)
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) return
+            != PackageManager.PERMISSION_GRANTED) return
 
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC, SAMPLE_RATE, CHANNEL_IN, ENCODING, bufferSize * 2
-        )
+        audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE, CHANNEL_IN, ENCODING, bufferSize * 2)
         audioRecord?.startRecording()
 
         thread(isDaemon = true, name = "AudioCapture") {
@@ -381,14 +316,8 @@ class MainActivity : AppCompatActivity() {
                 if (read > 0) {
                     val b64 = Base64.encodeToString(buffer.copyOf(read), Base64.NO_WRAP)
                     try {
-                        webSocket?.send(JSONObject()
-                            .put("type", "audio")
-                            .put("data", b64)
-                            .toString())
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error sending audio", e)
-                        break
-                    }
+                        webSocket?.send(JSONObject().put("type", "audio").put("data", b64).toString())
+                    } catch (_: Exception) { break }
                 }
             }
         }
@@ -417,36 +346,27 @@ class MainActivity : AppCompatActivity() {
         audioTrack = null
     }
 
-    // --- UI ---
-
     private fun updateUI(recording: Boolean, status: String) {
         micButton.alpha = if (recording) 1.0f else 0.7f
         micButton.setColorFilter(if (recording) 0xFFFF4444.toInt() else 0xFFFFFFFF.toInt())
         (micButton.background as? GradientDrawable)?.apply {
             if (recording) {
                 setColor(0xFF2A1020.toInt())
-                setStroke((2 * resources.displayMetrics.density).toInt(), 0xFFFF4444.toInt())
+                setStroke((3 * resources.displayMetrics.density).toInt(), 0xFFFF4444.toInt())
             } else {
                 setColor(0xFF1A1A2E.toInt())
-                setStroke((2 * resources.displayMetrics.density).toInt(), 0xFF6688CC.toInt())
+                setStroke((3 * resources.displayMetrics.density).toInt(), 0xFF6688CC.toInt())
             }
         }
         statusText.text = status
         progressBar.visibility = if (recording && !isConnected) View.VISIBLE else View.GONE
     }
 
-    // --- Persistence ---
-
-    private fun getStoredToken(): String? =
-        getSharedPreferences("edxo_voice", MODE_PRIVATE).getString("auth_token", null)
-
     private fun saveSelectedWorkflow() {
         getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
             .putInt("workflow_id", workflowId)
             .putString("workflow_name", workflowName)
             .apply()
-        // Sync to phone
-        WearSyncService.pushConfigToPhone(this, workflowId = workflowId, workflowName = workflowName)
     }
 
     private fun loadSelectedWorkflow() {
@@ -454,8 +374,6 @@ class MainActivity : AppCompatActivity() {
         workflowId = prefs.getInt("workflow_id", 0)
         workflowName = prefs.getString("workflow_name", "") ?: ""
     }
-
-    // --- Wake lock ---
 
     @Suppress("DEPRECATION")
     private fun acquireWakeLock() {

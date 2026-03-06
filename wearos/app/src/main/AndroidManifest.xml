@@ -5,14 +5,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="EDxo Voice"
+        android:label="EDxo"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault">
+        android:theme="@style/Theme.AppCompat.NoActionBar">
 
         <uses-library
             android:name="com.google.android.wearable"
@@ -21,7 +20,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="EDxo Voice">
+            android:label="EDxo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -57,37 +56,18 @@
             android:name=".EdxoVoiceInteractionSessionService"
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
-        <!-- Receives config (token, URL, workflow) from phone app via Data Layer -->
+
+        <!-- Sync service: receives config from phone -->
         <service
-            android:name=".PhoneConfigReceiver"
+            android:name=".WearSyncService"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
                 <data
                     android:scheme="wear"
                     android:host="*"
-                    android:pathPrefix="/edxo-voice-config" />
+                    android:pathPrefix="/edxo-sync" />
             </intent-filter>
         </service>
-
-        <!-- Receives APK from phone and triggers installation -->
-        <service
-            android:name=".ApkInstallerService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
-            </intent-filter>
-        </service>
-
-        <!-- FileProvider for APK installation -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
     </application>
 </manifest>
