@@ -3,17 +3,12 @@ package com.edxo.voice.mobile
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.Gravity
 import android.view.ViewGroup
-import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
-import android.widget.Toast
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.floatingactionbutton.FloatingActionButton
 
 class MainActivity : AppCompatActivity() {
 
@@ -21,130 +16,147 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "EDxoMobile"
     }
 
-    private lateinit var webView: WebView
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val prefs = getSharedPreferences("edxo_voice", MODE_PRIVATE)
 
-        // If not logged in, redirect to login
-        if (prefs.getString("auth_token", null).isNullOrEmpty()) {
+        if (prefs.getString("auth_token", null).isNullOrEmpty()
+            || prefs.getString("server_base_url", null).isNullOrEmpty()) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
 
-        val platformUrl = prefs.getString("server_base_url", null)
-        if (platformUrl.isNullOrEmpty()) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
+        val density = resources.displayMetrics.density
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFF0D1117.toInt())
         }
 
-        val root = FrameLayout(this)
-
-        // WebView
-        webView = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.databaseEnabled = true
-            settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = settings.userAgentString + " EDxoMobile/1.0"
-
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = false
-
-                override fun onPageFinished(view: WebView, url: String) {
-                    super.onPageFinished(view, url)
-                    injectTokenIntoPage()
-                }
-            }
-            webChromeClient = WebChromeClient()
-
-            addJavascriptInterface(TokenBridge(), "EdxoNative")
-        }
-        root.addView(webView, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
+        // Top spacer to push content down
+        val topSpacer = android.view.View(this)
+        root.addView(topSpacer, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
         ))
 
-        // Voice FAB
-        val fab = FloatingActionButton(this).apply {
-            setImageResource(android.R.drawable.ic_btn_speak_now)
-            contentDescription = "Assistant vocal"
+        // App title
+        val title = TextView(this).apply {
+            text = "EDxo"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 32f
+            gravity = Gravity.CENTER
+        }
+        root.addView(title, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        // Server info
+        val serverUrl = prefs.getString("server_base_url", "") ?: ""
+        val serverLabel = TextView(this).apply {
+            text = serverUrl
+            setTextColor(0xFF666666.toInt())
+            textSize = 12f
+            gravity = Gravity.CENTER
+        }
+        root.addView(serverLabel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = (8 * density).toInt() })
+
+        // Voice assistant button
+        val voiceBtn = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(0xFF1A1A2E.toInt())
+            setPadding((24 * density).toInt(), (16 * density).toInt(), (24 * density).toInt(), (16 * density).toInt())
             setOnClickListener { openVoiceAssistant() }
         }
-        val fabParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-            marginEnd = (16 * resources.displayMetrics.density).toInt()
-            bottomMargin = (16 * resources.displayMetrics.density).toInt()
+
+        val voiceIcon = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_btn_speak_now)
+            setBackgroundColor(0x00000000)
+            setColorFilter(0xFF3B82F6.toInt())
+            val p = (4 * density).toInt()
+            setPadding(p, p, p, p)
         }
-        root.addView(fab, fabParams)
+        voiceBtn.addView(voiceIcon, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        val voiceLabel = TextView(this).apply {
+            text = "Assistant vocal"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 18f
+            setPadding((12 * density).toInt(), 0, 0, 0)
+        }
+        voiceBtn.addView(voiceLabel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        root.addView(voiceBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = (48 * density).toInt()
+            marginStart = (32 * density).toInt()
+            marginEnd = (32 * density).toInt()
+        })
+
+        // Bottom spacer
+        val bottomSpacer = android.view.View(this)
+        root.addView(bottomSpacer, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+
+        // Bottom bar
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xFF161B22.toInt())
+            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
+        }
+
+        val appLabel = TextView(this).apply {
+            text = "EDxo"
+            setTextColor(0xFF8899BB.toInt())
+            textSize = 14f
+        }
+        bottomBar.addView(appLabel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val logoutBtn = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_revert)
+            setBackgroundColor(0x00000000)
+            setColorFilter(0xFF666666.toInt())
+            contentDescription = "Deconnexion"
+            val p = (8 * density).toInt()
+            setPadding(p, p, p, p)
+            setOnClickListener { logout() }
+        }
+        bottomBar.addView(logoutBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        root.addView(bottomBar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
 
         setContentView(root)
-
-        CookieManager.getInstance().setAcceptCookie(true)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
-
-        webView.loadUrl(platformUrl)
-    }
-
-    /**
-     * Inject the native auth token into the WebView's localStorage
-     * so the web app is automatically logged in.
-     */
-    private fun injectTokenIntoPage() {
-        val token = getSharedPreferences("edxo_voice", MODE_PRIVATE)
-            .getString("auth_token", null) ?: return
-
-        webView.evaluateJavascript("""
-            (function() {
-                var existing = localStorage.getItem('chatkit:auth:token');
-                if (!existing || existing !== '$token') {
-                    localStorage.setItem('chatkit:auth:token', '$token');
-                    // Reload to pick up the token
-                    if (!existing) location.reload();
-                }
-            })();
-        """.trimIndent(), null)
     }
 
     private fun openVoiceAssistant() {
         startActivity(Intent(this, VoiceActivity::class.java))
     }
 
-    fun logout() {
+    private fun logout() {
         getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
             .remove("auth_token")
+            .remove("server_base_url")
+            .remove("server_url")
+            .remove("workflow_id")
+            .remove("workflow_name")
+            .remove("saved_email")
             .apply()
         startActivity(Intent(this, LoginActivity::class.java))
         finish()
-    }
-
-    inner class TokenBridge {
-        @JavascriptInterface
-        fun onTokenReceived(token: String) {
-            Log.i(TAG, "Token updated from WebView")
-            val prefs = getSharedPreferences("edxo_voice", MODE_PRIVATE)
-            val oldToken = prefs.getString("auth_token", null)
-            prefs.edit().putString("auth_token", token).apply()
-
-            if (token != oldToken) {
-                val wsUrl = prefs.getString("server_url", null)
-                WearSyncHelper.pushConfigToWatch(this@MainActivity, token = token, serverUrl = wsUrl)
-            }
-        }
-    }
-
-    override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
-        }
     }
 }

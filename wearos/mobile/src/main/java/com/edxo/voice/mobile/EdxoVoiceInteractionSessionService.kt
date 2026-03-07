@@ -1,4 +1,4 @@
-package com.edxo.voice
+package com.edxo.voice.mobile
 
 import android.content.Intent
 import android.os.Bundle
@@ -20,15 +20,15 @@ class EdxoVoiceInteractionSessionService : VoiceInteractionSessionService() {
 
         override fun onShow(args: Bundle?, showFlags: Int) {
             super.onShow(args, showFlags)
-            Log.i("EdxoVoiceSession", "Voice interaction session started, launching MainActivity")
+            Log.i("EdxoVoiceSession", "Voice interaction session started, launching VoiceActivity")
 
-            val intent = Intent(sessionService, MainActivity::class.java).apply {
+            val intent = Intent(sessionService, VoiceActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                putExtra("auto_start", true)
             }
             sessionService.startActivity(intent)
 
-            // Defer finish() to avoid BadTokenException
+            // Defer finish() to avoid BadTokenException — the window token
+            // is not yet valid during onShow(), so finishing synchronously crashes.
             Handler(Looper.getMainLooper()).postDelayed({ finish() }, 200)
         }
     }

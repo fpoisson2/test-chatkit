@@ -4,3 +4,11 @@ local.properties
 *.iml
 .idea/
 .DS_Store
+keystore.properties
+keystore/
+*.jks
+*.keystore
+*.hprof
+app/release/
+mobile/release/
+.kotlin/

@@ -175,6 +175,55 @@ else:
         app.include_router(workflows.router)
         app.include_router(outbound.router)
 
+        # Privacy policy page (required for Google Play)
+        from fastapi.responses import HTMLResponse
+
+        @app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+        async def privacy_policy():
+            return """<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EDxo - Politique de confidentialite</title>
+<style>
+body{font-family:-apple-system,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#333;line-height:1.6}
+h1{color:#1a1a2e}h2{color:#444;margin-top:2em}
+</style>
+</head>
+<body>
+<h1>Politique de confidentialite - EDxo</h1>
+<p>Derniere mise a jour : 7 mars 2026</p>
+<h2>1. Donnees collectees</h2>
+<p>EDxo collecte les donnees suivantes pour le fonctionnement de l'application :</p>
+<ul>
+<li><strong>Compte utilisateur</strong> : adresse email et mot de passe (chiffre)</li>
+<li><strong>Donnees audio</strong> : enregistrements vocaux transmis en temps reel pour le traitement par l'assistant vocal. Les enregistrements ne sont pas conserves apres la fin de la session.</li>
+<li><strong>Donnees d'utilisation</strong> : workflows selectionnes, parametres de l'application</li>
+</ul>
+<h2>2. Utilisation des donnees</h2>
+<p>Les donnees sont utilisees exclusivement pour :</p>
+<ul>
+<li>Authentifier l'utilisateur</li>
+<li>Fournir les fonctionnalites de l'assistant vocal</li>
+<li>Synchroniser les parametres entre le telephone et la montre</li>
+</ul>
+<h2>3. Partage des donnees</h2>
+<p>Les donnees audio sont transmises aux services d'intelligence artificielle (OpenAI) pour le traitement vocal. Aucune autre donnee n'est partagee avec des tiers.</p>
+<h2>4. Stockage et securite</h2>
+<p>Les donnees sont stockees sur des serveurs securises. Les mots de passe sont chiffres. Les communications sont protegees par TLS/SSL.</p>
+<h2>5. Permissions de l'application</h2>
+<ul>
+<li><strong>Microphone</strong> : requis pour l'assistant vocal</li>
+<li><strong>Internet</strong> : requis pour la communication avec le serveur</li>
+</ul>
+<h2>6. Suppression des donnees</h2>
+<p>Vous pouvez supprimer votre compte et toutes les donnees associees en contactant l'administrateur du serveur.</p>
+<h2>7. Contact</h2>
+<p>Pour toute question concernant cette politique, contactez l'administrateur de votre instance EDxo.</p>
+</body>
+</html>"""
+
         register_startup_events(app)
     except Exception:  # pragma: no cover - fallback for lightweight test envs
         if "pytest" in sys.modules:

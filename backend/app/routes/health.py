@@ -1,4 +1,4 @@
-"""Health check endpoints for monitoring application status."""
+"""Health check and public endpoints."""
 
 import logging
 import os
@@ -6,6 +6,7 @@ from typing import Dict, Any
 
 from fastapi import APIRouter, Depends
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from redis.asyncio import Redis, from_url

@@ -143,7 +143,39 @@ class MainActivity : AppCompatActivity() {
         root.addView(progressBar, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = 24 })
+        ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = 40 })
+
+        // Settings (login) button — bottom-left
+        val settingsBtn = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_manage)
+            setBackgroundColor(0x00000000)
+            setColorFilter(0xFF666666.toInt())
+            contentDescription = "Parametres"
+            val p = (4 * resources.displayMetrics.density).toInt()
+            setPadding(p, p, p, p)
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, TokenSetupActivity::class.java))
+            }
+        }
+        root.addView(settingsBtn, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.BOTTOM or Gravity.START; bottomMargin = 8; marginStart = 24 })
+
+        // Logout button — bottom-right
+        val logoutBtn = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_revert)
+            setBackgroundColor(0x00000000)
+            setColorFilter(0xFF666666.toInt())
+            contentDescription = "Deconnexion"
+            val p = (4 * resources.displayMetrics.density).toInt()
+            setPadding(p, p, p, p)
+            setOnClickListener { doLogout() }
+        }
+        root.addView(logoutBtn, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.BOTTOM or Gravity.END; bottomMargin = 8; marginEnd = 24 })
 
         setContentView(root)
 
@@ -447,6 +479,21 @@ class MainActivity : AppCompatActivity() {
             .apply()
         // Sync to phone
         WearSyncService.pushConfigToPhone(this, workflowId = workflowId, workflowName = workflowName)
+    }
+
+    private fun doLogout() {
+        stopSession()
+        getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
+            .remove("auth_token")
+            .remove("server_base_url")
+            .remove("server_url")
+            .remove("workflow_id")
+            .remove("workflow_name")
+            .remove("saved_email")
+            .apply()
+        workflowId = 0
+        workflowName = ""
+        showNotConnectedState()
     }
 
     private fun loadSelectedWorkflow() {
