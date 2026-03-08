@@ -203,7 +203,13 @@ def _build_session_config(
             "input_audio_transcription": {"model": "gpt-4o-mini-transcribe"},
             "tools": tools,
             "turn_detection": {
-                "type": "server_vad",
+                "type": "semantic_vad",
+                "eagerness": "medium",
+                "create_response": True,
+                "interrupt_response": True,
+            },
+            "input_audio_noise_reduction": {
+                "type": "near_field",
             },
         },
     }
