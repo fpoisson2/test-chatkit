@@ -163,13 +163,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun logout() {
+        // Keep server_base_url, server_url, and saved_email for easier re-login
         getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
             .remove("auth_token")
-            .remove("server_base_url")
-            .remove("server_url")
+            .remove("refresh_token")
             .remove("workflow_id")
             .remove("workflow_name")
-            .remove("saved_email")
             .apply()
         startActivity(Intent(this, LoginActivity::class.java))
         finish()

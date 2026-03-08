@@ -93,6 +93,10 @@ class WorkflowPickerActivity : AppCompatActivity() {
                 val body = response.body?.string() ?: "[]"
 
                 if (!response.isSuccessful) {
+                    if (response.code == 401 && TokenRefresher.refresh(this)) {
+                        runOnUiThread { loadWorkflows() }
+                        return@thread
+                    }
                     runOnUiThread {
                         Toast.makeText(this, "Erreur ${response.code}", Toast.LENGTH_SHORT).show()
                         finish()

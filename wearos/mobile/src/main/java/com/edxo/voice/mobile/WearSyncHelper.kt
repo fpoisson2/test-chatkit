@@ -16,12 +16,14 @@ object WearSyncHelper {
     fun pushConfigToWatch(
         context: Context,
         token: String? = null,
+        refreshToken: String? = null,
         serverUrl: String? = null,
         workflowId: Int? = null,
         workflowName: String? = null
     ) {
         val putDataReq = PutDataMapRequest.create(SYNC_PATH).apply {
             token?.let { dataMap.putString("auth_token", it) }
+            refreshToken?.let { dataMap.putString("refresh_token", it) }
             serverUrl?.let { dataMap.putString("server_url", it) }
             workflowId?.let { dataMap.putInt("workflow_id", it) }
             workflowName?.let { dataMap.putString("workflow_name", it) }

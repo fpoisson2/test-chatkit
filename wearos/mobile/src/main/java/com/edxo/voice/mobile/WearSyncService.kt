@@ -37,6 +37,10 @@ class WearSyncService : WearableListenerService() {
                     prefs.putString("auth_token", dataMap.getString("auth_token"))
                     Log.i(TAG, "Token synced from watch")
                 }
+                if (dataMap.containsKey("refresh_token")) {
+                    prefs.putString("refresh_token", dataMap.getString("refresh_token"))
+                    Log.i(TAG, "Refresh token synced from watch")
+                }
                 if (dataMap.containsKey("server_url")) {
                     prefs.putString("server_url", dataMap.getString("server_url"))
                 }

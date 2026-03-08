@@ -141,20 +141,23 @@ class TokenSetupActivity : AppCompatActivity() {
                 val respBody = response.body?.string() ?: ""
 
                 if (response.isSuccessful) {
-                    val token = JSONObject(respBody).getString("token")
+                    val json = JSONObject(respBody)
+                    val token = json.getString("token")
+                    val refreshToken = json.optString("refresh_token", "")
                     val wsUrl = serverUrl
                         .replace("https://", "wss://")
                         .replace("http://", "ws://") + "/api/voice-relay/ws"
 
                     getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
                         .putString("auth_token", token)
+                        .putString("refresh_token", refreshToken)
                         .putString("server_base_url", serverUrl)
                         .putString("server_url", wsUrl)
                         .putString("saved_email", email)
                         .apply()
 
                     // Sync to phone
-                    WearSyncService.pushConfigToPhone(this, token = token, serverUrl = wsUrl)
+                    WearSyncService.pushConfigToPhone(this, token = token, refreshToken = refreshToken, serverUrl = wsUrl)
 
                     callback(true, "OK")
                 } else {

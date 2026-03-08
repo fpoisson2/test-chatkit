@@ -58,6 +58,19 @@ def create_access_token(user: User) -> str:
         "sub": str(user.id),
         "email": user.email,
         "is_admin": user.is_admin,
+        "type": "access",
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.auth_secret_key, algorithm="HS256")
+
+
+def create_refresh_token(user: User) -> str:
+    expire = datetime.datetime.utcnow() + datetime.timedelta(
+        days=settings.refresh_token_expire_days
+    )
+    payload = {
+        "sub": str(user.id),
+        "type": "refresh",
         "exp": expire,
     }
     return jwt.encode(payload, settings.auth_secret_key, algorithm="HS256")
@@ -65,11 +78,33 @@ def create_access_token(user: User) -> str:
 
 def decode_access_token(token: str) -> dict:
     try:
-        return jwt.decode(token, settings.auth_secret_key, algorithms=["HS256"])
+        payload = jwt.decode(token, settings.auth_secret_key, algorithms=["HS256"])
     except jwt.PyJWTError as exc:  # type: ignore[attr-defined]
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide"
         ) from exc
+    token_type = payload.get("type")
+    if token_type is not None and token_type != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide"
+        )
+    return payload
+
+
+def decode_refresh_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.auth_secret_key, algorithms=["HS256"])
+    except jwt.PyJWTError as exc:  # type: ignore[attr-defined]
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token invalide",
+        ) from exc
+    if payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token invalide",
+        )
+    return payload
 
 
 def create_agent_image_token(

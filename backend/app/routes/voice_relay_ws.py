@@ -38,7 +38,7 @@ from fastapi.responses import JSONResponse
 from ..database import SessionLocal
 from ..models import User, Workflow, WorkflowDefinition, WorkflowStep
 from ..dependencies import get_current_user
-from ..security import decode_access_token
+from ..security import decode_access_token, decode_refresh_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -74,9 +74,9 @@ async def voice_relay_auth_exchange(
     """Exchange email/password for a JWT token (for Wear OS login).
 
     Body: {"email": "...", "password": "..."}
-    Returns: {"token": "..."}
+    Returns: {"token": "...", "refresh_token": "..."}
     """
-    from ..security import create_access_token, verify_password
+    from ..security import create_access_token, create_refresh_token, verify_password
 
     email = body.get("email", "").strip()
     password = body.get("password", "")
@@ -92,9 +92,42 @@ async def voice_relay_auth_exchange(
             raise HTTPException(status_code=403, detail="Admin required")
 
         token = create_access_token(user)
-        return {"token": token}
+        refresh = create_refresh_token(user)
+        return {"token": token, "refresh_token": refresh}
     finally:
         db.close()
+
+
+@router.post("/api/voice-relay/refresh")
+async def voice_relay_refresh(body: dict):
+    """Exchange a refresh token for new access + refresh tokens.
+
+    Body: {"refresh_token": "..."}
+    Returns: {"token": "...", "refresh_token": "..."}
+    """
+    from ..security import create_access_token, create_refresh_token
+
+    refresh_tok = body.get("refresh_token", "")
+    if not refresh_tok:
+        raise HTTPException(status_code=400, detail="refresh_token required")
+
+    payload = decode_refresh_token(refresh_tok)
+    user_id = payload.get("sub")
+
+    db = SessionLocal()
+    try:
+        user = db.get(User, int(user_id))
+        if not user:
+            raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin required")
+
+        new_access = create_access_token(user)
+        new_refresh = create_refresh_token(user)
+        return {"token": new_access, "refresh_token": new_refresh}
+    finally:
+        db.close()
+
 
 OPENAI_REALTIME_WS = "wss://api.openai.com/v1/realtime"
 

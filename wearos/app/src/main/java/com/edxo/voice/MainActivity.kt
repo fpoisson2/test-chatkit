@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
 
     private var isRecording = false
     private var isConnected = false
+    private var hasAttemptedRefresh = false
 
     private lateinit var micButton: ImageButton
     private lateinit var statusText: TextView
@@ -309,6 +310,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         isRecording = true
+        hasAttemptedRefresh = false
         updateUI(recording = true, status = "Connexion...")
         acquireWakeLock()
         connectWebSocket()
@@ -375,19 +377,35 @@ class MainActivity : AppCompatActivity() {
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure: ${t.message}", t)
-                runOnUiThread {
-                    updateUI(recording = false, status = "Erreur connexion")
-                    Toast.makeText(this@MainActivity, "Connexion echouee", Toast.LENGTH_SHORT).show()
-                }
-                isRecording = false
                 isConnected = false
-                releaseWakeLock()
+                if (!hasAttemptedRefresh) {
+                    attemptRefreshAndReconnect()
+                } else {
+                    isRecording = false
+                    releaseWakeLock()
+                    runOnUiThread {
+                        updateUI(recording = false, status = "Session expiree")
+                        Toast.makeText(this@MainActivity, "Session expiree", Toast.LENGTH_SHORT).show()
+                        doLogout()
+                    }
+                }
             }
 
             override fun onClosing(ws: WebSocket, code: Int, reason: String) {
                 Log.i(TAG, "WebSocket closing: $code $reason")
                 ws.close(1000, null)
                 isConnected = false
+                if (code == 4001 || code == 4003) {
+                    if (!hasAttemptedRefresh) {
+                        attemptRefreshAndReconnect()
+                        return
+                    } else {
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, "Session expiree", Toast.LENGTH_SHORT).show()
+                            doLogout()
+                        }
+                    }
+                }
                 if (isRecording) {
                     isRecording = false
                     runOnUiThread { updateUI(recording = false, status = "Deconnecte") }
@@ -520,15 +538,35 @@ class MainActivity : AppCompatActivity() {
         WearSyncService.pushConfigToPhone(this, workflowId = workflowId, workflowName = workflowName)
     }
 
+    private fun attemptRefreshAndReconnect() {
+        hasAttemptedRefresh = true
+        Log.i(TAG, "Attempting token refresh...")
+        runOnUiThread { updateUI(recording = true, status = "Reconnexion...") }
+        thread {
+            val success = TokenRefresher.refresh(this)
+            if (success) {
+                Log.i(TAG, "Token refreshed, reconnecting WebSocket")
+                connectWebSocket()
+            } else {
+                isRecording = false
+                releaseWakeLock()
+                runOnUiThread {
+                    updateUI(recording = false, status = "Session expiree")
+                    Toast.makeText(this, "Session expiree", Toast.LENGTH_SHORT).show()
+                    doLogout()
+                }
+            }
+        }
+    }
+
     private fun doLogout() {
         stopSession()
+        // Keep server_base_url, server_url, and saved_email for easier re-login
         getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
             .remove("auth_token")
-            .remove("server_base_url")
-            .remove("server_url")
+            .remove("refresh_token")
             .remove("workflow_id")
             .remove("workflow_name")
-            .remove("saved_email")
             .apply()
         workflowId = 0
         workflowName = ""

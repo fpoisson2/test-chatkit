@@ -379,6 +379,7 @@ class Settings:
     database_url: str
     auth_secret_key: str
     access_token_expire_minutes: int
+    refresh_token_expire_days: int
     admin_email: str | None
     admin_password: str | None
     database_connect_retries: int
@@ -775,7 +776,10 @@ class Settings:
                 ),
             ),
             access_token_expire_minutes=int(
-                env.get("ACCESS_TOKEN_EXPIRE_MINUTES", "5256000")
+                env.get("ACCESS_TOKEN_EXPIRE_MINUTES", "43200")
+            ),
+            refresh_token_expire_days=int(
+                env.get("REFRESH_TOKEN_EXPIRE_DAYS", "90")
             ),
             admin_email=env.get("ADMIN_EMAIL"),
             admin_password=env.get("ADMIN_PASSWORD"),
