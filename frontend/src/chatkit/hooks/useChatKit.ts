@@ -97,6 +97,16 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     onLog,
   });
 
+  // Wrap onResponseEnd to refresh thread metadata (e.g. input_masked) after streaming
+  const handleResponseEnd = useCallback(
+    (event: { threadId: string | null; finalThreadId: string | null }) => {
+      onResponseEnd?.(event);
+      // Refresh thread to pick up metadata changes (wait state, input_masked, etc.)
+      fetchUpdates();
+    },
+    [onResponseEnd, fetchUpdates],
+  );
+
   // Message streaming
   const { error, setError, sendUserMessage, resumeStream } = useMessageStreaming({
     api,
@@ -111,7 +121,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     getThreadKey,
     isTempThreadId,
     onResponseStart,
-    onResponseEnd,
+    onResponseEnd: handleResponseEnd,
     onThreadChange,
     onError,
     onLog,

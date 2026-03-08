@@ -28,6 +28,7 @@ import {
   setVoiceAgentToolEnabled,
   setVoiceAgentVoice,
   setWaitForUserInputMessage,
+  setWaitForUserInputMasked,
   setWidgetNodeAwaitAction,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
@@ -242,6 +243,33 @@ const useDataNodeHandlers = ({
     [updateNodeData],
   );
 
+  const handleWaitForUserInputMaskedChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "wait_for_user_input") {
+          return data;
+        }
+        const nextParameters = setWaitForUserInputMasked(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleEvaluatedStepFieldChange = useCallback(
+    (nodeId: string, field: string, value: string | number | boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "evaluated_step") {
+          return data;
+        }
+        const next = { ...data.parameters } as Record<string, unknown>;
+        next[field] = value;
+        return updateNodeParameters(data, next);
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleUserMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
@@ -431,6 +459,8 @@ const useDataNodeHandlers = ({
     handleAssistantMessageStreamEnabledChange,
     handleAssistantMessageStreamDelayChange,
     handleWaitForUserInputMessageChange,
+    handleWaitForUserInputMaskedChange,
+    handleEvaluatedStepFieldChange,
     handleUserMessageChange,
     handleDocxTemplateTemplatePathChange,
     handleDocxTemplateOutputPathChange,

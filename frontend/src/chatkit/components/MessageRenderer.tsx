@@ -140,7 +140,11 @@ function UserMessageContent({
       <div className="chatkit-message-content">
         {item.content.map((content, idx) => (
           <div key={idx}>
-            {content.type === 'input_text' && <MarkdownRenderer content={content.text} theme={theme} />}
+            {content.type === 'input_text' && (
+              content.masked
+                ? <span className="chatkit-masked-text">{'•'.repeat(content.text.length)}</span>
+                : <MarkdownRenderer content={content.text} theme={theme} />
+            )}
             {content.type === 'input_tag' && (
               <span className="chatkit-tag">{content.text}</span>
             )}

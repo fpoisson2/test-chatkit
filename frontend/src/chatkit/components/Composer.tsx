@@ -59,6 +59,8 @@ export interface ComposerProps {
   } | null;
   /** Callback to cancel edit mode */
   onCancelEdit?: () => void;
+  /** If true, mask the input like a password field */
+  inputMasked?: boolean;
 }
 
 // Export for testing
@@ -78,6 +80,7 @@ export function Composer({
   isDraggingFiles = false,
   editingState,
   onCancelEdit,
+  inputMasked = false,
 }: ComposerProps): JSX.Element {
   const { t } = useI18n();
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
@@ -383,7 +386,7 @@ export function Composer({
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
-              className="chatkit-input"
+              className={`chatkit-input${inputMasked ? ' chatkit-input-masked' : ''}`}
               rows={1}
               disabled={isDisabled}
             />

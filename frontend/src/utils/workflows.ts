@@ -1117,6 +1117,28 @@ export const setWaitForUserInputMessage = (
   return stripEmpty(next as Record<string, unknown>);
 };
 
+export const getWaitForUserInputMasked = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+  return Boolean((parameters as Record<string, unknown>).masked);
+};
+
+export const setWaitForUserInputMasked = (
+  parameters: AgentParameters,
+  masked: boolean,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  if (masked) {
+    (next as Record<string, unknown>).masked = true;
+  } else {
+    delete (next as Record<string, unknown>).masked;
+  }
+  return stripEmpty(next as Record<string, unknown>);
+};
+
 export const getAgentMessage = (parameters: AgentParameters | null | undefined): string => {
   if (!parameters) {
     return "";

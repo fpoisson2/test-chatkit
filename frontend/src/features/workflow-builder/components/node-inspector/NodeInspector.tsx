@@ -37,6 +37,7 @@ import {
   getUserMessage,
   getVectorStoreNodeConfig,
   getWaitForUserInputMessage,
+  getWaitForUserInputMasked,
   getParallelSplitJoinSlug,
   getParallelSplitBranches,
 } from "../../../../utils/workflows";
@@ -72,6 +73,7 @@ import { StateInspectorSection } from "./sections/StateInspectorSection";
 import { TransformInspectorSection } from "./sections/TransformInspectorSection";
 import { UserMessageInspectorSection } from "./sections/UserMessageInspectorSection";
 import { WaitForUserInputInspectorSection } from "./sections/WaitForUserInputInspectorSection";
+import { EvaluatedStepInspectorSection } from "./sections/EvaluatedStepInspectorSection";
 import { WatchInspectorSection } from "./sections/WatchInspectorSection";
 import { ParallelSplitInspectorSection } from "./sections/ParallelSplitInspectorSection";
 import { WidgetInspectorSection } from "./sections/WidgetInspectorSection";
@@ -199,6 +201,8 @@ const NodeInspector = ({
     handleAssistantMessageStreamEnabledChange: onAssistantMessageStreamEnabledChange,
     handleAssistantMessageStreamDelayChange: onAssistantMessageStreamDelayChange,
     handleWaitForUserInputMessageChange: onWaitForUserInputMessageChange,
+    handleWaitForUserInputMaskedChange: onWaitForUserInputMaskedChange,
+    handleEvaluatedStepFieldChange: onEvaluatedStepFieldChange,
     handleUserMessageChange: onUserMessageChange,
     handleDocxTemplateTemplatePathChange: onDocxTemplateTemplatePathChange,
     handleDocxTemplateOutputPathChange: onDocxTemplateOutputPathChange,
@@ -319,6 +323,8 @@ const NodeInspector = ({
   const userMessage = kind === "user_message" ? getUserMessage(parameters) : "";
   const waitForUserInputMessage =
     kind === "wait_for_user_input" ? getWaitForUserInputMessage(parameters) : "";
+  const waitForUserInputMasked =
+    kind === "wait_for_user_input" ? getWaitForUserInputMasked(parameters) : false;
 
   const parallelJoinSlug =
     kind === "parallel_split" ? getParallelSplitJoinSlug(parameters) : "";
@@ -601,6 +607,28 @@ const NodeInspector = ({
           nodeId={node.id}
           waitForUserInputMessage={waitForUserInputMessage}
           onWaitForUserInputMessageChange={onWaitForUserInputMessageChange}
+          waitForUserInputMasked={waitForUserInputMasked}
+          onWaitForUserInputMaskedChange={onWaitForUserInputMaskedChange}
+        />
+      ) : null}
+
+      {kind === "evaluated_step" ? (
+        <EvaluatedStepInspectorSection
+          nodeId={node.id}
+          instruction={String((parameters as Record<string, unknown>)?.instruction ?? "")}
+          evaluationPrompt={String((parameters as Record<string, unknown>)?.evaluation_prompt ?? "")}
+          feedbackPrompt={String((parameters as Record<string, unknown>)?.feedback_prompt ?? "")}
+          teacherCode={String((parameters as Record<string, unknown>)?.teacher_code ?? "")}
+          maxAttempts={Number((parameters as Record<string, unknown>)?.max_attempts ?? 3)}
+          successMessage={String((parameters as Record<string, unknown>)?.success_message ?? "Bravo, c'est correct!")}
+          escalationMessage={String((parameters as Record<string, unknown>)?.escalation_message ?? "")}
+          masked={Boolean((parameters as Record<string, unknown>)?.masked)}
+          model={String((parameters as Record<string, unknown>)?.model ?? "")}
+          modelProviderId={String((parameters as Record<string, unknown>)?.model_provider_id ?? "")}
+          modelProviderSlug={String((parameters as Record<string, unknown>)?.model_provider_slug ?? "")}
+          availableModels={availableModels}
+          availableModelsLoading={availableModelsLoading}
+          onFieldChange={onEvaluatedStepFieldChange}
         />
       ) : null}
 

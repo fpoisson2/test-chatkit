@@ -656,6 +656,7 @@ class UserMessageTextContent(BaseModel):
 
     type: Literal["input_text"] = "input_text"
     text: str
+    masked: bool = False
 
 
 class UserMessageTagContent(BaseModel):

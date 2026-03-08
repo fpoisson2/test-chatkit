@@ -479,6 +479,37 @@ const useNodeFactory = ({
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
 
+  const handleAddEvaluatedStepNode = useCallback(() => {
+    const slug = `evaluated-step-${Date.now()}`;
+    const parameters: AgentParameters = {
+      instruction: "",
+      evaluation_prompt: "",
+      feedback_prompt: "",
+      teacher_code: "",
+      max_attempts: 3,
+      success_message: "Bravo, c'est correct!",
+      escalation_message: "Vous avez atteint le nombre maximum de tentatives. Demandez de l'aide à votre enseignant.",
+    };
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 400, y: 260 },
+      data: {
+        slug,
+        kind: "evaluated_step",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+    };
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, humanizeSlug]);
+
   return {
     handleAddAgentNode,
     handleAddVoiceAgentNode,
@@ -497,6 +528,7 @@ const useNodeFactory = ({
     handleAddDocxTemplateNode,
     handleAddVectorStoreNode,
     handleAddWidgetNode,
+    handleAddEvaluatedStepNode,
     handleAddEndNode,
   };
 };

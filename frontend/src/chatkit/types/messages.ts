@@ -10,6 +10,8 @@ import type { OutboundCallStatus } from './voice';
 export interface UserMessageTextContent {
   type: 'input_text';
   text: string;
+  /** If true, this input should be displayed masked (e.g. password) */
+  masked?: boolean;
 }
 
 export interface UserMessageImageContent {

@@ -719,6 +719,7 @@ class WorkflowGraphValidator:
                 "widget",
                 "parallel_split",
                 "parallel_join",
+                "evaluated_step",
                 "end",
             }:
                 raise WorkflowValidationError(

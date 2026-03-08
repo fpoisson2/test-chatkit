@@ -63,6 +63,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const attachmentsConfig = composer?.attachments;
   const attachmentsEnabled = attachmentsConfig?.enabled === true;
 
+  // Detect masked input mode from wait state metadata
+  const waitState = control.thread?.metadata?.workflow_wait_for_user_input as
+    | { input_masked?: boolean } | undefined;
+  const waitStateByBranch = control.thread?.metadata?.workflow_wait_for_user_input_by_branch as
+    | Record<string, { input_masked?: boolean }> | undefined;
+  const currentBranchId = (control.thread?.metadata?.current_branch_id as string) || 'main';
+  const effectiveWaitState = waitStateByBranch?.[currentBranchId] ?? waitState;
+  const isInputMasked = Boolean(effectiveWaitState?.input_masked);
+
   // Extract auth token from API headers for DevToolsScreencast
   const authHeader =
     (api.headers?.['Authorization'] as string | undefined) ??
@@ -190,7 +199,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // Build message content
     const content: UserMessageContent[] = [];
     if (message) {
-      content.push({ type: 'input_text', text: message });
+      if (isInputMasked) {
+        // Tag masked input so it displays as dots in the chat
+        content.push({ type: 'input_text', text: message, masked: true } as UserMessageContent);
+      } else {
+        content.push({ type: 'input_text', text: message });
+      }
     }
     for (const att of uploadedAttachments) {
       if (att.status === 'uploaded') {
@@ -464,6 +478,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         isDraggingFiles={isDraggingFiles}
         editingState={editingState}
         onCancelEdit={handleCancelEdit}
+        inputMasked={isInputMasked}
       />
 
           </div>

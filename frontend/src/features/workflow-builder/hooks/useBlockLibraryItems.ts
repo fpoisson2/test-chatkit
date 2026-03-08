@@ -21,6 +21,7 @@ export interface NodeHandlers {
   handleAddDocxTemplateNode: () => void;
   handleAddVectorStoreNode: () => void;
   handleAddWidgetNode: () => void;
+  handleAddEvaluatedStepNode: () => void;
   handleAddEndNode: () => void;
 }
 
@@ -125,6 +126,12 @@ export const useBlockLibraryItems = ({
         onClick: nodeHandlers.handleAddVectorStoreNode,
       },
       { key: "widget", kind: "widget", shortLabel: "W", onClick: nodeHandlers.handleAddWidgetNode },
+      {
+        key: "evaluated-step",
+        kind: "evaluated_step",
+        shortLabel: "EV",
+        onClick: nodeHandlers.handleAddEvaluatedStepNode,
+      },
       { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
     ];
 
@@ -152,6 +159,7 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddDocxTemplateNode,
     nodeHandlers.handleAddVectorStoreNode,
     nodeHandlers.handleAddWidgetNode,
+    nodeHandlers.handleAddEvaluatedStepNode,
     nodeHandlers.handleAddEndNode,
   ]);
 };

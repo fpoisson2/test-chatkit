@@ -10,6 +10,7 @@ from .assign import AssignNodeHandler
 from .computer_use import ComputerUseNodeHandler
 from .condition import ConditionNodeHandler
 from .end import EndNodeHandler
+from .evaluated_step import EvaluatedStepHandler
 from .message import AssistantMessageNodeHandler, UserMessageNodeHandler
 from .outbound_call import OutboundCallNodeHandler
 from .parallel import ParallelJoinNodeHandler, ParallelSplitNodeHandler
@@ -48,6 +49,7 @@ def create_state_machine(
     machine.register_handler("watch", WatchNodeHandler())
     machine.register_handler("transform", TransformNodeHandler())
     machine.register_handler("wait_for_user_input", WaitNodeHandler())
+    machine.register_handler("evaluated_step", EvaluatedStepHandler())
     machine.register_handler("parallel_split", ParallelSplitNodeHandler())
     machine.register_handler("parallel_join", ParallelJoinNodeHandler())
 

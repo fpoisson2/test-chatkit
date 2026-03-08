@@ -110,6 +110,13 @@
   color: #000;
 }
 
+.chatkit-masked-text {
+  letter-spacing: 2px;
+  font-size: 14px;
+  color: inherit;
+  user-select: none;
+}
+
 .chatkit-message-assistant .chatkit-message-content {
   background: transparent;
   color: var(--color-text);
@@ -466,6 +473,13 @@
   outline: none;
   border: none;
   box-shadow: none;
+}
+
+/* Masked input (password mode) — hides typed characters */
+.chatkit-input-masked {
+  -webkit-text-security: disc;
+  text-security: disc;
+  font-family: 'text-security-disc', monospace;
 }
 
 @media (max-width: 600px) {

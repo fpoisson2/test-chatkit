@@ -199,11 +199,18 @@ class WaitNodeHandler(BaseNodeHandler):
                 await emit_stream_event(ThreadItemAddedEvent(item=assistant_message))
                 await emit_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
+        # Check if input should be masked (e.g. password field)
+        raw_params = node.parameters or {}
+        node_params = raw_params if isinstance(raw_params, Mapping) else {}
+        input_masked = bool(node_params.get("masked", False))
+
         # Build and save wait state
         wait_state_payload: dict[str, Any] = {
             "slug": node.slug,
             "input_item_id": current_input_item_id,
         }
+        if input_masked:
+            wait_state_payload["input_masked"] = True
         anchor_item_id = emitted_wait_message_id
         if not anchor_item_id:
             candidate_anchor = context.runtime_vars.get("last_prompt_item_id")
