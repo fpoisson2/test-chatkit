@@ -30,6 +30,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import com.google.android.gms.wearable.Wearable
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -72,12 +73,9 @@ class MainActivity : AppCompatActivity() {
             saveSelectedWorkflow()
             workflowText.text = workflowName.ifEmpty { "Choisir workflow" }
 
-            // If connected, send switch command
-            if (isConnected && webSocket != null) {
-                val msg = JSONObject()
-                    .put("type", "switch_workflow")
-                    .put("workflow_id", workflowId)
-                webSocket?.send(msg.toString())
+            // Start session with new workflow
+            if (workflowId > 0) {
+                startSession()
             }
         }
     }
@@ -98,12 +96,16 @@ class MainActivity : AppCompatActivity() {
             setTextColor(0xFF6688CC.toInt())
             textSize = 11f
             gravity = Gravity.CENTER
+            minHeight = (36 * resources.displayMetrics.density).toInt()
+            setPadding(0, (8 * resources.displayMetrics.density).toInt(), 0, 0)
+            isClickable = true
+            isFocusable = true
             setOnClickListener { openWorkflowPicker() }
         }
         root.addView(workflowText, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = 8 })
+        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL })
 
         // Status text
         statusText = TextView(this).apply {
@@ -111,11 +113,13 @@ class MainActivity : AppCompatActivity() {
             setTextColor(0xFFFFFFFF.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
         }
         root.addView(statusText, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = 30 })
+        ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = 58 })
 
         // Mic button — round shape for round watch screens
         micButton = ImageButton(this).apply {
@@ -145,37 +149,38 @@ class MainActivity : AppCompatActivity() {
             FrameLayout.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = 40 })
 
-        // Settings (login) button — bottom-left
+        // Settings button — left of mic
         val settingsBtn = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_manage)
             setBackgroundColor(0x00000000)
-            setColorFilter(0xFF666666.toInt())
+            setColorFilter(0xFF888888.toInt())
             contentDescription = "Parametres"
-            val p = (4 * resources.displayMetrics.density).toInt()
+            val p = (6 * resources.displayMetrics.density).toInt()
             setPadding(p, p, p, p)
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, TokenSetupActivity::class.java))
             }
         }
-        root.addView(settingsBtn, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.BOTTOM or Gravity.START; bottomMargin = 8; marginStart = 24 })
+        val sideBtnSize = (36 * resources.displayMetrics.density).toInt()
+        root.addView(settingsBtn, FrameLayout.LayoutParams(sideBtnSize, sideBtnSize).apply {
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            marginStart = (8 * resources.displayMetrics.density).toInt()
+        })
 
-        // Logout button — bottom-right
+        // Logout button — right of mic
         val logoutBtn = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_revert)
             setBackgroundColor(0x00000000)
-            setColorFilter(0xFF666666.toInt())
+            setColorFilter(0xFF888888.toInt())
             contentDescription = "Deconnexion"
-            val p = (4 * resources.displayMetrics.density).toInt()
+            val p = (6 * resources.displayMetrics.density).toInt()
             setPadding(p, p, p, p)
             setOnClickListener { doLogout() }
         }
-        root.addView(logoutBtn, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ).apply { gravity = Gravity.BOTTOM or Gravity.END; bottomMargin = 8; marginEnd = 24 })
+        root.addView(logoutBtn, FrameLayout.LayoutParams(sideBtnSize, sideBtnSize).apply {
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            marginEnd = (8 * resources.displayMetrics.density).toInt()
+        })
 
         setContentView(root)
 
@@ -199,8 +204,12 @@ class MainActivity : AppCompatActivity() {
                 arrayOf(Manifest.permission.RECORD_AUDIO),
                 PERMISSION_REQUEST_CODE
             )
-        } else if (intent?.getBooleanExtra("auto_start", false) == true && workflowId > 0) {
-            startSession()
+        } else if (!getStoredToken().isNullOrEmpty()) {
+            if (workflowId > 0) {
+                startSession()
+            } else {
+                openWorkflowPicker()
+            }
         }
     }
 
@@ -225,6 +234,29 @@ class MainActivity : AppCompatActivity() {
         statusText.text = "Connectez-vous\nsur votre telephone\n\n(appui long pour\nlogin manuel)"
         statusText.textSize = 13f
         statusText.gravity = Gravity.CENTER
+        // Make the status text fill the screen for easier long-press
+        val lp = statusText.layoutParams as FrameLayout.LayoutParams
+        lp.gravity = Gravity.CENTER
+        lp.topMargin = 0
+        lp.height = FrameLayout.LayoutParams.MATCH_PARENT
+        lp.width = FrameLayout.LayoutParams.MATCH_PARENT
+        statusText.layoutParams = lp
+        statusText.setPadding(20, 20, 20, 20)
+
+        // Ask phone to open the app so user can login
+        requestPhoneOpenApp()
+    }
+
+    private fun requestPhoneOpenApp() {
+        Wearable.getNodeClient(this).connectedNodes
+            .addOnSuccessListener { nodes ->
+                for (node in nodes) {
+                    Wearable.getMessageClient(this)
+                        .sendMessage(node.id, "/edxo-open-app", byteArrayOf())
+                        .addOnSuccessListener { Log.i(TAG, "Requested phone to open app") }
+                        .addOnFailureListener { Log.w(TAG, "Failed to request phone open", it) }
+                }
+            }
     }
 
     override fun onResume() {
@@ -237,6 +269,15 @@ class MainActivity : AppCompatActivity() {
             workflowText.text = workflowName.ifEmpty { "Choisir workflow" }
             statusText.text = "EDxo"
             statusText.textSize = 12f
+            // Restore status text layout
+            val lp = statusText.layoutParams as FrameLayout.LayoutParams
+            lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            lp.topMargin = 0
+            lp.bottomMargin = 50
+            lp.height = FrameLayout.LayoutParams.WRAP_CONTENT
+            lp.width = FrameLayout.LayoutParams.MATCH_PARENT
+            statusText.layoutParams = lp
+            statusText.setPadding(0, 0, 0, 0)
         }
     }
 
@@ -245,6 +286,9 @@ class MainActivity : AppCompatActivity() {
             showNotConnectedState()
             return
         }
+        if (isRecording) {
+            stopSession()
+        }
         pickWorkflow.launch(Intent(this, WorkflowPickerActivity::class.java))
     }
 
@@ -252,11 +296,6 @@ class MainActivity : AppCompatActivity() {
         if (isRecording) {
             stopSession()
         } else {
-            if (workflowId <= 0) {
-                Toast.makeText(this, "Choisissez un workflow d'abord", Toast.LENGTH_SHORT).show()
-                openWorkflowPicker()
-                return
-            }
             startSession()
         }
     }

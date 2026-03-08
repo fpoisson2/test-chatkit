@@ -141,6 +141,21 @@ class MainActivity : AppCompatActivity() {
         ))
 
         setContentView(root)
+
+        // Push current config to watch (in case watch was just installed)
+        val token = prefs.getString("auth_token", null)
+        val wsUrl = prefs.getString("server_url", null)
+        val wfId = prefs.getInt("workflow_id", 0)
+        val wfName = prefs.getString("workflow_name", "")
+        if (!token.isNullOrEmpty()) {
+            WearSyncHelper.pushConfigToWatch(
+                this,
+                token = token,
+                serverUrl = wsUrl,
+                workflowId = if (wfId > 0) wfId else null,
+                workflowName = wfName?.ifEmpty { null }
+            )
+        }
     }
 
     private fun openVoiceAssistant() {

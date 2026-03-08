@@ -76,10 +76,15 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
                 <data
                     android:scheme="wear"
                     android:host="*"
                     android:pathPrefix="/edxo-sync" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:path="/edxo-open-app" />
             </intent-filter>
         </service>
     </application>
