@@ -66,6 +66,40 @@ Step handlers in `workflows/handlers/`:
 - `transform.py` - Data transformation
 - `vector_store.py` - Semantic search integration
 - `computer_use.py` - Vision/interaction APIs
+- `evaluated_step.py` - AI-evaluated student exercises (see below)
+- `wait.py` - Wait for user input (supports masked/password mode)
+
+### Evaluated Step Handler (`evaluated_step.py`)
+
+Self-contained block that replaces the common pattern of ~10 nodes (instruction → wait → evaluate → feedback/retry → escalate) with a single node.
+
+**State machine phases:**
+1. `instruction` — Send instruction message to student, transition to `wait_input`
+2. `wait_input` — Pause workflow, wait for user response (same mechanism as `WaitNodeHandler`)
+3. `evaluate` — Call AI to assess the response (pass/fail with JSON output)
+4. On pass → send success message, advance to next node
+5. On fail → send AI-generated feedback, increment attempts, loop back to `wait_input`
+6. On max attempts → send escalation message, enter `escalated` phase
+7. `escalated` — Wait for teacher bypass code (input is masked in this phase)
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `instruction` | string | Message shown to the student as the exercise prompt |
+| `evaluation_prompt` | string | Criteria for AI evaluation (pass/fail) |
+| `feedback_prompt` | string | Instructions for generating constructive feedback |
+| `teacher_code` | string | Optional bypass code (teacher can skip evaluation) |
+| `max_attempts` | int | Max attempts before escalation (default: 3) |
+| `success_message` | string | Message on successful evaluation |
+| `escalation_message` | string | Message when max attempts reached |
+| `masked` | bool | Mask input during escalation phase (for teacher code) |
+| `model` | string | AI model name for evaluation/feedback |
+| `model_provider_id` | string | Provider ID (resolved via DB admin settings) |
+| `model_provider_slug` | string | Provider slug |
+
+**AI calls use the agents SDK** (`Agent` + `Runner.run` with `RunConfig`), resolving the model provider via `get_agent_provider_binding()` — same chain as the agent block. This supports native OpenAI providers (with `api_base`) and LiteLLM auto-routing.
+
+**Wait state:** Uses `_set_wait_state_metadata()` / `_get_wait_state_metadata()` for pause/resume, same as `WaitNodeHandler`. The `input_masked` flag in the wait state metadata tells the frontend to mask the input field.
 
 ## Authentication
 

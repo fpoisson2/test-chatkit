@@ -136,7 +136,34 @@ Visual graph editor built with React Flow:
 - `WorkflowEditor.tsx` - Main editor component
 - `WorkflowCanvas.tsx` - React Flow canvas
 - `EditorToolbar.tsx` - Editor toolbar
-- Node types: agent, widget, message, start, end, assign, etc.
+- Node types: agent, widget, message, start, end, assign, evaluated_step, etc.
+
+### Evaluated Step Node
+
+Self-contained exercise block. Inspector: `EvaluatedStepInspectorSection.tsx`.
+
+**Registration points (checklist for adding new node types):**
+1. `types.ts` — Add to `NodeKind` union type
+2. `utils.ts` — Add colors (`NODE_COLORS`, `NODE_BACKGROUNDS`, `NODE_GLOW_COLORS`) and label key
+3. `useBlockLibraryItems.ts` — Add to block library with handler reference
+4. `useNodeFactory.ts` — Add `handleAddXxxNode` with default parameters
+5. `useDataNodeHandlers.ts` — Add field change handler(s)
+6. `NodeInspector.tsx` — Wire inspector section with props from node parameters
+7. `sections/XxxInspectorSection.tsx` — Create inspector UI component
+8. `translations.en.ts` / `translations.fr.ts` — Add label translation
+
+**Inspector features:**
+- Model/provider selection via `<select>` dropdowns (same as agent block), populated from `availableModels` (fetched from DB admin settings)
+- Remains editable after publication (no `editingLocked` guard), like `assistant_message`
+
+### Masked Input Support
+
+The `wait_for_user_input` and `evaluated_step` nodes support masked input (password mode):
+- Backend: `input_masked: true` in wait state metadata (`thread.metadata.workflow_wait_for_user_input`)
+- Frontend: `ChatKit.tsx` reads `input_masked` from metadata, passes `inputMasked` prop to `Composer`
+- CSS: `.chatkit-input-masked` applies `-webkit-text-security: disc`
+- Messages sent during masked mode are tagged `masked: true` and rendered as dots in `MessageRenderer`
+- Thread metadata is refreshed via `fetchUpdates()` after each streaming response (`useChatKit.ts` wraps `onResponseEnd`)
 
 ## ChatKit Integration (chatkit/)
 
