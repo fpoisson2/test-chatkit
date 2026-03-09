@@ -65,6 +65,8 @@ class WorkflowPickerActivity : AppCompatActivity() {
 
         listView = ListView(this).apply {
             visibility = View.GONE
+            clipToPadding = false
+            setPadding(0, 0, 0, 80)
             setOnItemClickListener { _, _, position, _ ->
                 val item = workflows[position]
                 setResult(Activity.RESULT_OK, Intent().apply {

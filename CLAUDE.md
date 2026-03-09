@@ -76,6 +76,13 @@ docker-compose logs -f        # Follow logs from all containers
 docker-compose logs -f backend  # Follow logs from specific container
 ```
 
+## Wear OS - Écrans circulaires
+
+L'app Wear OS (`wearos/app/`) tourne sur des montres à écran rond. Le contenu en bas et sur les côtés est coupé par la courbure. Pour toute liste ou contenu scrollable :
+- Toujours ajouter un padding bottom suffisant (~80px) sur les ListView/RecyclerView
+- Utiliser `clipToPadding = false` pour que le contenu puisse scroller dans la zone de padding
+- Tester visuellement que le dernier élément est accessible
+
 ## Git SSH Configuration
 
 SSH is configured for GitHub authentication. The remote uses SSH URL:
