@@ -7,6 +7,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
@@ -14,6 +15,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import androidx.wear.widget.BoxInsetLayout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -40,10 +42,20 @@ class WorkflowPickerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        // BoxInsetLayout automatically insets content for round screens
+        val boxInset = BoxInsetLayout(this).apply {
             setBackgroundColor(0xFF000000.toInt())
-            setPadding(8, 16, 8, 8)
+        }
+
+        val inner = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ).apply {
+                // BoxInsetLayout uses this flag to apply round screen insets
+                (this as? BoxInsetLayout.LayoutParams)?.boxedEdges = BoxInsetLayout.LayoutParams.BOX_ALL
+            }
         }
 
         val title = TextView(this).apply {
@@ -52,13 +64,13 @@ class WorkflowPickerActivity : AppCompatActivity() {
             textSize = 14f
             gravity = Gravity.CENTER
         }
-        root.addView(title, LinearLayout.LayoutParams(
+        inner.addView(title, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
         progressBar = ProgressBar(this).apply { visibility = View.VISIBLE }
-        root.addView(progressBar, LinearLayout.LayoutParams(
+        inner.addView(progressBar, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = 16 })
@@ -66,7 +78,7 @@ class WorkflowPickerActivity : AppCompatActivity() {
         listView = ListView(this).apply {
             visibility = View.GONE
             clipToPadding = false
-            setPadding(0, 0, 0, 80)
+            setPadding(0, 0, 0, 40)
             setOnItemClickListener { _, _, position, _ ->
                 val item = workflows[position]
                 setResult(Activity.RESULT_OK, Intent().apply {
@@ -82,12 +94,19 @@ class WorkflowPickerActivity : AppCompatActivity() {
             setOnRefreshListener { loadWorkflows() }
             visibility = View.GONE
         }
-        root.addView(swipeRefresh, LinearLayout.LayoutParams(
+        inner.addView(swipeRefresh, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             0, 1f
         ))
 
-        setContentView(root)
+        boxInset.addView(inner, BoxInsetLayout.LayoutParams(
+            BoxInsetLayout.LayoutParams.MATCH_PARENT,
+            BoxInsetLayout.LayoutParams.MATCH_PARENT
+        ).apply {
+            boxedEdges = BoxInsetLayout.LayoutParams.BOX_ALL
+        })
+
+        setContentView(boxInset)
         loadWorkflows()
     }
 
