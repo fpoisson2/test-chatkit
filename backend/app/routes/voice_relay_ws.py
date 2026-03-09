@@ -59,10 +59,18 @@ async def list_workflows_for_voice(user: User = Depends(get_current_user)):
         workflows = db.scalars(
             select(Workflow).order_by(Workflow.display_name)
         ).all()
-        return [
+        data = [
             {"id": w.id, "name": w.display_name}
             for w in workflows
         ]
+        return JSONResponse(
+            content=data,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
     finally:
         db.close()
 

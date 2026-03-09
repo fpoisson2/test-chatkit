@@ -13,6 +13,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -34,6 +35,7 @@ class WorkflowPickerActivity : AppCompatActivity() {
     private val workflows = mutableListOf<WorkflowItem>()
     private lateinit var listView: ListView
     private lateinit var progressBar: ProgressBar
+    private lateinit var swipeRefresh: SwipeRefreshLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,7 +74,13 @@ class WorkflowPickerActivity : AppCompatActivity() {
                 finish()
             }
         }
-        root.addView(listView, LinearLayout.LayoutParams(
+
+        swipeRefresh = SwipeRefreshLayout(this).apply {
+            addView(listView)
+            setOnRefreshListener { loadWorkflows() }
+            visibility = View.GONE
+        }
+        root.addView(swipeRefresh, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             0, 1f
         ))
@@ -104,6 +112,8 @@ class WorkflowPickerActivity : AppCompatActivity() {
                 val request = Request.Builder()
                     .url("$baseUrl/api/voice-relay/workflows")
                     .header("Authorization", "Bearer $token")
+                    .header("Cache-Control", "no-cache, no-store")
+                    .header("Pragma", "no-cache")
                     .build()
 
                 val response = OkHttpClient().newCall(request).execute()
@@ -116,6 +126,7 @@ class WorkflowPickerActivity : AppCompatActivity() {
                         return@thread
                     }
                     runOnUiThread {
+                        swipeRefresh.isRefreshing = false
                         Toast.makeText(this, "Erreur ${response.code}", Toast.LENGTH_SHORT).show()
                         finish()
                     }
@@ -132,6 +143,8 @@ class WorkflowPickerActivity : AppCompatActivity() {
                     workflows.clear()
                     workflows.addAll(items)
                     progressBar.visibility = View.GONE
+                    swipeRefresh.visibility = View.VISIBLE
+                    swipeRefresh.isRefreshing = false
                     listView.visibility = View.VISIBLE
                     listView.adapter = object : BaseAdapter() {
                         override fun getCount() = workflows.size
@@ -150,6 +163,7 @@ class WorkflowPickerActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
+                    swipeRefresh.isRefreshing = false
                     Toast.makeText(this, e.message ?: "Erreur", Toast.LENGTH_SHORT).show()
                     finish()
                 }
