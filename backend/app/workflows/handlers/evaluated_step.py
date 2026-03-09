@@ -342,18 +342,34 @@ class EvaluatedStepHandler(BaseNodeHandler):
         if attempts >= max_attempts:
             # Max attempts reached — escalate
             await self._send_assistant_message(node, context, escalation_message)
-            state_updates = {
-                phase_key: "escalated",
-                attempts_key: attempts,
-            }
-            context.state.update(state_updates)
-            # Go back to wait for teacher code or new attempt
-            return NodeResult(
-                next_slug=node.slug,
-                context_updates={
-                    "last_step_context": {"evaluation_result": "escalated"},
+            escalation_behavior = params.get("escalation_behavior", "wait_for_teacher")
+            if escalation_behavior == "wait_for_teacher":
+                # Wait for teacher bypass code
+                state_updates = {
+                    phase_key: "escalated",
+                    attempts_key: attempts,
+                }
+                context.state.update(state_updates)
+                return NodeResult(
+                    next_slug=node.slug,
+                    context_updates={
+                        "last_step_context": {"evaluation_result": "escalated"},
                     },
-            )
+                )
+            else:
+                # "advance" — reset state and advance to next node
+                state_updates = {
+                    phase_key: "instruction",
+                    attempts_key: 0,
+                }
+                context.state.update(state_updates)
+                next_slug = self._next_slug_or_fallback(node.slug, context)
+                return NodeResult(
+                    next_slug=next_slug,
+                    context_updates={
+                        "last_step_context": {"evaluation_result": "escalated"},
+                    },
+                )
 
         # Under max — send feedback and go back to wait
         if feedback_prompt:

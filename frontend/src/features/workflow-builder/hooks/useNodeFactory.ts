@@ -489,6 +489,7 @@ const useNodeFactory = ({
       max_attempts: 3,
       success_message: "Bravo, c'est correct!",
       escalation_message: "Vous avez atteint le nombre maximum de tentatives. Demandez de l'aide à votre enseignant.",
+      escalation_behavior: "wait_for_teacher",
     };
     const newNode: FlowNode = {
       id: slug,

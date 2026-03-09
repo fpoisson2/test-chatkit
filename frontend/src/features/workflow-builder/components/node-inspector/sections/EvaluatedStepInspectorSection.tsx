@@ -18,6 +18,7 @@ type EvaluatedStepInspectorSectionProps = {
   maxAttempts: number;
   successMessage: string;
   escalationMessage: string;
+  escalationBehavior: string;
   masked: boolean;
   model: string;
   modelProviderId: string;
@@ -36,6 +37,7 @@ export const EvaluatedStepInspectorSection = ({
   maxAttempts,
   successMessage,
   escalationMessage,
+  escalationBehavior,
   masked,
   model,
   modelProviderId,
@@ -236,6 +238,21 @@ export const EvaluatedStepInspectorSection = ({
         />
         <p className={styles.nodeInspectorHintTextTight}>
           Message envoyé quand le nombre max de tentatives est atteint.
+        </p>
+      </label>
+
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>Après escalade</span>
+        <select
+          value={escalationBehavior}
+          onChange={(e) => onFieldChange(nodeId, "escalation_behavior", e.target.value)}
+          className={styles.nodeInspectorInput}
+        >
+          <option value="wait_for_teacher">Attendre le code enseignant</option>
+          <option value="advance">Passer à l'étape suivante</option>
+        </select>
+        <p className={styles.nodeInspectorHintTextTight}>
+          Comportement lorsque le nombre max de tentatives est atteint.
         </p>
       </label>
 

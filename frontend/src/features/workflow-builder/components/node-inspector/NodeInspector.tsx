@@ -622,6 +622,7 @@ const NodeInspector = ({
           maxAttempts={Number((parameters as Record<string, unknown>)?.max_attempts ?? 3)}
           successMessage={String((parameters as Record<string, unknown>)?.success_message ?? "Bravo, c'est correct!")}
           escalationMessage={String((parameters as Record<string, unknown>)?.escalation_message ?? "")}
+          escalationBehavior={String((parameters as Record<string, unknown>)?.escalation_behavior ?? "wait_for_teacher")}
           masked={Boolean((parameters as Record<string, unknown>)?.masked)}
           model={String((parameters as Record<string, unknown>)?.model ?? "")}
           modelProviderId={String((parameters as Record<string, unknown>)?.model_provider_id ?? "")}
