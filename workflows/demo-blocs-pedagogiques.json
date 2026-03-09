@@ -1,0 +1,205 @@
+{
+  "slug": "demo-blocs-pedagogiques",
+  "display_name": "Demo blocs pédagogiques",
+  "description": "Workflow d'exemple démontrant les 3 blocs pédagogiques : étape évaluée (evaluated_step), boucle d'aide (help_loop), et exercice guidé (guided_exercise). Scénario : mini-labo sur les bases de la programmation Python.",
+  "nodes": [
+    {
+      "id": 1,
+      "slug": "start",
+      "kind": "start",
+      "display_name": "Début",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 1,
+      "is_enabled": true,
+      "parameters": {
+        "auto_start": true,
+        "auto_start_assistant_message": "# Mini-labo : Les bases de Python\n\nBienvenue dans ce laboratoire interactif! Vous allez apprendre les fondamentaux de Python à travers des exercices évalués par IA.\n\n**Au programme :**\n1. Variables et types de données\n2. Configuration de l'environnement (avec aide IA si besoin)\n3. Exercice guidé : écrire une fonction complète\n\nCommençons!"
+      },
+      "metadata": { "order": 1 }
+    },
+
+    {
+      "id": 2,
+      "slug": "msg-section1",
+      "kind": "assistant_message",
+      "display_name": "Intro section 1",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 2,
+      "is_enabled": true,
+      "parameters": {
+        "message": "## Section 1 : Variables et types\n\nEn Python, une variable est un nom qui fait référence à une valeur en mémoire. Contrairement à d'autres langages, Python est **dynamiquement typé** — vous n'avez pas besoin de déclarer le type.\n\n```python\nnom = \"Alice\"      # str\nage = 25           # int\ntaille = 1.68      # float\nactif = True       # bool\n```\n\nVoyons si vous avez compris!",
+        "simulate_stream_delay_ms": 2
+      },
+      "metadata": { "order": 2 }
+    },
+
+    {
+      "id": 3,
+      "slug": "eval-variables",
+      "kind": "evaluated_step",
+      "display_name": "Q1 - Variables",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 3,
+      "is_enabled": true,
+      "parameters": {
+        "instruction": "**Question 1 :** Quelle est la différence entre une variable de type `int` et une variable de type `float` en Python? Donnez un exemple de chaque.",
+        "evaluation_prompt": "La réponse doit mentionner que int représente des nombres entiers (sans décimales) et float des nombres à virgule flottante (avec décimales). Un exemple de chaque doit être fourni (ex: age = 25 pour int, taille = 1.68 pour float). Accepter des réponses approximatives si le concept est compris.",
+        "feedback_prompt": "Guidez l'étudiant vers la bonne réponse. Rappelez que int = entier, float = décimal. Donnez un indice sans donner la réponse complète.",
+        "teacher_code": "",
+        "max_attempts": 3,
+        "success_message": "Excellent! Vous avez bien compris la différence entre int et float. 👏",
+        "escalation_message": "Pas de souci, c'est un concept qui demande de la pratique. Passons à la suite, vous y reviendrez!",
+        "escalation_behavior": "advance",
+        "model": "",
+        "model_provider_id": "",
+        "model_provider_slug": ""
+      },
+      "metadata": { "order": 3 }
+    },
+
+    {
+      "id": 4,
+      "slug": "eval-types",
+      "kind": "evaluated_step",
+      "display_name": "Q2 - Types",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 4,
+      "is_enabled": true,
+      "parameters": {
+        "instruction": "**Question 2 :** Que retourne `type(\"42\")` en Python? Expliquez pourquoi ce n'est pas un `int`.",
+        "evaluation_prompt": "La réponse doit indiquer que type(\"42\") retourne <class 'str'> (ou str). L'explication doit mentionner que les guillemets font que 42 est traité comme une chaîne de caractères (string), pas comme un nombre entier. Accepter toute formulation qui montre la compréhension.",
+        "feedback_prompt": "Rappelez à l'étudiant de regarder les guillemets autour du 42. Qu'est-ce que les guillemets signifient en Python?",
+        "teacher_code": "PROF2024",
+        "max_attempts": 2,
+        "success_message": "Parfait! Les guillemets font toute la différence. `\"42\"` est un string, `42` est un int.",
+        "escalation_message": "Le nombre max de tentatives est atteint. Entrez le code enseignant pour continuer.",
+        "escalation_behavior": "wait_for_teacher",
+        "masked": true,
+        "model": "",
+        "model_provider_id": "",
+        "model_provider_slug": ""
+      },
+      "metadata": { "order": 4 }
+    },
+
+    {
+      "id": 5,
+      "slug": "msg-section2",
+      "kind": "assistant_message",
+      "display_name": "Intro section 2",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 5,
+      "is_enabled": true,
+      "parameters": {
+        "message": "## Section 2 : Configuration de l'environnement\n\nAvant de coder, vérifions que votre environnement Python est fonctionnel.\n\n**À faire :**\n1. Ouvrez un terminal\n2. Tapez `python3 --version` (ou `python --version`)\n3. Vérifiez que vous avez Python 3.8 ou plus récent\n\nSi vous avez un problème, décrivez-le et je vous aiderai!",
+        "simulate_stream_delay_ms": 2
+      },
+      "metadata": { "order": 5 }
+    },
+
+    {
+      "id": 6,
+      "slug": "help-env",
+      "kind": "help_loop",
+      "display_name": "Aide environnement",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 6,
+      "is_enabled": true,
+      "parameters": {
+        "instruction": "Décrivez le résultat de la commande `python3 --version`. Si vous avez une erreur ou un problème, décrivez-le ici et je vous guiderai. Si tout fonctionne, tapez **réglé** pour continuer.",
+        "agent_prompt": "Tu es un assistant technique pour un cours d'introduction à Python.\nL'étudiant essaie de configurer son environnement Python.\n\nApproche socratique :\n- Pose des questions ciblées pour identifier le problème\n- Vérifie d'abord si Python est installé (python3 --version)\n- Vérifie le PATH si la commande n'est pas trouvée\n- Suggère l'installation appropriée selon l'OS (apt, brew, winget)\n- Ne donne pas toute la solution d'un coup, guide étape par étape\n\nExemples de questions :\n- \"Quel système d'exploitation utilisez-vous?\"\n- \"Quelle erreur obtenez-vous exactement?\"\n- \"Avez-vous essayé `python` au lieu de `python3`?\"",
+        "exit_keyword": "réglé",
+        "max_turns": 15,
+        "success_message": "Parfait, votre environnement est prêt! Passons à la partie intéressante. 🎉",
+        "escalation_message": "On dirait que le problème persiste. Demandez de l'aide à votre enseignant en personne pour la configuration.",
+        "escalation_behavior": "advance",
+        "teacher_code": "",
+        "model": "",
+        "model_provider_id": "",
+        "model_provider_slug": ""
+      },
+      "metadata": { "order": 6 }
+    },
+
+    {
+      "id": 7,
+      "slug": "msg-section3",
+      "kind": "assistant_message",
+      "display_name": "Intro section 3",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 7,
+      "is_enabled": true,
+      "parameters": {
+        "message": "## Section 3 : Exercice pratique\n\nMaintenant, passons à la pratique! Vous allez écrire une fonction Python complète.\n\nSi vous bloquez, l'IA vous guidera automatiquement après quelques tentatives.",
+        "simulate_stream_delay_ms": 2
+      },
+      "metadata": { "order": 7 }
+    },
+
+    {
+      "id": 8,
+      "slug": "guided-fonction",
+      "kind": "guided_exercise",
+      "display_name": "Exercice fonction",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 8,
+      "is_enabled": true,
+      "parameters": {
+        "instruction": "**Exercice :** Écrivez une fonction Python `est_pair(n)` qui retourne `True` si `n` est pair, `False` sinon.\n\nExemples attendus :\n```python\nest_pair(4)   # True\nest_pair(7)   # False\nest_pair(0)   # True\n```\n\nÉcrivez votre code complet ci-dessous :",
+        "evaluation_prompt": "La réponse doit contenir une fonction Python nommée est_pair (ou is_even) qui prend un paramètre. Elle doit utiliser l'opérateur modulo (%) pour vérifier si le nombre est divisible par 2. La fonction doit retourner True/False (pas print). Accepter les variantes : n % 2 == 0, not n % 2, etc. Le code doit être syntaxiquement correct.",
+        "feedback_prompt": "Guidez l'étudiant vers la solution. Rappelez la syntaxe def en Python. Mentionnez l'opérateur modulo (%) si l'étudiant ne l'utilise pas. Ne donnez pas le code complet.",
+        "help_agent_prompt": "Tu es un tuteur Python patient et encourageant.\nL'étudiant essaie d'écrire une fonction est_pair(n).\n\nApproche pédagogique :\n- Demande ce qu'il a essayé jusqu'ici\n- Explique le concept de modulo (%) si nécessaire\n- Rappelle la syntaxe def nom(param): ... return ...\n- Donne des indices progressifs, pas la solution\n- Utilise des analogies (ex: diviser des bonbons en 2 groupes égaux)\n- Si l'étudiant est vraiment bloqué après plusieurs échanges, montre un exemple similaire (est_positif) sans donner est_pair",
+        "help_intro_message": "Je vois que c'est un peu difficile. Pas de souci, je suis là pour t'aider! 💡\n\nDis-moi ce que tu as essayé jusqu'ici, ou ce qui te bloque exactement. Quand tu te sens prêt à réessayer, tape **réglé**.",
+        "help_exit_message": "Super, réessayons! Écris ta fonction est_pair(n) ci-dessous :",
+        "exit_keyword": "réglé",
+        "max_attempts": 2,
+        "max_help_turns": 8,
+        "success_message": "Bravo! Votre fonction est correcte! 🎉\n\n```python\ndef est_pair(n):\n    return n % 2 == 0\n```\n\nL'opérateur `%` (modulo) donne le reste de la division. Si le reste de la division par 2 est 0, le nombre est pair.",
+        "escalation_message": "C'est un exercice qui demande de la pratique. Voici la solution pour référence :\n\n```python\ndef est_pair(n):\n    return n % 2 == 0\n```\n\nRévisez les concepts de fonctions et d'opérateurs, puis passons à la suite.",
+        "escalation_behavior": "advance",
+        "teacher_code": "",
+        "model": "",
+        "model_provider_id": "",
+        "model_provider_slug": ""
+      },
+      "metadata": { "order": 8 }
+    },
+
+    {
+      "id": 9,
+      "slug": "end",
+      "kind": "end",
+      "display_name": "Fin du labo",
+      "agent_key": null,
+      "parent_slug": null,
+      "position": 9,
+      "is_enabled": true,
+      "parameters": {
+        "message": "## Labo terminé! 🎓\n\nVous avez complété le mini-labo sur les bases de Python.\n\n**Ce que vous avez appris :**\n- La différence entre les types int, float et str\n- Comment configurer votre environnement Python\n- Comment écrire une fonction avec return\n\nBon travail!",
+        "status": {
+          "type": "closed",
+          "reason": "Labo complété"
+        }
+      },
+      "metadata": { "order": 9 }
+    }
+  ],
+  "edges": [
+    { "id": 1, "source": "start", "target": "msg-section1", "condition": null, "metadata": {} },
+    { "id": 2, "source": "msg-section1", "target": "eval-variables", "condition": null, "metadata": {} },
+    { "id": 3, "source": "eval-variables", "target": "eval-types", "condition": null, "metadata": {} },
+    { "id": 4, "source": "eval-types", "target": "msg-section2", "condition": null, "metadata": {} },
+    { "id": 5, "source": "msg-section2", "target": "help-env", "condition": null, "metadata": {} },
+    { "id": 6, "source": "help-env", "target": "msg-section3", "condition": null, "metadata": {} },
+    { "id": 7, "source": "msg-section3", "target": "guided-fonction", "condition": null, "metadata": {} },
+    { "id": 8, "source": "guided-fonction", "target": "end", "condition": null, "metadata": {} }
+  ]
+}
