@@ -142,6 +142,8 @@ def _build_session_config(
     """Build the session.update payload for OpenAI Realtime."""
     from .workflows import _get_admin_voice_tools_definitions
 
+    from .workflows import _get_editable_fields
+
     editable_kinds = {
         "message", "assistant_message", "agent",
         "evaluated_step", "help_loop", "guided_exercise",
@@ -151,15 +153,17 @@ def _build_session_config(
         params = s.parameters or {}
         title = params.get("title", s.display_name or s.slug)
         if s.kind in editable_kinds:
-            msg = (
-                params.get("message", "")
-                or params.get("instruction", "")
-                or ""
-            )
-            step_descriptions.append(
-                f"- slug: {s.slug}, title: {title}, type: {s.kind}"
-                + (f", content: {msg}" if msg else "")
-            )
+            editable_fields = _get_editable_fields(s.kind)
+            fields_info: list[str] = []
+            for field_key in editable_fields:
+                value = params.get(field_key, "") or ""
+                if value:
+                    preview = value[:80] + "…" if len(value) > 80 else value
+                    fields_info.append(f"  {field_key}: {preview}")
+            line = f"- slug: {s.slug}, title: {title}, type: {s.kind}"
+            if fields_info:
+                line += "\n" + "\n".join(fields_info)
+            step_descriptions.append(line)
     steps_context = "\n".join(step_descriptions)
 
     # Add switch_workflow tool

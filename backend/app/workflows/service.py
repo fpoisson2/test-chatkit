@@ -3003,6 +3003,50 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def update_step_field_live(
+        self,
+        workflow_id: int,
+        step_slug: str,
+        field_key: str,
+        new_value: str,
+        *,
+        session: Session | None = None,
+    ) -> WorkflowStep:
+        """Update a specific field in a step's parameters in-place on the active definition.
+
+        Unlike update_step_message_live, this targets any arbitrary parameter field
+        (e.g. evaluation_prompt, feedback_prompt, agent_prompt, etc.).
+        """
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            definition = self._load_active_definition(workflow, db)
+            if definition is None:
+                raise WorkflowNotFoundError(workflow_id)
+
+            step = db.scalar(
+                select(WorkflowStep).where(
+                    WorkflowStep.definition_id == definition.id,
+                    WorkflowStep.slug == step_slug,
+                )
+            )
+            if step is None:
+                raise WorkflowValidationError(
+                    f"Step '{step_slug}' not found in active definition"
+                )
+
+            params = dict(step.parameters or {})
+            params[field_key] = new_value
+            step.parameters = params
+            db.commit()
+            db.refresh(step)
+            return step
+        finally:
+            if owns_session:
+                db.close()
+
     def set_production_version(
         self,
         workflow_id: int,

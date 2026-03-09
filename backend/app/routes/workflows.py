@@ -1394,28 +1394,78 @@ async def ai_improve_content(
         )
 
 
+def _get_editable_fields(kind: str) -> dict[str, str]:
+    """Return a mapping of {param_key: content_type} for editable fields of a step kind."""
+    if kind == "evaluated_step":
+        return {
+            "instruction": "assistant_message",
+            "evaluation_prompt": "system_prompt",
+            "feedback_prompt": "system_prompt",
+            "success_message": "assistant_message",
+            "escalation_message": "assistant_message",
+        }
+    if kind == "help_loop":
+        return {
+            "instruction": "assistant_message",
+            "agent_prompt": "system_prompt",
+            "success_message": "assistant_message",
+            "escalation_message": "assistant_message",
+        }
+    if kind == "guided_exercise":
+        return {
+            "instruction": "assistant_message",
+            "evaluation_prompt": "system_prompt",
+            "feedback_prompt": "system_prompt",
+            "help_agent_prompt": "system_prompt",
+            "help_intro_message": "assistant_message",
+            "help_exit_message": "assistant_message",
+            "success_message": "assistant_message",
+            "escalation_message": "assistant_message",
+        }
+    if kind == "agent":
+        return {"message": "system_prompt"}
+    # message, assistant_message
+    return {"message": "assistant_message"}
+
+
 def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
     """Return tool definitions for the admin voice session (sent to OpenAI)."""
     return [
         {
             "type": "function",
             "name": "list_workflow_steps",
-            "description": "List all steps in the current workflow with their slugs, titles, and types. Includes message, agent, evaluated_step, help_loop, and guided_exercise steps.",
+            "description": (
+                "List all editable steps in the current workflow with their slugs, titles, types, "
+                "and editable fields. For pedagogical steps (evaluated_step, help_loop, guided_exercise), "
+                "shows all fields: instruction, evaluation_prompt, feedback_prompt, agent_prompt, "
+                "success_message, escalation_message, etc."
+            ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
         {
             "type": "function",
             "name": "improve_step_content",
             "description": (
-                "Improve the content (system prompt, assistant message, or instruction) of a specific "
-                "workflow step using AI and apply the changes immediately. "
-                "Works with message, agent, evaluated_step, help_loop, and guided_exercise steps."
+                "Improve a specific field of a workflow step using AI and apply changes immediately. "
+                "For message/assistant_message steps, the field is 'message'. "
+                "For pedagogical steps, specify the field: 'instruction', 'evaluation_prompt', "
+                "'feedback_prompt', 'agent_prompt', 'help_agent_prompt', 'success_message', "
+                "'escalation_message', 'help_intro_message', 'help_exit_message'. "
+                "If field is omitted, defaults to the primary field (message or instruction)."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "step_slug": {"type": "string", "description": "The slug of the step to improve."},
                     "instructions": {"type": "string", "description": "Instructions for how to improve the content."},
+                    "field": {
+                        "type": "string",
+                        "description": (
+                            "The specific field to improve. E.g. 'instruction', 'evaluation_prompt', "
+                            "'feedback_prompt', 'agent_prompt', 'success_message', 'escalation_message'. "
+                            "Defaults to the primary field if omitted."
+                        ),
+                    },
                 },
                 "required": ["step_slug", "instructions"],
             },
@@ -1429,12 +1479,23 @@ def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "publish_step_message",
-            "description": "Publish a new message or instruction for a specific step, updating it live for all active conversations. Works with all editable step types including evaluated_step, help_loop, and guided_exercise.",
+            "description": (
+                "Publish new content for a specific field of a step, updating it live. "
+                "For pedagogical steps, use the 'field' parameter to target a specific field "
+                "(instruction, evaluation_prompt, feedback_prompt, agent_prompt, success_message, etc.). "
+                "If field is omitted, defaults to the primary field."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "step_slug": {"type": "string", "description": "The slug of the step to update."},
-                    "new_message": {"type": "string", "description": "The new message text to publish."},
+                    "new_message": {"type": "string", "description": "The new content to publish."},
+                    "field": {
+                        "type": "string",
+                        "description": (
+                            "The specific field to update. Defaults to the primary field if omitted."
+                        ),
+                    },
                 },
                 "required": ["step_slug", "new_message"],
             },
@@ -1494,21 +1555,24 @@ async def _execute_admin_voice_tool(
                 continue
             params = s.parameters or {}
             title = params.get("title", s.display_name or s.slug)
-            msg = (
-                params.get("message", "")
-                or params.get("instruction", "")
-                or ""
-            )
-            lines.append(
-                f"- slug: {s.slug}, title: {title}, type: {s.kind}"
-                + (f", content: {msg}" if msg else "")
-            )
+            editable_fields = _get_editable_fields(s.kind)
+            fields_info: list[str] = []
+            for field_key in editable_fields:
+                value = params.get(field_key, "") or ""
+                preview = value[:80] + "…" if len(value) > 80 else value
+                if preview:
+                    fields_info.append(f"  {field_key}: {preview}")
+            line = f"- slug: {s.slug}, title: {title}, type: {s.kind}"
+            if fields_info:
+                line += "\n" + "\n".join(fields_info)
+            lines.append(line)
         return "\n".join(lines) or "No editable steps found."
 
     elif tool_name == "improve_step_content":
         step_slug = arguments.get("step_slug", "")
         instructions = arguments.get("instructions", "")
-        logger.info(f"[ADMIN_VOICE] improve_step_content: slug={step_slug}, instructions={instructions}")
+        requested_field = arguments.get("field", "")
+        logger.info(f"[ADMIN_VOICE] improve_step_content: slug={step_slug}, field={requested_field}, instructions={instructions}")
         step = session.scalar(
             sa_select(WorkflowStep).where(
                 WorkflowStep.definition_id == active_def.id,
@@ -1519,30 +1583,32 @@ async def _execute_admin_voice_tool(
             return f"Error: Step '{step_slug}' not found."
         if step.kind not in EDITABLE_STEP_KINDS:
             return f"Error: Step '{step_slug}' is of type '{step.kind}' and cannot be edited via voice."
-        params = step.parameters or {}
-        # Determine content field and type based on step kind
-        if step.kind in ("evaluated_step", "help_loop", "guided_exercise"):
-            content = params.get("instruction", "") or ""
-            content_type = "assistant_message"
-        elif step.kind == "agent":
-            content = params.get("message", "") or ""
-            content_type = "system_prompt"
-        else:
-            content = params.get("message", "") or ""
-            content_type = "assistant_message"
-        if not content:
-            return f"Error: Step '{step_slug}' has no message content to improve."
-        logger.info(f"[ADMIN_VOICE] improve_step_content: original content length={len(content)}")
-        improved = await _run_ai_improve(content, content_type, instructions)
-        logger.info(f"[ADMIN_VOICE] improve_step_content: improved content length={len(improved)}")
 
-        # Use the same live-update path as "Publier en direct" button:
-        # updates step, all stored thread items, and broadcasts SSE.
-        from ..live_updates import LiveUpdateManager, StepContentUpdate, live_update_manager
+        editable_fields = _get_editable_fields(step.kind)
+        # Resolve which field to edit
+        if requested_field and requested_field in editable_fields:
+            field_key = requested_field
+        elif requested_field:
+            available = ", ".join(editable_fields.keys())
+            return f"Error: Field '{requested_field}' is not editable for step type '{step.kind}'. Available fields: {available}"
+        else:
+            # Default to primary field
+            field_key = next(iter(editable_fields))
+
+        content_type = editable_fields[field_key]
+        params = step.parameters or {}
+        content = params.get(field_key, "") or ""
+        if not content:
+            return f"Error: Field '{field_key}' in step '{step_slug}' is empty."
+        logger.info(f"[ADMIN_VOICE] improve_step_content: field={field_key}, original length={len(content)}")
+        improved = await _run_ai_improve(content, content_type, instructions)
+        logger.info(f"[ADMIN_VOICE] improve_step_content: improved length={len(improved)}")
+
+        # Update the specific field in step parameters
+        from ..live_updates import StepContentUpdate, live_update_manager
 
         svc = WorkflowPersistenceService(session)
-        svc.update_step_message_live(workflow_id, step_slug, improved, session=session)
-        logger.info(f"[ADMIN_VOICE] improve_step_content: committed via update_step_message_live")
+        svc.update_step_field_live(workflow_id, step_slug, field_key, improved, session=session)
 
         await live_update_manager.publish(
             StepContentUpdate(
@@ -1552,7 +1618,7 @@ async def _execute_admin_voice_tool(
             )
         )
 
-        return f"Le contenu de l'étape '{step_slug}' a été amélioré et publié."
+        return f"Le champ '{field_key}' de l'étape '{step_slug}' a été amélioré et publié."
 
     elif tool_name == "get_student_progress":
         sessions_list = get_active_sessions(session)
@@ -1576,11 +1642,15 @@ async def _execute_admin_voice_tool(
     elif tool_name == "publish_step_message":
         step_slug = arguments.get("step_slug", "")
         new_message = arguments.get("new_message", "")
+        requested_field = arguments.get("field", "")
         from ..live_updates import StepContentUpdate, live_update_manager
 
         svc = WorkflowPersistenceService(session)
         try:
-            svc.update_step_message_live(workflow_id, step_slug, new_message, session=session)
+            if requested_field:
+                svc.update_step_field_live(workflow_id, step_slug, requested_field, new_message, session=session)
+            else:
+                svc.update_step_message_live(workflow_id, step_slug, new_message, session=session)
             await live_update_manager.publish(
                 StepContentUpdate(
                     workflow_id=workflow_id,
@@ -1588,7 +1658,8 @@ async def _execute_admin_voice_tool(
                     new_text=new_message,
                 )
             )
-            return f"Successfully published new message for step '{step_slug}'."
+            field_label = requested_field or "message"
+            return f"Successfully published new content for field '{field_label}' of step '{step_slug}'."
         except Exception as e:
             return f"Error publishing message: {str(e)}"
 
