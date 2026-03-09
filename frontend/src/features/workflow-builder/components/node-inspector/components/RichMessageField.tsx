@@ -8,7 +8,7 @@
  * Used by evaluated_step, help_loop, guided_exercise inspectors
  * (same UX as AssistantMessageInspectorSection).
  */
-import { Maximize2, Send, Sparkles } from "lucide-react";
+import { Maximize2, Radio, Send, Sparkles } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
 import { useAuth } from "../../../../../auth";
@@ -59,6 +59,25 @@ export const RichMessageField = ({
   const [showImproveInput, setShowImproveInput] = useState(false);
   const [improveInstructions, setImproveInstructions] = useState("");
   const improveInputRef = useRef<HTMLInputElement>(null);
+
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishStatus, setPublishStatus] = useState<"idle" | "success" | "error">("idle");
+
+  const handlePublishLive = useCallback(async () => {
+    if (!workflowId || !stepSlug || !value.trim()) return;
+    setIsPublishing(true);
+    setPublishStatus("idle");
+    try {
+      await workflowsApi.updateStepMessageLive(token, workflowId, stepSlug, value);
+      setPublishStatus("success");
+      setTimeout(() => setPublishStatus("idle"), 2000);
+    } catch {
+      setPublishStatus("error");
+      setTimeout(() => setPublishStatus("idle"), 3000);
+    } finally {
+      setIsPublishing(false);
+    }
+  }, [token, workflowId, stepSlug, value]);
 
   const handleImproveWithAI = useCallback(async () => {
     if (!value.trim()) return;
@@ -141,6 +160,24 @@ export const RichMessageField = ({
         ) : null}
         {hint ? (
           <p className={inspectorStyles.nodeInspectorHintTextTight}>{hint}</p>
+        ) : null}
+        {isActiveVersion && workflowId ? (
+          <button
+            type="button"
+            className={inspectorStyles.nodeInspectorPublishLiveButton}
+            onClick={handlePublishLive}
+            disabled={isPublishing || !value.trim()}
+            title={t("workflowBuilder.assistantMessageInspector.publishLiveTitle")}
+          >
+            <Radio size={14} />
+            {isPublishing
+              ? t("workflowBuilder.assistantMessageInspector.publishLivePublishing")
+              : publishStatus === "success"
+                ? t("workflowBuilder.assistantMessageInspector.publishLiveSuccess")
+                : publishStatus === "error"
+                  ? t("workflowBuilder.assistantMessageInspector.publishLiveError")
+                  : t("workflowBuilder.assistantMessageInspector.publishLive")}
+          </button>
         ) : null}
       </label>
 
