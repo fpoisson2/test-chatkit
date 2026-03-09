@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { AvailableModel } from "../../../../../utils/backend";
+import { RichMessageField } from "../components/RichMessageField";
 import styles from "../NodeInspector.module.css";
 
 type ProviderOption = {
@@ -11,6 +12,9 @@ type ProviderOption = {
 
 type HelpLoopInspectorSectionProps = {
   nodeId: string;
+  stepSlug: string;
+  workflowId: number | null;
+  isActiveVersion: boolean;
   instruction: string;
   agentPrompt: string;
   exitKeyword: string;
@@ -30,6 +34,9 @@ type HelpLoopInspectorSectionProps = {
 
 export const HelpLoopInspectorSection = ({
   nodeId,
+  stepSlug,
+  workflowId,
+  isActiveVersion,
   instruction,
   agentPrompt,
   exitKeyword,
@@ -46,7 +53,6 @@ export const HelpLoopInspectorSection = ({
   availableModelsLoading,
   onFieldChange,
 }: HelpLoopInspectorSectionProps) => {
-  // Build provider options from available models (same logic as agent inspector)
   const providerOptions = useMemo(() => {
     const seen = new Set<string>();
     const options: ProviderOption[] = [];
@@ -145,33 +151,28 @@ export const HelpLoopInspectorSection = ({
       aria-label="Configuration de la boucle d'aide"
       className={styles.nodeInspectorPanelSpacious}
     >
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message initial</span>
-        <textarea
-          value={instruction}
-          onChange={(e) => onFieldChange(nodeId, "instruction", e.target.value)}
-          rows={3}
-          placeholder="Ex. Tu sembles avoir un problème. Décris-moi ce qui ne fonctionne pas."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Message envoyé à l'étudiant au début de la boucle d'aide.
-        </p>
-      </label>
+      <RichMessageField
+        value={instruction}
+        onChange={(v) => onFieldChange(nodeId, "instruction", v)}
+        label="Message initial"
+        hint="Message envoyé à l'étudiant au début de la boucle d'aide."
+        placeholder="Ex. Tu sembles avoir un problème. Décris-moi ce qui ne fonctionne pas."
+        rows={3}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Prompt de l'agent</span>
-        <textarea
-          value={agentPrompt}
-          onChange={(e) => onFieldChange(nodeId, "agent_prompt", e.target.value)}
-          rows={6}
-          placeholder="Ex. Tu es un assistant technique pour le cours IoT. L'étudiant a un problème avec la configuration Mosquitto. Mode dépannage socratique..."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Instructions système pour l'agent IA de support. Définit le ton, le contexte et l'approche pédagogique.
-        </p>
-      </label>
+      <RichMessageField
+        value={agentPrompt}
+        onChange={(v) => onFieldChange(nodeId, "agent_prompt", v)}
+        label="Prompt de l'agent"
+        hint="Instructions système pour l'agent IA de support. Définit le ton, le contexte et l'approche pédagogique."
+        placeholder="Ex. Tu es un assistant technique pour le cours IoT. Mode dépannage socratique..."
+        rows={6}
+        contentType="system_prompt"
+      />
 
       <label className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorLabel}>Mot-clé de sortie</span>
@@ -199,30 +200,30 @@ export const HelpLoopInspectorSection = ({
         />
       </label>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message de succès</span>
-        <input
-          type="text"
-          value={successMessage}
-          onChange={(e) => onFieldChange(nodeId, "success_message", e.target.value)}
-          placeholder="C'est réglé, on continue!"
-          className={styles.nodeInspectorInput}
-        />
-      </label>
+      <RichMessageField
+        value={successMessage}
+        onChange={(v) => onFieldChange(nodeId, "success_message", v)}
+        label="Message de succès"
+        placeholder="C'est réglé, on continue!"
+        rows={2}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message d'escalade</span>
-        <textarea
-          value={escalationMessage}
-          onChange={(e) => onFieldChange(nodeId, "escalation_message", e.target.value)}
-          rows={2}
-          placeholder="Le nombre maximum d'échanges a été atteint. Demandez de l'aide à votre enseignant."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Message envoyé quand le nombre max d'échanges est atteint.
-        </p>
-      </label>
+      <RichMessageField
+        value={escalationMessage}
+        onChange={(v) => onFieldChange(nodeId, "escalation_message", v)}
+        label="Message d'escalade"
+        hint="Message envoyé quand le nombre max d'échanges est atteint."
+        placeholder="Le nombre maximum d'échanges a été atteint."
+        rows={2}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
       <label className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorLabel}>Après escalade</span>
@@ -234,9 +235,6 @@ export const HelpLoopInspectorSection = ({
           <option value="advance">Passer à l'étape suivante</option>
           <option value="wait_for_teacher">Attendre le code enseignant</option>
         </select>
-        <p className={styles.nodeInspectorHintTextTight}>
-          Comportement lorsque le nombre max d'échanges est atteint.
-        </p>
       </label>
 
       <label className={styles.nodeInspectorField}>
@@ -248,9 +246,6 @@ export const HelpLoopInspectorSection = ({
           placeholder="Ex. BYPASS123"
           className={styles.nodeInspectorInput}
         />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Code secret que l'enseignant peut entrer pour passer directement à l'étape suivante.
-        </p>
       </label>
 
       <label className={styles.nodeInspectorField}>

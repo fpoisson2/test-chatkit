@@ -619,6 +619,9 @@ const NodeInspector = ({
       {kind === "evaluated_step" ? (
         <EvaluatedStepInspectorSection
           nodeId={node.id}
+          stepSlug={node.data.slug}
+          workflowId={currentWorkflowId}
+          isActiveVersion={isActiveVersion ?? false}
           instruction={String((parameters as Record<string, unknown>)?.instruction ?? "")}
           evaluationPrompt={String((parameters as Record<string, unknown>)?.evaluation_prompt ?? "")}
           feedbackPrompt={String((parameters as Record<string, unknown>)?.feedback_prompt ?? "")}
@@ -640,6 +643,9 @@ const NodeInspector = ({
       {kind === "help_loop" ? (
         <HelpLoopInspectorSection
           nodeId={node.id}
+          stepSlug={node.data.slug}
+          workflowId={currentWorkflowId}
+          isActiveVersion={isActiveVersion ?? false}
           instruction={String((parameters as Record<string, unknown>)?.instruction ?? "")}
           agentPrompt={String((parameters as Record<string, unknown>)?.agent_prompt ?? "")}
           exitKeyword={String((parameters as Record<string, unknown>)?.exit_keyword ?? "réglé")}
@@ -661,6 +667,9 @@ const NodeInspector = ({
       {kind === "guided_exercise" ? (
         <GuidedExerciseInspectorSection
           nodeId={node.id}
+          stepSlug={node.data.slug}
+          workflowId={currentWorkflowId}
+          isActiveVersion={isActiveVersion ?? false}
           instruction={String((parameters as Record<string, unknown>)?.instruction ?? "")}
           evaluationPrompt={String((parameters as Record<string, unknown>)?.evaluation_prompt ?? "")}
           feedbackPrompt={String((parameters as Record<string, unknown>)?.feedback_prompt ?? "")}

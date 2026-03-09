@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { AvailableModel } from "../../../../../utils/backend";
+import { RichMessageField } from "../components/RichMessageField";
 import styles from "../NodeInspector.module.css";
 
 type ProviderOption = {
@@ -11,6 +12,9 @@ type ProviderOption = {
 
 type EvaluatedStepInspectorSectionProps = {
   nodeId: string;
+  stepSlug: string;
+  workflowId: number | null;
+  isActiveVersion: boolean;
   instruction: string;
   evaluationPrompt: string;
   feedbackPrompt: string;
@@ -30,6 +34,9 @@ type EvaluatedStepInspectorSectionProps = {
 
 export const EvaluatedStepInspectorSection = ({
   nodeId,
+  stepSlug,
+  workflowId,
+  isActiveVersion,
   instruction,
   evaluationPrompt,
   feedbackPrompt,
@@ -46,7 +53,6 @@ export const EvaluatedStepInspectorSection = ({
   availableModelsLoading,
   onFieldChange,
 }: EvaluatedStepInspectorSectionProps) => {
-  // Build provider options from available models (same logic as agent inspector)
   const providerOptions = useMemo(() => {
     const seen = new Set<string>();
     const options: ProviderOption[] = [];
@@ -64,7 +70,6 @@ export const EvaluatedStepInspectorSection = ({
     return options.sort((a, b) => a.label.localeCompare(b.label, "fr"));
   }, [availableModels]);
 
-  // Resolve selected provider value
   const selectedProviderValue = useMemo(() => {
     if (!modelProviderId && !modelProviderSlug) return "";
     const matchById = providerOptions.find(
@@ -78,7 +83,6 @@ export const EvaluatedStepInspectorSection = ({
     return "";
   }, [providerOptions, modelProviderId, modelProviderSlug]);
 
-  // Filter models for selected provider
   const modelsForProvider = useMemo(() => {
     if (!selectedProviderValue) return availableModels;
     const target = providerOptions.find((o) => o.value === selectedProviderValue);
@@ -93,7 +97,6 @@ export const EvaluatedStepInspectorSection = ({
     return filtered.length > 0 ? filtered : availableModels;
   }, [availableModels, selectedProviderValue, providerOptions]);
 
-  // Resolve selected model option value
   const selectedModelOption = useMemo(() => {
     if (!model) return "";
     const match = modelsForProvider.find((m) => m.name === model);
@@ -148,47 +151,38 @@ export const EvaluatedStepInspectorSection = ({
       aria-label="Configuration de l'étape évaluée"
       className={styles.nodeInspectorPanelSpacious}
     >
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Consigne</span>
-        <textarea
-          value={instruction}
-          onChange={(e) => onFieldChange(nodeId, "instruction", e.target.value)}
-          rows={4}
-          placeholder="Ex. Expliquez le concept de variable en programmation."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Message envoyé à l'étudiant comme consigne. Supporte les variables de template.
-        </p>
-      </label>
+      <RichMessageField
+        value={instruction}
+        onChange={(v) => onFieldChange(nodeId, "instruction", v)}
+        label="Consigne"
+        hint="Message envoyé à l'étudiant comme consigne. Supporte les variables de template."
+        placeholder="Ex. Expliquez le concept de variable en programmation."
+        rows={4}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Critères d'évaluation</span>
-        <textarea
-          value={evaluationPrompt}
-          onChange={(e) => onFieldChange(nodeId, "evaluation_prompt", e.target.value)}
-          rows={4}
-          placeholder="Ex. La réponse doit mentionner qu'une variable est un espace mémoire nommé."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Critères utilisés par l'IA pour évaluer la réponse (passe/échoue).
-        </p>
-      </label>
+      <RichMessageField
+        value={evaluationPrompt}
+        onChange={(v) => onFieldChange(nodeId, "evaluation_prompt", v)}
+        label="Critères d'évaluation"
+        hint="Critères utilisés par l'IA pour évaluer la réponse (passe/échoue)."
+        placeholder="Ex. La réponse doit mentionner qu'une variable est un espace mémoire nommé."
+        rows={4}
+        contentType="system_prompt"
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Instructions de feedback</span>
-        <textarea
-          value={feedbackPrompt}
-          onChange={(e) => onFieldChange(nodeId, "feedback_prompt", e.target.value)}
-          rows={3}
-          placeholder="Ex. Guidez l'étudiant vers la bonne réponse sans la donner directement."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Instructions pour générer un feedback constructif en cas d'échec. Laisser vide pour un feedback automatique.
-        </p>
-      </label>
+      <RichMessageField
+        value={feedbackPrompt}
+        onChange={(v) => onFieldChange(nodeId, "feedback_prompt", v)}
+        label="Instructions de feedback"
+        hint="Instructions pour générer un feedback constructif en cas d'échec. Laisser vide pour un feedback automatique."
+        placeholder="Ex. Guidez l'étudiant vers la bonne réponse sans la donner directement."
+        rows={3}
+        contentType="system_prompt"
+      />
 
       <label className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorLabel}>Code enseignant (optionnel)</span>
@@ -216,30 +210,30 @@ export const EvaluatedStepInspectorSection = ({
         />
       </label>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message de succès</span>
-        <input
-          type="text"
-          value={successMessage}
-          onChange={(e) => onFieldChange(nodeId, "success_message", e.target.value)}
-          placeholder="Bravo, c'est correct!"
-          className={styles.nodeInspectorInput}
-        />
-      </label>
+      <RichMessageField
+        value={successMessage}
+        onChange={(v) => onFieldChange(nodeId, "success_message", v)}
+        label="Message de succès"
+        placeholder="Bravo, c'est correct!"
+        rows={2}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message d'escalade</span>
-        <textarea
-          value={escalationMessage}
-          onChange={(e) => onFieldChange(nodeId, "escalation_message", e.target.value)}
-          rows={2}
-          placeholder="Demandez de l'aide à votre enseignant."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Message envoyé quand le nombre max de tentatives est atteint.
-        </p>
-      </label>
+      <RichMessageField
+        value={escalationMessage}
+        onChange={(v) => onFieldChange(nodeId, "escalation_message", v)}
+        label="Message d'escalade"
+        hint="Message envoyé quand le nombre max de tentatives est atteint."
+        placeholder="Demandez de l'aide à votre enseignant."
+        rows={2}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
       <label className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorLabel}>Après escalade</span>
@@ -271,9 +265,6 @@ export const EvaluatedStepInspectorSection = ({
             </option>
           ))}
         </select>
-        <p className={styles.nodeInspectorHintTextTight}>
-          Fournisseur utilisé pour l'évaluation et le feedback.
-        </p>
       </label>
 
       <label className={styles.nodeInspectorField}>
@@ -308,9 +299,6 @@ export const EvaluatedStepInspectorSection = ({
             );
           })}
         </select>
-        <p className={styles.nodeInspectorHintTextTight}>
-          Modèle utilisé pour l'évaluation et le feedback.
-        </p>
       </label>
 
       <label className={styles.nodeInspectorField} style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>

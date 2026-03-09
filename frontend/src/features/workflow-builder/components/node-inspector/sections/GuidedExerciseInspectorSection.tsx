@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { AvailableModel } from "../../../../../utils/backend";
+import { RichMessageField } from "../components/RichMessageField";
 import styles from "../NodeInspector.module.css";
 
 type ProviderOption = {
@@ -11,6 +12,9 @@ type ProviderOption = {
 
 type GuidedExerciseInspectorSectionProps = {
   nodeId: string;
+  stepSlug: string;
+  workflowId: number | null;
+  isActiveVersion: boolean;
   instruction: string;
   evaluationPrompt: string;
   feedbackPrompt: string;
@@ -35,6 +39,9 @@ type GuidedExerciseInspectorSectionProps = {
 
 export const GuidedExerciseInspectorSection = ({
   nodeId,
+  stepSlug,
+  workflowId,
+  isActiveVersion,
   instruction,
   evaluationPrompt,
   feedbackPrompt,
@@ -156,41 +163,36 @@ export const GuidedExerciseInspectorSection = ({
     >
       <h4 className={styles.nodeInspectorSectionTitle} style={{ marginTop: 0 }}>Évaluation</h4>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Consigne</span>
-        <textarea
-          value={instruction}
-          onChange={(e) => onFieldChange(nodeId, "instruction", e.target.value)}
-          rows={4}
-          placeholder="Ex. Expliquez le concept de variable en programmation."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Message envoyé à l'étudiant comme consigne. Supporte les variables de template.
-        </p>
-      </label>
+      <RichMessageField
+        value={instruction}
+        onChange={(v) => onFieldChange(nodeId, "instruction", v)}
+        label="Consigne"
+        hint="Message envoyé à l'étudiant comme consigne. Supporte les variables de template."
+        placeholder="Ex. Expliquez le concept de variable en programmation."
+        rows={4}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Critères d'évaluation</span>
-        <textarea
-          value={evaluationPrompt}
-          onChange={(e) => onFieldChange(nodeId, "evaluation_prompt", e.target.value)}
-          rows={4}
-          placeholder="Ex. La réponse doit mentionner qu'une variable est un espace mémoire nommé."
-          className={styles.nodeInspectorTextarea}
-        />
-      </label>
+      <RichMessageField
+        value={evaluationPrompt}
+        onChange={(v) => onFieldChange(nodeId, "evaluation_prompt", v)}
+        label="Critères d'évaluation"
+        placeholder="Ex. La réponse doit mentionner qu'une variable est un espace mémoire nommé."
+        rows={4}
+        contentType="system_prompt"
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Instructions de feedback</span>
-        <textarea
-          value={feedbackPrompt}
-          onChange={(e) => onFieldChange(nodeId, "feedback_prompt", e.target.value)}
-          rows={3}
-          placeholder="Ex. Guidez l'étudiant vers la bonne réponse sans la donner directement."
-          className={styles.nodeInspectorTextarea}
-        />
-      </label>
+      <RichMessageField
+        value={feedbackPrompt}
+        onChange={(v) => onFieldChange(nodeId, "feedback_prompt", v)}
+        label="Instructions de feedback"
+        placeholder="Ex. Guidez l'étudiant vers la bonne réponse sans la donner directement."
+        rows={3}
+        contentType="system_prompt"
+      />
 
       <label className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorLabel}>Nombre max de tentatives</span>
@@ -207,55 +209,54 @@ export const GuidedExerciseInspectorSection = ({
         </p>
       </label>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message de succès</span>
-        <input
-          type="text"
-          value={successMessage}
-          onChange={(e) => onFieldChange(nodeId, "success_message", e.target.value)}
-          placeholder="Bravo, c'est correct!"
-          className={styles.nodeInspectorInput}
-        />
-      </label>
+      <RichMessageField
+        value={successMessage}
+        onChange={(v) => onFieldChange(nodeId, "success_message", v)}
+        label="Message de succès"
+        placeholder="Bravo, c'est correct!"
+        rows={2}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
       <hr style={{ border: "none", borderTop: "1px solid var(--border-color, #444)", margin: "0.75rem 0" }} />
       <h4 className={styles.nodeInspectorSectionTitle}>Mode aide</h4>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Prompt de l'agent d'aide</span>
-        <textarea
-          value={helpAgentPrompt}
-          onChange={(e) => onFieldChange(nodeId, "help_agent_prompt", e.target.value)}
-          rows={6}
-          placeholder="Ex. Tu es un assistant technique pour le cours IoT. Mode dépannage socratique..."
-          className={styles.nodeInspectorTextarea}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          Instructions système pour l'IA de support quand l'étudiant est bloqué.
-        </p>
-      </label>
+      <RichMessageField
+        value={helpAgentPrompt}
+        onChange={(v) => onFieldChange(nodeId, "help_agent_prompt", v)}
+        label="Prompt de l'agent d'aide"
+        hint="Instructions système pour l'IA de support quand l'étudiant est bloqué."
+        placeholder="Ex. Tu es un assistant technique pour le cours IoT. Mode dépannage socratique..."
+        rows={6}
+        contentType="system_prompt"
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message d'entrée en mode aide</span>
-        <textarea
-          value={helpIntroMessage}
-          onChange={(e) => onFieldChange(nodeId, "help_intro_message", e.target.value)}
-          rows={2}
-          placeholder="Tu sembles avoir besoin d'aide. Décris-moi ce qui te bloque..."
-          className={styles.nodeInspectorTextarea}
-        />
-      </label>
+      <RichMessageField
+        value={helpIntroMessage}
+        onChange={(v) => onFieldChange(nodeId, "help_intro_message", v)}
+        label="Message d'entrée en mode aide"
+        placeholder="Tu sembles avoir besoin d'aide. Décris-moi ce qui te bloque..."
+        rows={2}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message de retour à l'évaluation</span>
-        <input
-          type="text"
-          value={helpExitMessage}
-          onChange={(e) => onFieldChange(nodeId, "help_exit_message", e.target.value)}
-          placeholder="D'accord, réessayons! Donne-moi ta réponse."
-          className={styles.nodeInspectorInput}
-        />
-      </label>
+      <RichMessageField
+        value={helpExitMessage}
+        onChange={(v) => onFieldChange(nodeId, "help_exit_message", v)}
+        label="Message de retour à l'évaluation"
+        placeholder="D'accord, réessayons! Donne-moi ta réponse."
+        rows={2}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
       <label className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorLabel}>Mot-clé de sortie</span>
@@ -286,16 +287,17 @@ export const GuidedExerciseInspectorSection = ({
       <hr style={{ border: "none", borderTop: "1px solid var(--border-color, #444)", margin: "0.75rem 0" }} />
       <h4 className={styles.nodeInspectorSectionTitle}>Escalade</h4>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>Message d'escalade</span>
-        <textarea
-          value={escalationMessage}
-          onChange={(e) => onFieldChange(nodeId, "escalation_message", e.target.value)}
-          rows={2}
-          placeholder="Le nombre maximum d'échanges a été atteint."
-          className={styles.nodeInspectorTextarea}
-        />
-      </label>
+      <RichMessageField
+        value={escalationMessage}
+        onChange={(v) => onFieldChange(nodeId, "escalation_message", v)}
+        label="Message d'escalade"
+        placeholder="Le nombre maximum d'échanges a été atteint."
+        rows={2}
+        contentType="assistant_message"
+        workflowId={workflowId}
+        stepSlug={stepSlug}
+        isActiveVersion={isActiveVersion}
+      />
 
       <label className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorLabel}>Après escalade</span>
