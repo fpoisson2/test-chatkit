@@ -1395,7 +1395,7 @@ async def ai_improve_content(
 
 
 def _get_editable_fields(kind: str) -> dict[str, str]:
-    """Return a mapping of {param_key: content_type} for editable fields of a step kind."""
+    """Return a mapping of {param_key: content_type} for text content fields that can be AI-improved."""
     if kind == "evaluated_step":
         return {
             "instruction": "assistant_message",
@@ -1426,6 +1426,19 @@ def _get_editable_fields(kind: str) -> dict[str, str]:
         return {"message": "system_prompt"}
     # message, assistant_message
     return {"message": "assistant_message"}
+
+
+def _get_config_fields(kind: str) -> list[str]:
+    """Return config parameter keys (non-text) that are relevant to display/edit for a step kind."""
+    if kind == "evaluated_step":
+        return ["model", "model_provider_id", "model_provider_slug", "max_attempts", "escalation_behavior", "teacher_code", "masked"]
+    if kind == "help_loop":
+        return ["model", "model_provider_id", "model_provider_slug", "max_turns", "exit_keyword", "escalation_behavior", "teacher_code", "masked"]
+    if kind == "guided_exercise":
+        return ["model", "model_provider_id", "model_provider_slug", "max_attempts", "max_help_turns", "exit_keyword", "escalation_behavior", "teacher_code", "masked"]
+    if kind == "agent":
+        return ["model", "model_provider_id", "model_provider_slug"]
+    return []
 
 
 def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
@@ -1502,6 +1515,35 @@ def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
         },
         {
             "type": "function",
+            "name": "update_step_config",
+            "description": (
+                "Update configuration fields of a step (model, provider, max_attempts, max_turns, "
+                "exit_keyword, escalation_behavior, teacher_code, masked). "
+                "Use this to change the AI model or other settings on agent, evaluated_step, "
+                "help_loop, or guided_exercise steps."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "step_slug": {"type": "string", "description": "The slug of the step to configure."},
+                    "field": {
+                        "type": "string",
+                        "description": (
+                            "The config field to update: 'model', 'model_provider_id', 'model_provider_slug', "
+                            "'max_attempts', 'max_turns', 'max_help_turns', 'exit_keyword', "
+                            "'escalation_behavior', 'teacher_code', 'masked'."
+                        ),
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "The new value. For numeric fields, pass as string (e.g. '5'). For boolean, use 'true'/'false'.",
+                    },
+                },
+                "required": ["step_slug", "field", "value"],
+            },
+        },
+        {
+            "type": "function",
             "name": "unlock_student",
             "description": "Unblock a student stuck at a wait step by clearing their wait state so the workflow can advance.",
             "parameters": {
@@ -1556,12 +1598,17 @@ async def _execute_admin_voice_tool(
             params = s.parameters or {}
             title = params.get("title", s.display_name or s.slug)
             editable_fields = _get_editable_fields(s.kind)
+            config_fields = _get_config_fields(s.kind)
             fields_info: list[str] = []
             for field_key in editable_fields:
                 value = params.get(field_key, "") or ""
                 preview = value[:80] + "…" if len(value) > 80 else value
                 if preview:
                     fields_info.append(f"  {field_key}: {preview}")
+            for field_key in config_fields:
+                value = params.get(field_key)
+                if value is not None and str(value).strip():
+                    fields_info.append(f"  {field_key}: {value}")
             line = f"- slug: {s.slug}, title: {title}, type: {s.kind}"
             if fields_info:
                 line += "\n" + "\n".join(fields_info)
@@ -1662,6 +1709,41 @@ async def _execute_admin_voice_tool(
             return f"Successfully published new content for field '{field_label}' of step '{step_slug}'."
         except Exception as e:
             return f"Error publishing message: {str(e)}"
+
+    elif tool_name == "update_step_config":
+        step_slug = arguments.get("step_slug", "")
+        field = arguments.get("field", "")
+        raw_value = arguments.get("value", "")
+        step = session.scalar(
+            sa_select(WorkflowStep).where(
+                WorkflowStep.definition_id == active_def.id,
+                WorkflowStep.slug == step_slug,
+            )
+        )
+        if step is None:
+            return f"Error: Step '{step_slug}' not found."
+        allowed_config = _get_config_fields(step.kind)
+        if not allowed_config:
+            return f"Error: Step '{step_slug}' (type '{step.kind}') has no configurable fields."
+        if field not in allowed_config:
+            return f"Error: Field '{field}' is not configurable for type '{step.kind}'. Available: {', '.join(allowed_config)}"
+
+        # Coerce value to the appropriate type
+        _INT_FIELDS = {"max_attempts", "max_turns", "max_help_turns"}
+        _BOOL_FIELDS = {"masked"}
+        if field in _INT_FIELDS:
+            try:
+                coerced_value: Any = int(raw_value)
+            except ValueError:
+                return f"Error: '{raw_value}' is not a valid integer for '{field}'."
+        elif field in _BOOL_FIELDS:
+            coerced_value = raw_value.strip().lower() in {"true", "1", "yes", "on"}
+        else:
+            coerced_value = raw_value
+
+        svc = WorkflowPersistenceService(session)
+        svc.update_step_field_live(workflow_id, step_slug, field, coerced_value, session=session)
+        return f"Configuration mise à jour : {field} = {coerced_value} pour l'étape '{step_slug}'."
 
     elif tool_name == "unlock_student":
         from ..chatkit_server.context import _get_wait_state_metadata, _set_wait_state_metadata

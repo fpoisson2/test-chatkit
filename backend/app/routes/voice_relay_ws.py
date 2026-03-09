@@ -140,9 +140,7 @@ def _build_session_config(
     model: str = "gpt-realtime-1.5",
 ) -> dict[str, Any]:
     """Build the session.update payload for OpenAI Realtime."""
-    from .workflows import _get_admin_voice_tools_definitions
-
-    from .workflows import _get_editable_fields
+    from .workflows import _get_admin_voice_tools_definitions, _get_config_fields, _get_editable_fields
 
     editable_kinds = {
         "message", "assistant_message", "agent",
@@ -154,12 +152,17 @@ def _build_session_config(
         title = params.get("title", s.display_name or s.slug)
         if s.kind in editable_kinds:
             editable_fields = _get_editable_fields(s.kind)
+            config_fields = _get_config_fields(s.kind)
             fields_info: list[str] = []
             for field_key in editable_fields:
                 value = params.get(field_key, "") or ""
                 if value:
                     preview = value[:80] + "…" if len(value) > 80 else value
                     fields_info.append(f"  {field_key}: {preview}")
+            for field_key in config_fields:
+                value = params.get(field_key)
+                if value is not None and str(value).strip():
+                    fields_info.append(f"  {field_key}: {value}")
             line = f"- slug: {s.slug}, title: {title}, type: {s.kind}"
             if fields_info:
                 line += "\n" + "\n".join(fields_info)
