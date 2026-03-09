@@ -1400,15 +1400,16 @@ def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "list_workflow_steps",
-            "description": "List all steps in the current workflow with their slugs, titles, and types.",
+            "description": "List all steps in the current workflow with their slugs, titles, and types. Includes message, agent, evaluated_step, help_loop, and guided_exercise steps.",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
         {
             "type": "function",
             "name": "improve_step_content",
             "description": (
-                "Improve the content (system prompt or assistant message) of a specific "
-                "workflow step using AI and apply the changes immediately."
+                "Improve the content (system prompt, assistant message, or instruction) of a specific "
+                "workflow step using AI and apply the changes immediately. "
+                "Works with message, agent, evaluated_step, help_loop, and guided_exercise steps."
             ),
             "parameters": {
                 "type": "object",
@@ -1428,7 +1429,7 @@ def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "publish_step_message",
-            "description": "Publish a new message for a specific step, updating it live for all active conversations.",
+            "description": "Publish a new message or instruction for a specific step, updating it live for all active conversations. Works with all editable step types including evaluated_step, help_loop, and guided_exercise.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1476,7 +1477,10 @@ async def _execute_admin_voice_tool(
         return "Error: No active workflow definition found."
 
     # Only these step types are editable via voice
-    EDITABLE_STEP_KINDS = {"message", "assistant_message", "agent"}
+    EDITABLE_STEP_KINDS = {
+        "message", "assistant_message", "agent",
+        "evaluated_step", "help_loop", "guided_exercise",
+    }
 
     if tool_name == "list_workflow_steps":
         steps = session.scalars(
@@ -1490,7 +1494,11 @@ async def _execute_admin_voice_tool(
                 continue
             params = s.parameters or {}
             title = params.get("title", s.display_name or s.slug)
-            msg = params.get("message", "") or ""
+            msg = (
+                params.get("message", "")
+                or params.get("instruction", "")
+                or ""
+            )
             lines.append(
                 f"- slug: {s.slug}, title: {title}, type: {s.kind}"
                 + (f", content: {msg}" if msg else "")
@@ -1510,12 +1518,20 @@ async def _execute_admin_voice_tool(
         if step is None:
             return f"Error: Step '{step_slug}' not found."
         if step.kind not in EDITABLE_STEP_KINDS:
-            return f"Error: Step '{step_slug}' is of type '{step.kind}' and cannot be edited via voice. Only 'message' and 'agent' steps can be modified."
+            return f"Error: Step '{step_slug}' is of type '{step.kind}' and cannot be edited via voice."
         params = step.parameters or {}
-        content = params.get("message", "") or ""
+        # Determine content field and type based on step kind
+        if step.kind in ("evaluated_step", "help_loop", "guided_exercise"):
+            content = params.get("instruction", "") or ""
+            content_type = "assistant_message"
+        elif step.kind == "agent":
+            content = params.get("message", "") or ""
+            content_type = "system_prompt"
+        else:
+            content = params.get("message", "") or ""
+            content_type = "assistant_message"
         if not content:
             return f"Error: Step '{step_slug}' has no message content to improve."
-        content_type = "system_prompt" if step.kind == "agent" else "assistant_message"
         logger.info(f"[ADMIN_VOICE] improve_step_content: original content length={len(content)}")
         improved = await _run_ai_improve(content, content_type, instructions)
         logger.info(f"[ADMIN_VOICE] improve_step_content: improved content length={len(improved)}")

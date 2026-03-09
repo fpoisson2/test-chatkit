@@ -142,13 +142,20 @@ def _build_session_config(
     """Build the session.update payload for OpenAI Realtime."""
     from .workflows import _get_admin_voice_tools_definitions
 
-    editable_kinds = {"message", "assistant_message", "agent"}
+    editable_kinds = {
+        "message", "assistant_message", "agent",
+        "evaluated_step", "help_loop", "guided_exercise",
+    }
     step_descriptions: list[str] = []
     for s in steps:
         params = s.parameters or {}
         title = params.get("title", s.display_name or s.slug)
         if s.kind in editable_kinds:
-            msg = params.get("message", "") or ""
+            msg = (
+                params.get("message", "")
+                or params.get("instruction", "")
+                or ""
+            )
             step_descriptions.append(
                 f"- slug: {s.slug}, title: {title}, type: {s.kind}"
                 + (f", content: {msg}" if msg else "")

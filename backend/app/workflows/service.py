@@ -2924,11 +2924,15 @@ class WorkflowService:
 
             # Capture old message before updating (for fallback matching)
             old_params = step.parameters or {}
-            old_message = (old_params.get("message") or old_params.get("text") or "") if isinstance(old_params, dict) else ""
+            old_message = (old_params.get("message") or old_params.get("text") or old_params.get("instruction") or "") if isinstance(old_params, dict) else ""
+
+            # Determine the correct parameter key based on step kind
+            _INSTRUCTION_KINDS = {"evaluated_step", "help_loop", "guided_exercise"}
+            message_key = "instruction" if step.kind in _INSTRUCTION_KINDS else "message"
 
             # Update step parameters in-place
             params = dict(step.parameters or {})
-            params["message"] = new_message
+            params[message_key] = new_message
             step.parameters = params
             db.flush()
 
