@@ -74,6 +74,8 @@ import { TransformInspectorSection } from "./sections/TransformInspectorSection"
 import { UserMessageInspectorSection } from "./sections/UserMessageInspectorSection";
 import { WaitForUserInputInspectorSection } from "./sections/WaitForUserInputInspectorSection";
 import { EvaluatedStepInspectorSection } from "./sections/EvaluatedStepInspectorSection";
+import { GuidedExerciseInspectorSection } from "./sections/GuidedExerciseInspectorSection";
+import { HelpLoopInspectorSection } from "./sections/HelpLoopInspectorSection";
 import { WatchInspectorSection } from "./sections/WatchInspectorSection";
 import { ParallelSplitInspectorSection } from "./sections/ParallelSplitInspectorSection";
 import { WidgetInspectorSection } from "./sections/WidgetInspectorSection";
@@ -203,6 +205,8 @@ const NodeInspector = ({
     handleWaitForUserInputMessageChange: onWaitForUserInputMessageChange,
     handleWaitForUserInputMaskedChange: onWaitForUserInputMaskedChange,
     handleEvaluatedStepFieldChange: onEvaluatedStepFieldChange,
+    handleHelpLoopFieldChange: onHelpLoopFieldChange,
+    handleGuidedExerciseFieldChange: onGuidedExerciseFieldChange,
     handleUserMessageChange: onUserMessageChange,
     handleDocxTemplateTemplatePathChange: onDocxTemplateTemplatePathChange,
     handleDocxTemplateOutputPathChange: onDocxTemplateOutputPathChange,
@@ -630,6 +634,53 @@ const NodeInspector = ({
           availableModels={availableModels}
           availableModelsLoading={availableModelsLoading}
           onFieldChange={onEvaluatedStepFieldChange}
+        />
+      ) : null}
+
+      {kind === "help_loop" ? (
+        <HelpLoopInspectorSection
+          nodeId={node.id}
+          instruction={String((parameters as Record<string, unknown>)?.instruction ?? "")}
+          agentPrompt={String((parameters as Record<string, unknown>)?.agent_prompt ?? "")}
+          exitKeyword={String((parameters as Record<string, unknown>)?.exit_keyword ?? "réglé")}
+          maxTurns={Number((parameters as Record<string, unknown>)?.max_turns ?? 10)}
+          successMessage={String((parameters as Record<string, unknown>)?.success_message ?? "C'est réglé, on continue!")}
+          escalationMessage={String((parameters as Record<string, unknown>)?.escalation_message ?? "")}
+          escalationBehavior={String((parameters as Record<string, unknown>)?.escalation_behavior ?? "advance")}
+          teacherCode={String((parameters as Record<string, unknown>)?.teacher_code ?? "")}
+          masked={Boolean((parameters as Record<string, unknown>)?.masked)}
+          model={String((parameters as Record<string, unknown>)?.model ?? "")}
+          modelProviderId={String((parameters as Record<string, unknown>)?.model_provider_id ?? "")}
+          modelProviderSlug={String((parameters as Record<string, unknown>)?.model_provider_slug ?? "")}
+          availableModels={availableModels}
+          availableModelsLoading={availableModelsLoading}
+          onFieldChange={onHelpLoopFieldChange}
+        />
+      ) : null}
+
+      {kind === "guided_exercise" ? (
+        <GuidedExerciseInspectorSection
+          nodeId={node.id}
+          instruction={String((parameters as Record<string, unknown>)?.instruction ?? "")}
+          evaluationPrompt={String((parameters as Record<string, unknown>)?.evaluation_prompt ?? "")}
+          feedbackPrompt={String((parameters as Record<string, unknown>)?.feedback_prompt ?? "")}
+          helpAgentPrompt={String((parameters as Record<string, unknown>)?.help_agent_prompt ?? "")}
+          helpIntroMessage={String((parameters as Record<string, unknown>)?.help_intro_message ?? "")}
+          helpExitMessage={String((parameters as Record<string, unknown>)?.help_exit_message ?? "D'accord, réessayons! Donne-moi ta réponse.")}
+          exitKeyword={String((parameters as Record<string, unknown>)?.exit_keyword ?? "réglé")}
+          maxAttempts={Number((parameters as Record<string, unknown>)?.max_attempts ?? 3)}
+          maxHelpTurns={Number((parameters as Record<string, unknown>)?.max_help_turns ?? 10)}
+          successMessage={String((parameters as Record<string, unknown>)?.success_message ?? "Bravo, c'est correct!")}
+          escalationMessage={String((parameters as Record<string, unknown>)?.escalation_message ?? "")}
+          escalationBehavior={String((parameters as Record<string, unknown>)?.escalation_behavior ?? "advance")}
+          teacherCode={String((parameters as Record<string, unknown>)?.teacher_code ?? "")}
+          masked={Boolean((parameters as Record<string, unknown>)?.masked)}
+          model={String((parameters as Record<string, unknown>)?.model ?? "")}
+          modelProviderId={String((parameters as Record<string, unknown>)?.model_provider_id ?? "")}
+          modelProviderSlug={String((parameters as Record<string, unknown>)?.model_provider_slug ?? "")}
+          availableModels={availableModels}
+          availableModelsLoading={availableModelsLoading}
+          onFieldChange={onGuidedExerciseFieldChange}
         />
       ) : null}
 

@@ -511,6 +511,75 @@ const useNodeFactory = ({
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
 
+  const handleAddHelpLoopNode = useCallback(() => {
+    const slug = `help-loop-${Date.now()}`;
+    const parameters: AgentParameters = {
+      instruction: "",
+      agent_prompt: "",
+      exit_keyword: "réglé",
+      max_turns: 10,
+      success_message: "C'est réglé, on continue!",
+      escalation_message: "Le nombre maximum d'échanges a été atteint. Demandez de l'aide à votre enseignant.",
+      escalation_behavior: "advance",
+      teacher_code: "",
+    };
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 400, y: 260 },
+      data: {
+        slug,
+        kind: "help_loop",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+    };
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, humanizeSlug]);
+
+  const handleAddGuidedExerciseNode = useCallback(() => {
+    const slug = `guided-exercise-${Date.now()}`;
+    const parameters: AgentParameters = {
+      instruction: "",
+      evaluation_prompt: "",
+      feedback_prompt: "",
+      help_agent_prompt: "",
+      help_intro_message: "",
+      help_exit_message: "D'accord, réessayons! Donne-moi ta réponse.",
+      exit_keyword: "réglé",
+      max_attempts: 3,
+      max_help_turns: 10,
+      success_message: "Bravo, c'est correct!",
+      escalation_message: "Le nombre maximum d'échanges a été atteint. Demandez de l'aide à votre enseignant.",
+      escalation_behavior: "advance",
+      teacher_code: "",
+    };
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 400, y: 260 },
+      data: {
+        slug,
+        kind: "guided_exercise",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+    };
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, humanizeSlug]);
+
   return {
     handleAddAgentNode,
     handleAddVoiceAgentNode,
@@ -530,6 +599,8 @@ const useNodeFactory = ({
     handleAddVectorStoreNode,
     handleAddWidgetNode,
     handleAddEvaluatedStepNode,
+    handleAddHelpLoopNode,
+    handleAddGuidedExerciseNode,
     handleAddEndNode,
   };
 };

@@ -13,6 +13,8 @@ from .vector_store import VectorStoreNodeHandler
 from .wait import WaitNodeHandler
 from .watch import WatchNodeHandler
 from .while_loop import WhileNodeHandler
+from .guided_exercise import GuidedExerciseHandler
+from .help_loop import HelpLoopHandler
 from .widget import WidgetNodeHandler
 
 __all__ = [
@@ -22,6 +24,8 @@ __all__ = [
     "BaseNodeHandler",
     "ConditionNodeHandler",
     "EndNodeHandler",
+    "GuidedExerciseHandler",
+    "HelpLoopHandler",
     "ParallelJoinNodeHandler",
     "ParallelSplitNodeHandler",
     "StartNodeHandler",

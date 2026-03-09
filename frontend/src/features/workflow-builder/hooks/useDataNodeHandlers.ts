@@ -270,6 +270,34 @@ const useDataNodeHandlers = ({
     [updateNodeData],
   );
 
+  const handleHelpLoopFieldChange = useCallback(
+    (nodeId: string, field: string, value: string | number | boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "help_loop") {
+          return data;
+        }
+        const next = { ...data.parameters } as Record<string, unknown>;
+        next[field] = value;
+        return updateNodeParameters(data, next);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleGuidedExerciseFieldChange = useCallback(
+    (nodeId: string, field: string, value: string | number | boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "guided_exercise") {
+          return data;
+        }
+        const next = { ...data.parameters } as Record<string, unknown>;
+        next[field] = value;
+        return updateNodeParameters(data, next);
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleUserMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
@@ -461,6 +489,8 @@ const useDataNodeHandlers = ({
     handleWaitForUserInputMessageChange,
     handleWaitForUserInputMaskedChange,
     handleEvaluatedStepFieldChange,
+    handleHelpLoopFieldChange,
+    handleGuidedExerciseFieldChange,
     handleUserMessageChange,
     handleDocxTemplateTemplatePathChange,
     handleDocxTemplateOutputPathChange,

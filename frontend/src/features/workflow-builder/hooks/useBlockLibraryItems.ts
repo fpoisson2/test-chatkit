@@ -22,6 +22,8 @@ export interface NodeHandlers {
   handleAddVectorStoreNode: () => void;
   handleAddWidgetNode: () => void;
   handleAddEvaluatedStepNode: () => void;
+  handleAddHelpLoopNode: () => void;
+  handleAddGuidedExerciseNode: () => void;
   handleAddEndNode: () => void;
 }
 
@@ -132,6 +134,18 @@ export const useBlockLibraryItems = ({
         shortLabel: "EV",
         onClick: nodeHandlers.handleAddEvaluatedStepNode,
       },
+      {
+        key: "help-loop",
+        kind: "help_loop",
+        shortLabel: "HL",
+        onClick: nodeHandlers.handleAddHelpLoopNode,
+      },
+      {
+        key: "guided-exercise",
+        kind: "guided_exercise",
+        shortLabel: "GE",
+        onClick: nodeHandlers.handleAddGuidedExerciseNode,
+      },
       { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
     ];
 
@@ -160,6 +174,8 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddVectorStoreNode,
     nodeHandlers.handleAddWidgetNode,
     nodeHandlers.handleAddEvaluatedStepNode,
+    nodeHandlers.handleAddHelpLoopNode,
+    nodeHandlers.handleAddGuidedExerciseNode,
     nodeHandlers.handleAddEndNode,
   ]);
 };

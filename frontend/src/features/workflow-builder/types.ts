@@ -29,6 +29,8 @@ export type NodeKind =
   | "while"
   | "widget"
   | "evaluated_step"
+  | "help_loop"
+  | "guided_exercise"
   | "end";
 
 export type ApiWorkflowNode = {
