@@ -13,6 +13,21 @@ object TokenRefresher {
     private const val TAG = "TokenRefresher"
 
     /**
+     * Refresh the token only if it's expiring within 5 minutes.
+     * Must be called from a background thread.
+     * Returns true if a refresh was performed successfully, false if not needed or failed.
+     */
+    fun refreshIfNeeded(context: Context): Boolean {
+        val token = context.getSharedPreferences("edxo_voice", Context.MODE_PRIVATE)
+            .getString("auth_token", null) ?: return false
+        if (JwtHelper.isExpiringSoon(token) || JwtHelper.isExpired(token)) {
+            Log.i(TAG, "Token expiring soon, refreshing proactively")
+            return refresh(context)
+        }
+        return false
+    }
+
+    /**
      * Attempt to refresh the access token using the stored refresh token.
      * Must be called from a background thread.
      * Returns true if the token was refreshed successfully.
@@ -55,8 +70,8 @@ object TokenRefresher {
                     .putString("refresh_token", newRefresh)
                     .apply()
 
-                // Sync to phone
-                WearSyncService.pushConfigToPhone(context, token = newToken)
+                // Sync both tokens to phone so it doesn't use the old (now-invalid) refresh token
+                WearSyncService.pushConfigToPhone(context, token = newToken, refreshToken = newRefresh)
 
                 Log.i(TAG, "Token refreshed successfully")
                 true

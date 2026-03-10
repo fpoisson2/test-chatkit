@@ -11,6 +11,8 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Base64
 import android.util.Log
@@ -56,7 +58,10 @@ class VoiceActivity : AppCompatActivity() {
 
     private var isRecording = false
     private var isConnected = false
-    private var hasAttemptedRefresh = false
+    private var reconnectAttempts = 0
+    private val maxReconnectAttempts = 5
+    private val reconnectHandler = Handler(Looper.getMainLooper())
+    private var wasSessionActive = false
 
     private lateinit var micButton: ImageButton
     private lateinit var statusText: TextView
@@ -201,7 +206,8 @@ class VoiceActivity : AppCompatActivity() {
             return
         }
         isRecording = true
-        hasAttemptedRefresh = false
+        wasSessionActive = true
+        reconnectAttempts = 0
         updateUI(recording = true, status = "Connexion...")
         acquireWakeLock()
         connectWebSocket()
@@ -209,6 +215,8 @@ class VoiceActivity : AppCompatActivity() {
 
     private fun stopSession() {
         isRecording = false
+        wasSessionActive = false
+        reconnectHandler.removeCallbacksAndMessages(null)
         updateUI(recording = false, status = "Appuyez pour parler")
         stopAudioCapture()
         stopAudioPlayback()
@@ -240,6 +248,7 @@ class VoiceActivity : AppCompatActivity() {
                 Log.i(TAG, "WebSocket connected")
                 webSocket = ws
                 isConnected = true
+                reconnectAttempts = 0
                 ws.send(JSONObject().put("type", "start").put("workflow_id", workflowId).toString())
                 runOnUiThread { updateUI(recording = true, status = "Connexion...") }
             }
@@ -251,37 +260,28 @@ class VoiceActivity : AppCompatActivity() {
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure: ${t.message}", t)
                 isConnected = false
-                if (!hasAttemptedRefresh) {
-                    attemptRefreshAndReconnect()
-                } else {
-                    isRecording = false
-                    releaseWakeLock()
-                    runOnUiThread {
-                        updateUI(recording = false, status = "Session expiree")
-                        Toast.makeText(this@VoiceActivity, "Session expiree", Toast.LENGTH_SHORT).show()
-                        redirectToLogin()
-                    }
+                stopAudioCapture()
+                stopAudioPlayback()
+                if (isRecording) {
+                    scheduleReconnect()
                 }
             }
 
             override fun onClosing(ws: WebSocket, code: Int, reason: String) {
                 ws.close(1000, null)
                 isConnected = false
+                stopAudioCapture()
+                stopAudioPlayback()
+                // Auth errors: try refresh then reconnect
                 if (code == 4001 || code == 4003) {
-                    if (!hasAttemptedRefresh) {
-                        attemptRefreshAndReconnect()
-                        return
-                    } else {
-                        runOnUiThread {
-                            Toast.makeText(this@VoiceActivity, "Session expiree", Toast.LENGTH_SHORT).show()
-                            redirectToLogin()
-                        }
+                    if (isRecording) {
+                        scheduleReconnect(refreshFirst = true)
                     }
+                    return
                 }
-                if (isRecording) {
-                    isRecording = false
-                    runOnUiThread { updateUI(recording = false, status = "Deconnecte") }
-                    releaseWakeLock()
+                // Unexpected close while session active: reconnect
+                if (isRecording && code != 1000) {
+                    scheduleReconnect()
                 }
             }
         })
@@ -364,28 +364,47 @@ class VoiceActivity : AppCompatActivity() {
         audioTrack = null
     }
 
-    private fun attemptRefreshAndReconnect() {
-        hasAttemptedRefresh = true
-        Log.i(TAG, "Attempting token refresh...")
-        runOnUiThread { updateUI(recording = true, status = "Reconnexion...") }
-        thread {
-            val success = TokenRefresher.refresh(this)
-            if (success) {
-                Log.i(TAG, "Token refreshed, reconnecting WebSocket")
-                connectWebSocket()
-            } else {
-                isRecording = false
-                releaseWakeLock()
-                runOnUiThread {
-                    updateUI(recording = false, status = "Session expiree")
-                    Toast.makeText(this, "Session expiree", Toast.LENGTH_SHORT).show()
-                    redirectToLogin()
-                }
+    private fun scheduleReconnect(refreshFirst: Boolean = false) {
+        if (reconnectAttempts >= maxReconnectAttempts || !isRecording) {
+            Log.w(TAG, "Max reconnect attempts reached or session stopped")
+            isRecording = false
+            releaseWakeLock()
+            runOnUiThread {
+                updateUI(recording = false, status = "Deconnecte")
+                Toast.makeText(this, "Connexion perdue", Toast.LENGTH_SHORT).show()
             }
+            return
+        }
+        val delay = minOf(1000L * (1 shl reconnectAttempts), 30000L)
+        reconnectAttempts++
+        Log.i(TAG, "Scheduling reconnect #$reconnectAttempts in ${delay}ms (refresh=$refreshFirst)")
+        runOnUiThread { updateUI(recording = true, status = "Reconnexion ($reconnectAttempts)...") }
+        reconnectHandler.postDelayed({
+            if (!isRecording) return@postDelayed
+            thread {
+                if (refreshFirst) {
+                    TokenRefresher.refresh(this)
+                } else {
+                    TokenRefresher.refreshIfNeeded(this)
+                }
+                connectWebSocket()
+            }
+        }, delay)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Auto-reconnect if session was active but WebSocket died
+        if (wasSessionActive && !isConnected && !isRecording
+            && !getSharedPreferences("edxo_voice", MODE_PRIVATE).getString("auth_token", null).isNullOrEmpty()
+            && workflowId > 0) {
+            Log.i(TAG, "Resuming lost session")
+            startSession()
         }
     }
 
     private fun redirectToLogin() {
+        wasSessionActive = false
         // Clear auth tokens but keep login info (email, server URL)
         getSharedPreferences("edxo_voice", MODE_PRIVATE).edit()
             .remove("auth_token")
@@ -437,6 +456,7 @@ class VoiceActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        reconnectHandler.removeCallbacksAndMessages(null)
         stopSession()
         super.onDestroy()
     }
