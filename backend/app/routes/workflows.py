@@ -1554,6 +1554,25 @@ def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
                 "required": ["thread_id"],
             },
         },
+        {
+            "type": "function",
+            "name": "read_student_thread",
+            "description": (
+                "Read the conversation content of a student's thread to see what they wrote "
+                "and what the AI answered. Returns a transcript of recent messages."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "description": "The thread ID to read."},
+                    "last_n": {
+                        "type": "integer",
+                        "description": "Number of recent messages to return. Default 30.",
+                    },
+                },
+                "required": ["thread_id"],
+            },
+        },
     ]
 
 
@@ -1764,6 +1783,67 @@ async def _execute_admin_voice_tool(
             + (f" They will advance to '{next_slug}' on their next message." if next_slug else "")
         )
 
+    elif tool_name == "read_student_thread":
+        from ..models import ChatThreadItem
+
+        thread_id = arguments.get("thread_id", "")
+        last_n = int(arguments.get("last_n", 30))
+        thread = session.get(ChatThread, thread_id)
+        if thread is None:
+            return f"Error: Thread '{thread_id}' not found."
+
+        items = session.scalars(
+            sa_select(ChatThreadItem)
+            .where(ChatThreadItem.thread_id == thread_id)
+            .order_by(ChatThreadItem.created_at.desc())
+            .limit(last_n)
+        ).all()
+        items = list(reversed(items))
+
+        if not items:
+            return f"Thread '{thread_id}' has no messages."
+
+        owner = session.get(User, int(thread.owner_id)) if thread.owner_id else None
+        owner_name = (owner.display_name or owner.email) if owner else "Unknown"
+
+        lines = [f"Transcript for {owner_name} (thread {thread_id}, {len(items)} messages):"]
+        for item in items:
+            payload = item.payload or {}
+            item_type = payload.get("type", "")
+            role = payload.get("role", "")
+
+            if role == "user" or item_type == "message" and role == "user":
+                content = payload.get("content", [])
+                text_parts = []
+                for part in (content if isinstance(content, list) else [content]):
+                    if isinstance(part, dict):
+                        if part.get("type") == "input_text":
+                            text_parts.append(part.get("text", ""))
+                        elif part.get("type") == "text":
+                            text_parts.append(part.get("text", ""))
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+                if text_parts:
+                    lines.append(f"[STUDENT] {' '.join(text_parts)}")
+
+            elif role == "assistant" or item_type == "message" and role == "assistant":
+                content = payload.get("content", [])
+                text_parts = []
+                for part in (content if isinstance(content, list) else [content]):
+                    if isinstance(part, dict) and part.get("type") == "output_text":
+                        text_parts.append(part.get("text", ""))
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+                if text_parts:
+                    lines.append(f"[AI] {' '.join(text_parts)}")
+
+            elif item_type == "widget":
+                widget = payload.get("widget", {})
+                widget_type = widget.get("type", "unknown")
+                lines.append(f"[WIDGET: {widget_type}]")
+
+        return "\n".join(lines)
+
     else:
         return f"Error: Unknown tool '{tool_name}'."
 
@@ -1914,3 +1994,210 @@ async def execute_admin_voice_tool(
         result = f"Error executing tool '{tool_name}': {str(e)}"
 
     return {"result": result}
+
+
+@router.post("/api/workflows/{workflow_id}/admin-chat")
+async def admin_chat_stream(
+    workflow_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Streaming admin chat endpoint. Accepts messages and returns SSE with AI responses."""
+    import json as json_mod
+
+    from sqlalchemy import select as sa_select
+    from starlette.responses import StreamingResponse
+
+    from ..admin_settings import get_settings
+    from ..models import Workflow, WorkflowDefinition, WorkflowStep
+
+    _ensure_admin(current_user)
+
+    body = await request.json()
+    messages = body.get("messages", [])
+    if not messages:
+        raise HTTPException(status_code=400, detail="No messages provided")
+
+    workflow = session.get(Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    active_def = session.scalar(
+        sa_select(WorkflowDefinition).where(
+            WorkflowDefinition.workflow_id == workflow_id,
+            WorkflowDefinition.is_active == True,  # noqa: E712
+        )
+    )
+    if active_def is None:
+        raise HTTPException(status_code=404, detail="No active definition found")
+
+    steps = session.scalars(
+        sa_select(WorkflowStep)
+        .where(WorkflowStep.definition_id == active_def.id)
+        .order_by(WorkflowStep.position)
+    ).all()
+
+    step_descriptions: list[str] = []
+    for s in steps:
+        params = s.parameters or {}
+        title = params.get("title", s.display_name or s.slug)
+        msg = params.get("message", "") or ""
+        step_descriptions.append(
+            f"- slug: {s.slug}, title: {title}, type: {s.kind}"
+            + (f", message: {msg[:100]}" if msg else "")
+        )
+    steps_context = "\n".join(step_descriptions)
+
+    system_prompt = (
+        f"Tu es un assistant administrateur pour le workflow '{workflow.display_name}'. "
+        "Tu aides le professeur à comprendre la progression des étudiants et le contenu du workflow. "
+        "Sois concis et direct. Réponds dans la même langue que l'utilisateur. "
+        "Quand on te demande où en est un étudiant, utilise get_student_progress. "
+        "Quand on te demande ce qu'un étudiant a répondu ou le contenu de sa conversation, "
+        "utilise read_student_thread avec le thread_id obtenu via get_student_progress. "
+        "Quand on te demande les étapes du workflow, utilise list_workflow_steps."
+        f"\n\nÉtapes du workflow:\n{steps_context}"
+    )
+
+    # Build OpenAI-compatible messages
+    api_messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+    for msg in messages:
+        api_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+
+    # Build tools in OpenAI Chat Completions format (voice tools use a flat
+    # schema; chat completions require name/description/parameters nested
+    # under a "function" key).
+    raw_tools = _get_admin_voice_tools_definitions()
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t.get("description", ""),
+                "parameters": t.get("parameters", {}),
+            },
+        }
+        for t in raw_tools
+    ]
+
+    settings = get_settings()
+    api_key = settings.openai_api_key or settings.model_api_key
+    model = body.get("model", "gpt-4o")
+
+    async def _stream():
+        import httpx
+
+        nonlocal api_messages
+
+        MAX_TOOL_ROUNDS = 10
+        for _round in range(MAX_TOOL_ROUNDS):
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    json={
+                        "model": model,
+                        "messages": api_messages,
+                        "tools": tools,
+                        "stream": True,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+
+                if resp.status_code >= 400:
+                    error_text = resp.text
+                    yield f"data: {json_mod.dumps({'type': 'error', 'error': error_text[:500]})}\n\n"
+                    return
+
+                content_buffer = ""
+                tool_calls_buffer: dict[int, dict[str, str]] = {}
+                finish_reason = None
+
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+
+                    try:
+                        chunk = json_mod.loads(data_str)
+                    except json_mod.JSONDecodeError:
+                        continue
+
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    fr = chunk.get("choices", [{}])[0].get("finish_reason")
+                    if fr:
+                        finish_reason = fr
+
+                    # Text content
+                    if delta.get("content"):
+                        content_buffer += delta["content"]
+                        yield f"data: {json_mod.dumps({'type': 'delta', 'content': delta['content']})}\n\n"
+
+                    # Tool calls
+                    if delta.get("tool_calls"):
+                        for tc in delta["tool_calls"]:
+                            idx = tc.get("index", 0)
+                            if idx not in tool_calls_buffer:
+                                tool_calls_buffer[idx] = {
+                                    "id": tc.get("id", ""),
+                                    "name": "",
+                                    "arguments": "",
+                                }
+                            if tc.get("id"):
+                                tool_calls_buffer[idx]["id"] = tc["id"]
+                            if tc.get("function", {}).get("name"):
+                                tool_calls_buffer[idx]["name"] = tc["function"]["name"]
+                            if tc.get("function", {}).get("arguments"):
+                                tool_calls_buffer[idx]["arguments"] += tc["function"]["arguments"]
+
+            # If no tool calls, we're done
+            if finish_reason != "tool_calls" or not tool_calls_buffer:
+                yield f"data: {json_mod.dumps({'type': 'done'})}\n\n"
+                return
+
+            # Execute tool calls
+            if content_buffer:
+                api_messages.append({"role": "assistant", "content": content_buffer})
+
+            assistant_msg: dict[str, Any] = {"role": "assistant", "tool_calls": []}
+            for idx in sorted(tool_calls_buffer.keys()):
+                tc = tool_calls_buffer[idx]
+                assistant_msg["tool_calls"].append({
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                })
+            if not content_buffer:
+                assistant_msg["content"] = None
+            else:
+                assistant_msg["content"] = content_buffer
+            api_messages.append(assistant_msg)
+
+            for idx in sorted(tool_calls_buffer.keys()):
+                tc = tool_calls_buffer[idx]
+                try:
+                    args = json_mod.loads(tc["arguments"]) if tc["arguments"] else {}
+                except json_mod.JSONDecodeError:
+                    args = {}
+
+                yield f"data: {json_mod.dumps({'type': 'tool_call', 'name': tc['name']})}\n\n"
+
+                try:
+                    result = await _execute_admin_voice_tool(tc["name"], args, workflow_id, session)
+                except Exception as e:
+                    result = f"Error: {e}"
+
+                api_messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": result,
+                })
+
+        yield f"data: {json_mod.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")

@@ -29,6 +29,7 @@ const ActiveSessionsContext = createContext<ActiveSessionsContextValue>(EMPTY);
 interface ActiveSessionsProviderProps {
   token: string | null;
   workflowId: number | null;
+  workflowSlug: string | null;
   enabled: boolean;
   children: React.ReactNode;
 }
@@ -36,12 +37,14 @@ interface ActiveSessionsProviderProps {
 export const ActiveSessionsProvider: React.FC<ActiveSessionsProviderProps> = ({
   token,
   workflowId,
+  workflowSlug,
   enabled,
   children,
 }) => {
   const { sessions, isConnected } = useWorkflowMonitorWebSocket({
     token,
     enabled: enabled && workflowId != null,
+    workflowSlug,
   });
 
   const value = useMemo<ActiveSessionsContextValue>(() => {
