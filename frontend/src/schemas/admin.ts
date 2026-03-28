@@ -86,6 +86,7 @@ export const adminAppSettingsSchema = z.object({
   selectedModelOption: z.string(),
   adminChatModel: z.string().default(""),
   selectedAdminChatModelOption: z.string().default(""),
+  adminChatProviderId: z.string().default(""),
 });
 
 export type AdminAppSettingsFormData = z.infer<typeof adminAppSettingsSchema>;

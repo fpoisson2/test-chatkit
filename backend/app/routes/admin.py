@@ -126,6 +126,8 @@ async def patch_app_settings(
         kwargs["model_providers"] = payload.model_providers
     if "admin_chat_model" in payload.model_fields_set:
         kwargs["admin_chat_model"] = payload.admin_chat_model
+    if "admin_chat_provider_id" in payload.model_fields_set:
+        kwargs["admin_chat_provider_id"] = payload.admin_chat_provider_id
 
     try:
         result = update_admin_settings(session, **kwargs)

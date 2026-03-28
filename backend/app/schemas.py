@@ -390,6 +390,7 @@ class AppSettingsResponse(BaseModel):
     admin_chat_model: str
     default_admin_chat_model: str
     is_custom_admin_chat_model: bool
+    admin_chat_provider_id: str | None = None
     sip_trunk_uri: str | None = None
     sip_trunk_username: str | None = None
     sip_trunk_password: str | None = None
@@ -422,6 +423,14 @@ class AppSettingsUpdateRequest(BaseModel):
         description=(
             "Modèle pour le chat admin du workflow builder. Laisser vide pour "
             "revenir à la valeur par défaut (gpt-5.4-mini)."
+        ),
+        max_length=128,
+    )
+    admin_chat_provider_id: str | None = Field(
+        default=None,
+        description=(
+            "ID du fournisseur de modèles pour le chat admin. Laisser vide pour "
+            "utiliser le fournisseur par défaut."
         ),
         max_length=128,
     )

@@ -38,6 +38,7 @@ export const AdminAppSettingsPage = () => {
       selectedModelOption: "",
       adminChatModel: "",
       selectedAdminChatModelOption: "",
+      adminChatProviderId: "",
     },
   });
 
@@ -54,12 +55,14 @@ export const AdminAppSettingsPage = () => {
       const promptValue = settings.thread_title_prompt ?? "";
       const modelValue = settings.thread_title_model ?? "";
       const adminChatModelValue = settings.admin_chat_model ?? "";
+      const adminChatProviderIdValue = settings.admin_chat_provider_id ?? "";
       reset({
         prompt: promptValue,
         threadTitleModel: modelValue,
         selectedModelOption: formValues.selectedModelOption,
         adminChatModel: adminChatModelValue,
         selectedAdminChatModelOption: formValues.selectedAdminChatModelOption,
+        adminChatProviderId: adminChatProviderIdValue,
       });
     }
   }, [settings, reset]);
@@ -126,6 +129,7 @@ export const AdminAppSettingsPage = () => {
       thread_title_prompt: data.prompt.trim(),
       thread_title_model: data.threadTitleModel.trim(),
       admin_chat_model: data.adminChatModel.trim() || null,
+      admin_chat_provider_id: data.adminChatProviderId.trim() || null,
     };
 
     updateSettings.mutate(
@@ -166,6 +170,7 @@ export const AdminAppSettingsPage = () => {
           thread_title_prompt: null,
           thread_title_model: null,
           admin_chat_model: null,
+          admin_chat_provider_id: null,
         },
       },
       {
@@ -379,8 +384,24 @@ export const AdminAppSettingsPage = () => {
               </FormField>
             )}
 
+            <FormField label="Fournisseur de modèles (chat admin)">
+              <select
+                id="admin-chat-provider-select"
+                className="input"
+                {...register("adminChatProviderId")}
+                disabled={isBusy}
+              >
+                <option value="">Fournisseur par défaut</option>
+                {(settings?.model_providers ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.provider}{p.api_base ? ` (${p.api_base})` : ""}{p.is_default ? " ★" : ""}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
             <p className="form-hint">
-              Modèle utilisé par l'assistant admin dans le workflow builder.
+              Modèle et fournisseur utilisés par l'assistant admin dans le workflow builder.
             </p>
 
             <p className="form-hint">

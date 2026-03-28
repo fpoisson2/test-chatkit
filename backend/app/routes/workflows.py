@@ -2063,7 +2063,7 @@ async def admin_chat_stream(
     """Streaming admin chat endpoint using the OpenAI Agents SDK."""
     import json as json_mod
 
-    from agents import Agent, Runner
+    from agents import Agent, RunConfig, Runner
     from openai.types.responses import ResponseTextDeltaEvent
     from sqlalchemy import select as sa_select
     from starlette.responses import StreamingResponse
@@ -2118,22 +2118,56 @@ async def admin_chat_stream(
         f"\n\nÉtapes du workflow:\n{steps_context}"
     )
 
-    # Resolve model: request override > admin settings > default
+    # Resolve model and provider: admin settings > defaults
     from ..admin_settings import DEFAULT_ADMIN_CHAT_MODEL, get_thread_title_prompt_override
+    from ..chatkit.agent_registry import (
+        create_litellm_model,
+        get_agent_provider_binding,
+    )
 
-    admin_settings = get_thread_title_prompt_override(session)
+    admin_db_settings = get_thread_title_prompt_override(session)
     configured_model = (
-        admin_settings.admin_chat_model.strip()
-        if admin_settings and admin_settings.admin_chat_model and admin_settings.admin_chat_model.strip()
+        admin_db_settings.admin_chat_model.strip()
+        if admin_db_settings and admin_db_settings.admin_chat_model and admin_db_settings.admin_chat_model.strip()
         else DEFAULT_ADMIN_CHAT_MODEL
     )
-    model = body.get("model") or configured_model
+    configured_provider_id = (
+        admin_db_settings.admin_chat_provider_id.strip()
+        if admin_db_settings and getattr(admin_db_settings, "admin_chat_provider_id", None)
+        and admin_db_settings.admin_chat_provider_id.strip()
+        else ""
+    )
+    model_name = body.get("model") or configured_model
     tools = _build_admin_chat_tools(workflow_id, session)
+
+    # Resolve provider binding for the Agents SDK
+    provider_binding = None
+    run_config_kwargs: dict[str, Any] = {}
+    if configured_provider_id:
+        provider_binding = get_agent_provider_binding(configured_provider_id, None)
+    if provider_binding is None:
+        # Fall back to the default provider
+        from ..config import get_settings as _get_runtime_settings
+
+        runtime = _get_runtime_settings()
+        if runtime.model_providers:
+            default_cfg = next((p for p in runtime.model_providers if p.is_default), runtime.model_providers[0])
+            provider_binding = get_agent_provider_binding(default_cfg.id or default_cfg.provider, default_cfg.provider)
+
+    # Build model object (LiteLLM or native)
+    resolved_model: Any = model_name
+    if provider_binding is not None:
+        if provider_binding.provider is not None:
+            run_config_kwargs["model_provider"] = provider_binding.provider
+        else:
+            resolved_model = create_litellm_model(model_name, provider_binding)
+
+    run_config = RunConfig(**run_config_kwargs)
 
     agent = Agent(
         name="admin_chat",
         instructions=system_prompt,
-        model=model,
+        model=resolved_model,
         tools=tools,
     )
 
@@ -2163,6 +2197,7 @@ async def admin_chat_stream(
                 agent,
                 input=input_items,
                 max_turns=10,
+                run_config=run_config,
             )
 
             async for event in result.stream_events():

@@ -384,6 +384,7 @@ export type AppSettings = {
   admin_chat_model: string;
   default_admin_chat_model: string;
   is_custom_admin_chat_model: boolean;
+  admin_chat_provider_id: string | null;
   model_provider: string;
   model_api_base: string;
   is_model_provider_overridden: boolean;
@@ -405,6 +406,7 @@ export type AppSettingsUpdatePayload = {
   thread_title_prompt?: string | null;
   thread_title_model?: string | null;
   admin_chat_model?: string | null;
+  admin_chat_provider_id?: string | null;
   model_provider?: string | null;
   model_api_base?: string | null;
   model_api_key?: string | null;

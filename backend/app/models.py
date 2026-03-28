@@ -328,6 +328,9 @@ class AppSettings(Base):
     admin_chat_model: Mapped[str | None] = mapped_column(
         String(128), nullable=True
     )
+    admin_chat_provider_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

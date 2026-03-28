@@ -966,6 +966,7 @@ def update_admin_settings(
     model_api_key: str | None | object = _UNSET,
     model_providers: list[Any] | None | object = _UNSET,
     admin_chat_model: str | None | object = _UNSET,
+    admin_chat_provider_id: str | None | object = _UNSET,
 ) -> AdminSettingsUpdateResult:
     default_prompt = _default_thread_title_prompt()
     default_model = _default_thread_title_model()
@@ -1185,6 +1186,13 @@ def update_admin_settings(
             settings.admin_chat_model = None
         else:
             settings.admin_chat_model = str(admin_chat_model).strip()
+        changed = True
+
+    if admin_chat_provider_id is not _UNSET:
+        if admin_chat_provider_id is None or not str(admin_chat_provider_id).strip():
+            settings.admin_chat_provider_id = None
+        else:
+            settings.admin_chat_provider_id = str(admin_chat_provider_id).strip()
         changed = True
 
     if not changed:
@@ -1422,6 +1430,11 @@ def serialize_admin_settings(
         "default_admin_chat_model": DEFAULT_ADMIN_CHAT_MODEL,
         "is_custom_admin_chat_model": bool(
             settings and settings.admin_chat_model and settings.admin_chat_model.strip()
+        ),
+        "admin_chat_provider_id": (
+            settings.admin_chat_provider_id.strip()
+            if settings and settings.admin_chat_provider_id and settings.admin_chat_provider_id.strip()
+            else None
         ),
         "model_provider": runtime_settings.model_provider,
         "model_api_base": runtime_settings.model_api_base,
