@@ -91,9 +91,16 @@ def get_active_sessions(
     """Récupère toutes les sessions actives (optimisé)."""
     stmt = select(ChatThread)
 
-    # Filter by workflow_slug (denormalized column) when provided
+    # Filter by workflow_slug: try denormalized column first, also include
+    # older threads where workflow_slug is NULL but the JSONB payload contains it.
     if workflow_slug:
-        stmt = stmt.where(ChatThread.workflow_slug == workflow_slug)
+        from sqlalchemy import or_, cast, String as SAString
+        stmt = stmt.where(
+            or_(
+                ChatThread.workflow_slug == workflow_slug,
+                ChatThread.payload["metadata"]["workflow"]["slug"].as_string() == workflow_slug,
+            )
+        )
 
     if lookback_hours is not None:
         stmt = stmt.where(
@@ -290,9 +297,8 @@ def get_active_sessions(
         })
 
     # Déduplication: un seul thread par (utilisateur, workflow).
-    # Priorité: completed > most steps in history > most recent.
-    # This ensures we show the student's furthest progress, not their latest restart.
-    deduped: dict[tuple[int, int], tuple[int, int, int, datetime, dict[str, Any]]] = {}
+    # Priorité: completed > most recent activity.
+    deduped: dict[tuple[int, int], tuple[int, datetime, dict[str, Any]]] = {}
     for sess in active_sessions:
         key = (sess["user"]["id"], sess["workflow"]["id"])
         try:
@@ -302,18 +308,16 @@ def get_active_sessions(
         except Exception:
             last_activity = datetime.min.replace(tzinfo=timezone.utc)
 
-        has_known_step = 1 if sess["current_step"]["slug"] not in ("unknown", "", None) else 0
         is_completed = 1 if sess["status"] == "completed" else 0
-        step_count = len(sess.get("step_history", []))
 
-        # Priority: completed first, then most progress (steps), then most recent
-        rank = (has_known_step, is_completed, step_count, last_activity)
+        # Completed threads win over non-completed; among same status, most recent wins
+        rank = (is_completed, last_activity)
 
         existing = deduped.get(key)
-        if existing is None or rank > (existing[0], existing[1], existing[2], existing[3]):
-            deduped[key] = (has_known_step, is_completed, step_count, last_activity, sess)
+        if existing is None or rank > (existing[0], existing[1]):
+            deduped[key] = (is_completed, last_activity, sess)
 
-    deduped_sessions = [entry[4] for entry in sorted(deduped.values(), key=lambda x: (x[0], x[1], x[2], x[3]), reverse=True)]
+    deduped_sessions = [entry[2] for entry in sorted(deduped.values(), key=lambda x: (x[0], x[1]), reverse=True)]
     if len(deduped_sessions) != len(active_sessions):
         logger.info(
             f"[WS_MONITOR] Deduped sessions: {len(active_sessions)} -> {len(deduped_sessions)} "

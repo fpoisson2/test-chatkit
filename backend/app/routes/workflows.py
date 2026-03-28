@@ -1687,7 +1687,10 @@ async def _execute_admin_voice_tool(
         return f"Le champ '{field_key}' de l'étape '{step_slug}' a été amélioré et publié."
 
     elif tool_name == "get_student_progress":
-        sessions_list = get_active_sessions(session)
+        # Get workflow slug for filtering
+        workflow_obj = session.get(Workflow, workflow_id)
+        wf_slug = workflow_obj.slug if workflow_obj else None
+        sessions_list = get_active_sessions(session, workflow_slug=wf_slug)
         relevant = [
             s for s in sessions_list
             if s.get("workflow", {}).get("id") == workflow_id
@@ -1812,26 +1815,38 @@ async def _execute_admin_voice_tool(
             item_type = payload.get("type", "")
             role = payload.get("role", "")
 
-            if role == "user" or item_type == "message" and role == "user":
+            is_user = (
+                role == "user"
+                or item_type == "user_message"
+                or (item_type == "message" and role == "user")
+            )
+            is_assistant = (
+                role == "assistant"
+                or item_type == "assistant_message"
+                or (item_type == "message" and role == "assistant")
+            )
+
+            if is_user:
                 content = payload.get("content", [])
                 text_parts = []
                 for part in (content if isinstance(content, list) else [content]):
                     if isinstance(part, dict):
-                        if part.get("type") == "input_text":
-                            text_parts.append(part.get("text", ""))
-                        elif part.get("type") == "text":
-                            text_parts.append(part.get("text", ""))
+                        text = part.get("text", "")
+                        if text and part.get("type") in ("input_text", "text", "output_text", None):
+                            text_parts.append(text)
                     elif isinstance(part, str):
                         text_parts.append(part)
                 if text_parts:
                     lines.append(f"[STUDENT] {' '.join(text_parts)}")
 
-            elif role == "assistant" or item_type == "message" and role == "assistant":
+            elif is_assistant:
                 content = payload.get("content", [])
                 text_parts = []
                 for part in (content if isinstance(content, list) else [content]):
-                    if isinstance(part, dict) and part.get("type") == "output_text":
-                        text_parts.append(part.get("text", ""))
+                    if isinstance(part, dict):
+                        text = part.get("text", "")
+                        if text and part.get("type") in ("output_text", "text", None):
+                            text_parts.append(text)
                     elif isinstance(part, str):
                         text_parts.append(part)
                 if text_parts:
@@ -2118,12 +2133,9 @@ async def admin_chat_stream(
         f"\n\nÉtapes du workflow:\n{steps_context}"
     )
 
-    # Resolve model and provider: admin settings > defaults
+    # Resolve model: admin settings > default
     from ..admin_settings import DEFAULT_ADMIN_CHAT_MODEL, get_thread_title_prompt_override
-    from ..chatkit.agent_registry import (
-        create_litellm_model,
-        get_agent_provider_binding,
-    )
+    from ..config import get_settings as _get_runtime_settings
 
     admin_db_settings = get_thread_title_prompt_override(session)
     configured_model = (
@@ -2131,43 +2143,22 @@ async def admin_chat_stream(
         if admin_db_settings and admin_db_settings.admin_chat_model and admin_db_settings.admin_chat_model.strip()
         else DEFAULT_ADMIN_CHAT_MODEL
     )
-    configured_provider_id = (
-        admin_db_settings.admin_chat_provider_id.strip()
-        if admin_db_settings and getattr(admin_db_settings, "admin_chat_provider_id", None)
-        and admin_db_settings.admin_chat_provider_id.strip()
-        else ""
-    )
     model_name = body.get("model") or configured_model
     tools = _build_admin_chat_tools(workflow_id, session)
 
-    # Resolve provider binding for the Agents SDK
-    provider_binding = None
-    run_config_kwargs: dict[str, Any] = {}
-    if configured_provider_id:
-        provider_binding = get_agent_provider_binding(configured_provider_id, None)
-    if provider_binding is None:
-        # Fall back to the default provider
-        from ..config import get_settings as _get_runtime_settings
+    # Use a direct OpenAI client (bypasses LiteLLM proxy)
+    from openai import AsyncOpenAI
+    from agents import ModelProvider, OpenAIProvider
 
-        runtime = _get_runtime_settings()
-        if runtime.model_providers:
-            default_cfg = next((p for p in runtime.model_providers if p.is_default), runtime.model_providers[0])
-            provider_binding = get_agent_provider_binding(default_cfg.id or default_cfg.provider, default_cfg.provider)
-
-    # Build model object (LiteLLM or native)
-    resolved_model: Any = model_name
-    if provider_binding is not None:
-        if provider_binding.provider is not None:
-            run_config_kwargs["model_provider"] = provider_binding.provider
-        else:
-            resolved_model = create_litellm_model(model_name, provider_binding)
-
-    run_config = RunConfig(**run_config_kwargs)
+    runtime_settings = _get_runtime_settings()
+    direct_client = AsyncOpenAI(api_key=runtime_settings.openai_api_key)
+    direct_provider = OpenAIProvider(openai_client=direct_client)
+    run_config = RunConfig(model_provider=direct_provider, tracing_disabled=True)
 
     agent = Agent(
         name="admin_chat",
         instructions=system_prompt,
-        model=resolved_model,
+        model=model_name,
         tools=tools,
     )
 
