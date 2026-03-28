@@ -1996,6 +1996,63 @@ async def execute_admin_voice_tool(
     return {"result": result}
 
 
+def _build_admin_chat_tools(
+    workflow_id: int, session: Session
+) -> list[Any]:
+    """Build agents SDK function tools that delegate to _execute_admin_voice_tool."""
+    from agents import function_tool
+
+    @function_tool
+    async def list_workflow_steps() -> str:
+        """List all editable steps in the workflow with their slugs, titles, types, and content fields."""
+        return await _execute_admin_voice_tool("list_workflow_steps", {}, workflow_id, session)
+
+    @function_tool
+    async def get_student_progress() -> str:
+        """Get the current progress of all students in the workflow, showing who is at which step."""
+        return await _execute_admin_voice_tool("get_student_progress", {}, workflow_id, session)
+
+    @function_tool
+    async def read_student_thread(thread_id: str, last_n: int = 30) -> str:
+        """Read the conversation content of a student's thread to see what they wrote and what the AI answered. Returns a transcript of recent messages."""
+        return await _execute_admin_voice_tool(
+            "read_student_thread", {"thread_id": thread_id, "last_n": last_n}, workflow_id, session
+        )
+
+    @function_tool
+    async def improve_step_content(step_slug: str, instructions: str, field: str = "") -> str:
+        """Improve the content of a specific field of a step using AI. Use 'field' to target a specific field (instruction, evaluation_prompt, feedback_prompt, agent_prompt, success_message, escalation_message). Defaults to the primary field if omitted."""
+        args: dict[str, Any] = {"step_slug": step_slug, "instructions": instructions}
+        if field:
+            args["field"] = field
+        return await _execute_admin_voice_tool("improve_step_content", args, workflow_id, session)
+
+    @function_tool
+    async def publish_step_message(step_slug: str, new_message: str, field: str = "") -> str:
+        """Publish new content for a specific field of a step, updating it live."""
+        args: dict[str, Any] = {"step_slug": step_slug, "new_message": new_message}
+        if field:
+            args["field"] = field
+        return await _execute_admin_voice_tool("publish_step_message", args, workflow_id, session)
+
+    @function_tool
+    async def update_step_config(step_slug: str, field: str, value: str) -> str:
+        """Update configuration fields of a step (model, provider, max_attempts, max_turns, exit_keyword, escalation_behavior, teacher_code, masked)."""
+        return await _execute_admin_voice_tool(
+            "update_step_config", {"step_slug": step_slug, "field": field, "value": value}, workflow_id, session
+        )
+
+    @function_tool
+    async def unlock_student(thread_id: str) -> str:
+        """Unblock a student stuck at a wait step by clearing their wait state so the workflow can advance."""
+        return await _execute_admin_voice_tool("unlock_student", {"thread_id": thread_id}, workflow_id, session)
+
+    return [
+        list_workflow_steps, get_student_progress, read_student_thread,
+        improve_step_content, publish_step_message, update_step_config, unlock_student,
+    ]
+
+
 @router.post("/api/workflows/{workflow_id}/admin-chat")
 async def admin_chat_stream(
     workflow_id: int,
@@ -2003,13 +2060,14 @@ async def admin_chat_stream(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Streaming admin chat endpoint. Accepts messages and returns SSE with AI responses."""
+    """Streaming admin chat endpoint using the OpenAI Agents SDK."""
     import json as json_mod
 
+    from agents import Agent, Runner
+    from openai.types.responses import ResponseTextDeltaEvent
     from sqlalchemy import select as sa_select
     from starlette.responses import StreamingResponse
 
-    from ..admin_settings import get_settings
     from ..models import Workflow, WorkflowDefinition, WorkflowStep
 
     _ensure_admin(current_user)
@@ -2060,144 +2118,74 @@ async def admin_chat_stream(
         f"\n\nÉtapes du workflow:\n{steps_context}"
     )
 
-    # Build OpenAI-compatible messages
-    api_messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+    # Resolve model: request override > admin settings > default
+    from ..admin_settings import DEFAULT_ADMIN_CHAT_MODEL, get_thread_title_prompt_override
+
+    admin_settings = get_thread_title_prompt_override(session)
+    configured_model = (
+        admin_settings.admin_chat_model.strip()
+        if admin_settings and admin_settings.admin_chat_model and admin_settings.admin_chat_model.strip()
+        else DEFAULT_ADMIN_CHAT_MODEL
+    )
+    model = body.get("model") or configured_model
+    tools = _build_admin_chat_tools(workflow_id, session)
+
+    agent = Agent(
+        name="admin_chat",
+        instructions=system_prompt,
+        model=model,
+        tools=tools,
+    )
+
+    # Convert frontend messages to Agents SDK input format
+    input_items: list[dict[str, Any]] = []
     for msg in messages:
-        api_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-
-    # Build tools in OpenAI Chat Completions format (voice tools use a flat
-    # schema; chat completions require name/description/parameters nested
-    # under a "function" key).
-    raw_tools = _get_admin_voice_tools_definitions()
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": t["name"],
-                "description": t.get("description", ""),
-                "parameters": t.get("parameters", {}),
-            },
-        }
-        for t in raw_tools
-    ]
-
-    settings = get_settings()
-    api_key = settings.openai_api_key or settings.model_api_key
-    model = body.get("model", "gpt-4o")
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "user":
+            input_items.append({
+                "type": "message",
+                "role": "user",
+                "content": content,
+            })
+        elif role == "assistant":
+            input_items.append({
+                "type": "message",
+                "role": "assistant",
+                "content": content,
+            })
 
     async def _stream():
-        import httpx
+        from agents.stream_events import RawResponsesStreamEvent, RunItemStreamEvent
 
-        nonlocal api_messages
+        try:
+            result = Runner.run_streamed(
+                agent,
+                input=input_items,
+                max_turns=10,
+            )
 
-        MAX_TOOL_ROUNDS = 10
-        for _round in range(MAX_TOOL_ROUNDS):
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    json={
-                        "model": model,
-                        "messages": api_messages,
-                        "tools": tools,
-                        "stream": True,
-                    },
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                )
+            async for event in result.stream_events():
+                if isinstance(event, RawResponsesStreamEvent):
+                    if isinstance(event.data, ResponseTextDeltaEvent):
+                        yield f"data: {json_mod.dumps({'type': 'delta', 'content': event.data.delta})}\n\n"
+                elif isinstance(event, RunItemStreamEvent):
+                    if event.name == "tool_called":
+                        tool_name = getattr(event.item, "description", None) or ""
+                        # Extract the function name from the raw_item
+                        raw = getattr(event.item, "raw_item", None)
+                        fn_name = ""
+                        if raw:
+                            fn_name = getattr(raw, "name", "") or ""
+                            if not fn_name and hasattr(raw, "function"):
+                                fn_name = getattr(raw.function, "name", "") or ""
+                            if not fn_name:
+                                fn_name = getattr(raw, "call_id", "") or ""
+                        yield f"data: {json_mod.dumps({'type': 'tool_call', 'name': fn_name or tool_name})}\n\n"
 
-                if resp.status_code >= 400:
-                    error_text = resp.text
-                    yield f"data: {json_mod.dumps({'type': 'error', 'error': error_text[:500]})}\n\n"
-                    return
-
-                content_buffer = ""
-                tool_calls_buffer: dict[int, dict[str, str]] = {}
-                finish_reason = None
-
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-
-                    try:
-                        chunk = json_mod.loads(data_str)
-                    except json_mod.JSONDecodeError:
-                        continue
-
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    fr = chunk.get("choices", [{}])[0].get("finish_reason")
-                    if fr:
-                        finish_reason = fr
-
-                    # Text content
-                    if delta.get("content"):
-                        content_buffer += delta["content"]
-                        yield f"data: {json_mod.dumps({'type': 'delta', 'content': delta['content']})}\n\n"
-
-                    # Tool calls
-                    if delta.get("tool_calls"):
-                        for tc in delta["tool_calls"]:
-                            idx = tc.get("index", 0)
-                            if idx not in tool_calls_buffer:
-                                tool_calls_buffer[idx] = {
-                                    "id": tc.get("id", ""),
-                                    "name": "",
-                                    "arguments": "",
-                                }
-                            if tc.get("id"):
-                                tool_calls_buffer[idx]["id"] = tc["id"]
-                            if tc.get("function", {}).get("name"):
-                                tool_calls_buffer[idx]["name"] = tc["function"]["name"]
-                            if tc.get("function", {}).get("arguments"):
-                                tool_calls_buffer[idx]["arguments"] += tc["function"]["arguments"]
-
-            # If no tool calls, we're done
-            if finish_reason != "tool_calls" or not tool_calls_buffer:
-                yield f"data: {json_mod.dumps({'type': 'done'})}\n\n"
-                return
-
-            # Execute tool calls
-            if content_buffer:
-                api_messages.append({"role": "assistant", "content": content_buffer})
-
-            assistant_msg: dict[str, Any] = {"role": "assistant", "tool_calls": []}
-            for idx in sorted(tool_calls_buffer.keys()):
-                tc = tool_calls_buffer[idx]
-                assistant_msg["tool_calls"].append({
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
-                })
-            if not content_buffer:
-                assistant_msg["content"] = None
-            else:
-                assistant_msg["content"] = content_buffer
-            api_messages.append(assistant_msg)
-
-            for idx in sorted(tool_calls_buffer.keys()):
-                tc = tool_calls_buffer[idx]
-                try:
-                    args = json_mod.loads(tc["arguments"]) if tc["arguments"] else {}
-                except json_mod.JSONDecodeError:
-                    args = {}
-
-                yield f"data: {json_mod.dumps({'type': 'tool_call', 'name': tc['name']})}\n\n"
-
-                try:
-                    result = await _execute_admin_voice_tool(tc["name"], args, workflow_id, session)
-                except Exception as e:
-                    result = f"Error: {e}"
-
-                api_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": result,
-                })
-
-        yield f"data: {json_mod.dumps({'type': 'done'})}\n\n"
+            yield f"data: {json_mod.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            logger.error("[ADMIN_CHAT] Streaming error: %s", e, exc_info=True)
+            yield f"data: {json_mod.dumps({'type': 'error', 'error': str(e)[:500]})}\n\n"
 
     return StreamingResponse(_stream(), media_type="text/event-stream")

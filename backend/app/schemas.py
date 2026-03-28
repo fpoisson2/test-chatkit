@@ -387,6 +387,9 @@ class AppSettingsResponse(BaseModel):
     is_model_api_key_managed: bool
     model_api_key_hint: str | None = None
     model_providers: list[ModelProviderSettings] = Field(default_factory=list)
+    admin_chat_model: str
+    default_admin_chat_model: str
+    is_custom_admin_chat_model: bool
     sip_trunk_uri: str | None = None
     sip_trunk_username: str | None = None
     sip_trunk_password: str | None = None
@@ -411,6 +414,14 @@ class AppSettingsUpdateRequest(BaseModel):
         description=(
             "Modèle personnalisé pour générer les titres de fil. Laisser vide pour "
             "revenir à la valeur par défaut."
+        ),
+        max_length=128,
+    )
+    admin_chat_model: str | None = Field(
+        default=None,
+        description=(
+            "Modèle pour le chat admin du workflow builder. Laisser vide pour "
+            "revenir à la valeur par défaut (gpt-4.1-nano)."
         ),
         max_length=128,
     )

@@ -36,6 +36,8 @@ export const AdminAppSettingsPage = () => {
       prompt: "",
       threadTitleModel: "",
       selectedModelOption: "",
+      adminChatModel: "",
+      selectedAdminChatModelOption: "",
     },
   });
 
@@ -51,10 +53,13 @@ export const AdminAppSettingsPage = () => {
     if (settings) {
       const promptValue = settings.thread_title_prompt ?? "";
       const modelValue = settings.thread_title_model ?? "";
+      const adminChatModelValue = settings.admin_chat_model ?? "";
       reset({
         prompt: promptValue,
         threadTitleModel: modelValue,
         selectedModelOption: formValues.selectedModelOption,
+        adminChatModel: adminChatModelValue,
+        selectedAdminChatModelOption: formValues.selectedAdminChatModelOption,
       });
     }
   }, [settings, reset]);
@@ -92,6 +97,22 @@ export const AdminAppSettingsPage = () => {
     }
   }, [formValues.threadTitleModel, formValues.selectedModelOption, availableModels, CUSTOM_MODEL_OPTION, setValue]);
 
+  // Sync admin chat model select with text input
+  useEffect(() => {
+    const normalizedModel = formValues.adminChatModel?.trim() || "";
+    const hasMatch = availableModels.some((model) => model.name === normalizedModel);
+    if (!normalizedModel) {
+      if (formValues.selectedAdminChatModelOption && formValues.selectedAdminChatModelOption !== CUSTOM_MODEL_OPTION) {
+        setValue("selectedAdminChatModelOption", "");
+      }
+      return;
+    }
+    const nextValue = hasMatch ? normalizedModel : CUSTOM_MODEL_OPTION;
+    if (formValues.selectedAdminChatModelOption !== nextValue) {
+      setValue("selectedAdminChatModelOption", nextValue);
+    }
+  }, [formValues.adminChatModel, formValues.selectedAdminChatModelOption, availableModels, CUSTOM_MODEL_OPTION, setValue]);
+
   const handleSubmit = async (data: AdminAppSettingsFormData) => {
     setError(null);
     setSuccess(null);
@@ -104,6 +125,7 @@ export const AdminAppSettingsPage = () => {
     const payload: AppSettingsUpdatePayload = {
       thread_title_prompt: data.prompt.trim(),
       thread_title_model: data.threadTitleModel.trim(),
+      admin_chat_model: data.adminChatModel.trim() || null,
     };
 
     updateSettings.mutate(
@@ -143,6 +165,7 @@ export const AdminAppSettingsPage = () => {
         payload: {
           thread_title_prompt: null,
           thread_title_model: null,
+          admin_chat_model: null,
         },
       },
       {
@@ -170,8 +193,12 @@ export const AdminAppSettingsPage = () => {
   const defaultPrompt = settings?.default_thread_title_prompt ?? "";
   const isCustomModel = settings?.is_custom_thread_title_model ?? false;
   const defaultModel = settings?.default_thread_title_model ?? "";
+  const isCustomAdminChatModel = settings?.is_custom_admin_chat_model ?? false;
+  const defaultAdminChatModel = settings?.default_admin_chat_model ?? "";
   const shouldShowCustomModelInput =
     formValues.selectedModelOption === CUSTOM_MODEL_OPTION || availableModels.length === 0;
+  const shouldShowCustomAdminChatModelInput =
+    formValues.selectedAdminChatModelOption === CUSTOM_MODEL_OPTION || availableModels.length === 0;
   const modelOptionsError = modelsError
     ? t("admin.appSettings.errors.threadTitleModelsLoadFailed")
     : null;
@@ -298,12 +325,76 @@ export const AdminAppSettingsPage = () => {
               <pre>{defaultPrompt}</pre>
             </div>
 
+            <div className="divider" aria-hidden="true" />
+
+            <FormField label="Modèle du chat admin (workflow builder)">
+              <select
+                id="admin-chat-model-select"
+                name="admin-chat-model-select"
+                className="input"
+                {...register("selectedAdminChatModelOption")}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setValue("selectedAdminChatModelOption", value);
+                  if (!value || value === CUSTOM_MODEL_OPTION) {
+                    return;
+                  }
+                  setValue("adminChatModel", value);
+                }}
+                disabled={isBusy || isLoadingModels}
+              >
+                <option value="">
+                  {isLoadingModels ? "Chargement..." : "Sélectionner un modèle"}
+                </option>
+                {availableModels.map((model) => {
+                  const label = model.display_name
+                    ? `${model.display_name} (${model.name})`
+                    : model.name;
+                  return (
+                    <option key={model.id} value={model.name}>
+                      {label}
+                    </option>
+                  );
+                })}
+                <option value={CUSTOM_MODEL_OPTION}>
+                  Personnalisé...
+                </option>
+              </select>
+            </FormField>
+
+            {shouldShowCustomAdminChatModelInput && (
+              <FormField
+                label="Nom du modèle personnalisé"
+                error={formErrors.adminChatModel?.message}
+              >
+                <input
+                  id="admin-chat-model"
+                  name="admin-chat-model"
+                  className="input"
+                  type="text"
+                  {...register("adminChatModel")}
+                  placeholder="ex: gpt-4.1-nano"
+                  disabled={isBusy}
+                />
+              </FormField>
+            )}
+
+            <p className="form-hint">
+              Modèle utilisé par l'assistant admin dans le workflow builder.
+            </p>
+
+            <p className="form-hint">
+              {isCustomAdminChatModel
+                ? "Utilise un modèle personnalisé."
+                : `Utilise la valeur par défaut (${defaultAdminChatModel}).`}
+            </p>
+
             <div className="admin-form__actions" style={{ gap: "12px" }}>
               <button
                 type="button"
                 className="btn btn-ghost"
                 onClick={handleReset}
-                disabled={isBusy || (!isCustomPrompt && !isCustomModel)}
+                disabled={isBusy || (!isCustomPrompt && !isCustomModel && !isCustomAdminChatModel)}
               >
                 {t("admin.appSettings.actions.reset")}
               </button>
