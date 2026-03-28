@@ -593,6 +593,23 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         def _load(session: Session) -> ThreadMetadata:
             owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
+
+            if context.is_admin:
+                # Admins can view any thread regardless of workflow match
+                stmt = select(ChatThread).where(
+                    ChatThread.id == thread_id, ChatThread.owner_id == owner_id
+                )
+                record = session.execute(stmt).scalar_one_or_none()
+                if record is None:
+                    raise NotFoundError(f"Thread {thread_id} introuvable")
+                payload, _matches = self._normalize_thread_record(
+                    record,
+                    owner_id=owner_id,
+                    session=session,
+                    expected_workflow=expected,
+                )
+                return ThreadMetadata.model_validate(payload)
+
             _record, payload = self._require_thread_record(
                 session,
                 thread_id,

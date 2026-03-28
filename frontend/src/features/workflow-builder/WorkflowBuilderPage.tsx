@@ -228,6 +228,7 @@ import {
   ViewportProvider,
   ActiveSessionsProvider,
 } from "./contexts";
+import { AdminChatPanel } from "./components/AdminChatPanel";
 import { AdminVoicePanel } from "./components/AdminVoicePanel";
 
 const WorkflowBuilderPage = () => {
@@ -1625,6 +1626,7 @@ const WorkflowBuilderPage = () => {
           <ActiveSessionsProvider
             token={token}
             workflowId={selectedWorkflowId}
+            workflowSlug={selectedWorkflow?.slug ?? null}
             enabled={editingLocked && (selectedVersionDetail?.is_active ?? false) && (user?.is_admin ?? false)}
           >
           <div
@@ -1652,7 +1654,10 @@ const WorkflowBuilderPage = () => {
               editingLocked={editingLocked}
             />
             {editingLocked && (selectedVersionDetail?.is_active ?? false) && (user?.is_admin ?? false) && selectedWorkflowId != null ? (
-              <AdminVoicePanel workflowId={selectedWorkflowId} />
+              <>
+                <AdminChatPanel workflowId={selectedWorkflowId} />
+                <AdminVoicePanel workflowId={selectedWorkflowId} />
+              </>
             ) : null}
           </div>
           </ActiveSessionsProvider>
