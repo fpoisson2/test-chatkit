@@ -421,7 +421,7 @@ class AppSettingsUpdateRequest(BaseModel):
         default=None,
         description=(
             "Modèle pour le chat admin du workflow builder. Laisser vide pour "
-            "revenir à la valeur par défaut (gpt-4.1-nano)."
+            "revenir à la valeur par défaut (gpt-5.4-mini)."
         ),
         max_length=128,
     )

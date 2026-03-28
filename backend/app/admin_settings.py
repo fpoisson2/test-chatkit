@@ -33,7 +33,7 @@ from .secret_utils import mask_secret as _mask_secret
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ADMIN_CHAT_MODEL = "gpt-4.1-nano"
+DEFAULT_ADMIN_CHAT_MODEL = "gpt-5.4-mini"
 
 @dataclass(slots=True)
 class AdminSettingsUpdateResult:
