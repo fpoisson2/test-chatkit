@@ -1576,6 +1576,53 @@ def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
     ]
 
 
+async def _auto_advance_student(thread_id: str, owner_id: str) -> None:
+    """Trigger the workflow for a student's thread after an admin unlock.
+
+    Runs in the background: loads the student user, builds a minimal
+    ChatKitRequestContext, and calls the ChatKit server's ``respond()``
+    with an empty input so the workflow advances to the next step
+    automatically.
+    """
+    import asyncio
+
+    from ..chatkit import get_chatkit_server
+    from ..chatkit_server.context import ChatKitRequestContext
+    from ..database import SessionLocal
+    from ..models import User
+
+    # Small delay to let the DB commit propagate
+    await asyncio.sleep(0.5)
+
+    try:
+        server = get_chatkit_server()
+
+        # Load the student user to build a proper context
+        with SessionLocal() as db:
+            user = db.get(User, int(owner_id))
+            if user is None:
+                logger.warning("[UNLOCK] Student user %s not found, cannot auto-advance", owner_id)
+                return
+
+            context = ChatKitRequestContext(
+                user_id=str(user.id),
+                email=user.email,
+                is_admin=False,
+                is_lti_user=bool(user.is_lti),
+            )
+
+        # Load the thread via the server's store
+        thread = await server.store.load_thread(thread_id, context=context)
+
+        # Consume the stream to trigger the workflow execution
+        async for _event in server.respond(thread, None, context):
+            pass  # We don't need to forward events; the student will see results on next load
+
+        logger.info("[UNLOCK] Auto-advance completed for thread %s", thread_id)
+    except Exception:
+        logger.exception("[UNLOCK] Auto-advance failed for thread %s", thread_id)
+
+
 async def _execute_admin_voice_tool(
     tool_name: str,
     arguments: dict[str, Any],
@@ -1769,6 +1816,7 @@ async def _execute_admin_voice_tool(
 
     elif tool_name == "unlock_student":
         from ..chatkit_server.context import _get_wait_state_metadata, _set_wait_state_metadata
+        from ..models import WorkflowTransition
 
         thread_id = arguments.get("thread_id", "")
         thread = session.get(ChatThread, thread_id)
@@ -1777,14 +1825,95 @@ async def _execute_admin_voice_tool(
         wait_state = _get_wait_state_metadata(thread)
         if not wait_state:
             return f"Student in thread '{thread_id}' is not in a waiting state."
+
         current_slug = wait_state.get("slug", "unknown")
-        next_slug = wait_state.get("next_step_slug")
-        _set_wait_state_metadata(thread, None)
-        session.commit()
-        return (
-            f"Student in thread '{thread_id}' has been unblocked from step '{current_slug}'."
-            + (f" They will advance to '{next_slug}' on their next message." if next_slug else "")
+
+        # Find current step and its outgoing transitions to determine next step
+        current_step = session.scalar(
+            sa_select(WorkflowStep).where(
+                WorkflowStep.definition_id == active_def.id,
+                WorkflowStep.slug == current_slug,
+            )
         )
+
+        next_step_slug: str | None = None
+        if current_step is not None:
+            outgoing = list(session.scalars(
+                sa_select(WorkflowTransition).where(
+                    WorkflowTransition.definition_id == active_def.id,
+                    WorkflowTransition.source_step_id == current_step.id,
+                )
+            ).all())
+            if outgoing:
+                # Prefer unconditional transition, fall back to first
+                chosen = next(
+                    (t for t in outgoing if not t.condition), outgoing[0]
+                )
+                target = session.get(WorkflowStep, chosen.target_step_id)
+                if target is not None:
+                    next_step_slug = target.slug
+
+        if next_step_slug is not None:
+            # Rewrite the wait state to advance to the next step
+            existing_state = dict(wait_state.get("state", {}))
+
+            # Reset phase and counter keys for the current step across all handler types
+            _PHASE_PREFIXES = [
+                "evaluated_step_phase_",
+                "help_loop_phase_",
+                "guided_exercise_phase_",
+            ]
+            _COUNTER_PREFIXES = [
+                "evaluated_step_attempts_",
+                "help_loop_turns_",
+                "guided_exercise_attempts_",
+                "guided_exercise_help_turns_",
+            ]
+            for prefix in _PHASE_PREFIXES:
+                key = f"{prefix}{current_slug}"
+                if key in existing_state:
+                    existing_state[key] = "instruction"
+            for prefix in _COUNTER_PREFIXES:
+                key = f"{prefix}{current_slug}"
+                if key in existing_state:
+                    existing_state[key] = 0
+
+            new_wait_state = dict(wait_state)
+            new_wait_state["slug"] = next_step_slug
+            new_wait_state["next_step_slug"] = next_step_slug
+            new_wait_state["state"] = existing_state
+            new_wait_state.pop("input_item_id", None)
+            new_wait_state.pop("input_masked", None)
+
+            _set_wait_state_metadata(thread, new_wait_state)
+            session.commit()
+
+            # Fire background task to auto-advance the student without
+            # requiring them to send a message.
+            import asyncio
+
+            asyncio.create_task(
+                _auto_advance_student(thread_id, str(thread.owner_id))
+            )
+
+            return (
+                f"Student in thread '{thread_id}' has been unlocked from step "
+                f"'{current_slug}' and will automatically advance to '{next_step_slug}'."
+            )
+        else:
+            # Last step or step not found — clear wait state entirely
+            _set_wait_state_metadata(thread, None)
+            session.commit()
+            if current_step is None:
+                return (
+                    f"Warning: Step '{current_slug}' not found in active definition. "
+                    f"Wait state cleared as fallback for thread '{thread_id}'."
+                )
+            return (
+                f"Student in thread '{thread_id}' has been unlocked from the "
+                f"final step '{current_slug}'. The workflow will complete on "
+                f"their next message."
+            )
 
     elif tool_name == "read_student_thread":
         from ..models import ChatThreadItem

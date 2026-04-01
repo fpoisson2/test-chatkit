@@ -166,6 +166,17 @@ def _set_wait_state_metadata(thread: Any, state: Mapping[str, Any] | None) -> No
             logger.info(
                 "[WAIT_STATE_DEBUG] Set wait key in metadata dict in place"
             )
+
+        # When operating on a SQLAlchemy model's payload JSONB column,
+        # in-place dict mutations are invisible to the ORM.  Flag the
+        # column as modified so session.commit() persists the change.
+        if use_payload:
+            try:
+                from sqlalchemy.orm.attributes import flag_modified
+
+                flag_modified(thread, "payload")
+            except Exception:
+                pass
         return
 
     # Fallback: build updated dict and try to assign

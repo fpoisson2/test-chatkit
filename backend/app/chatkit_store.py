@@ -623,9 +623,17 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
     async def save_thread(
         self, thread: ThreadMetadata, context: ChatKitRequestContext
     ) -> None:
-        owner_id = self._require_user_id(context)
-
         def _save(session: Session) -> None:
+            # Resolve the actual thread owner for admins operating on
+            # student threads.  Fall back to the current user ID when the
+            # thread does not exist yet (creation path).
+            try:
+                owner_id = self._resolve_owner_id_for_thread(
+                    session, thread.id, context
+                )
+            except NotFoundError:
+                owner_id = self._require_user_id(context)
+
             payload = _strip_null_bytes(thread.model_dump(mode="json"))
             # Utiliser thread.metadata si disponible (peut contenir des mises à jour récentes),
             # sinon utiliser les métadonnées du payload
@@ -661,7 +669,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 self._sync_denormalized_columns(new_record, payload)
                 session.add(new_record)
             else:
-                if existing.owner_id != owner_id:
+                if existing.owner_id != owner_id and not context.is_admin:
                     raise NotFoundError(f"Thread {thread.id} introuvable")
                 # Preserve current_branch_id if the caller didn't include it
                 if "current_branch_id" not in metadata:
@@ -794,12 +802,26 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         def _load(session: Session) -> Page[ThreadItem]:
             owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
-            _record, thread_payload = self._require_thread_record(
-                session,
-                thread_id,
-                owner_id,
-                expected,
-            )
+
+            if context.is_admin:
+                # Admin bypass: look up thread without workflow-match check
+                stmt = select(ChatThread).where(
+                    ChatThread.id == thread_id, ChatThread.owner_id == owner_id
+                )
+                record = session.execute(stmt).scalar_one_or_none()
+                if record is None:
+                    raise NotFoundError(f"Thread {thread_id} introuvable")
+                thread_payload, _matches = self._normalize_thread_record(
+                    record, owner_id=owner_id, session=session,
+                    expected_workflow=expected,
+                )
+            else:
+                _record, thread_payload = self._require_thread_record(
+                    session,
+                    thread_id,
+                    owner_id,
+                    expected,
+                )
 
             # Determine which branch to load
             effective_branch_id = branch_id
@@ -1129,16 +1151,29 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         context: ChatKitRequestContext,
         branch_id: str | None = None,
     ) -> None:
-        owner_id = self._require_user_id(context)
-
         def _add(session: Session) -> None:
+            owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
-            _record, thread_payload = self._require_thread_record(
-                session,
-                thread_id,
-                owner_id,
-                expected,
-            )
+
+            if context.is_admin:
+                # Admin bypass: look up thread without workflow-match check
+                stmt = select(ChatThread).where(
+                    ChatThread.id == thread_id, ChatThread.owner_id == owner_id
+                )
+                record = session.execute(stmt).scalar_one_or_none()
+                if record is None:
+                    raise NotFoundError(f"Thread {thread_id} introuvable")
+                thread_payload, _matches = self._normalize_thread_record(
+                    record, owner_id=owner_id, session=session,
+                    expected_workflow=expected,
+                )
+            else:
+                _record, thread_payload = self._require_thread_record(
+                    session,
+                    thread_id,
+                    owner_id,
+                    expected,
+                )
             # Ne PAS normaliser lors de la sauvegarde pour préserver les données d'image
             payload = _strip_null_bytes(item.model_dump(mode="json"))
 
@@ -1205,16 +1240,24 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
     async def save_item(
         self, thread_id: str, item: ThreadItem, context: ChatKitRequestContext
     ) -> None:
-        owner_id = self._require_user_id(context)
-
         def _save(session: Session) -> None:
+            owner_id = self._resolve_owner_id_for_thread(session, thread_id, context)
             expected = self._current_workflow_metadata()
-            self._require_thread_record(
-                session,
-                thread_id,
-                owner_id,
-                expected,
-            )
+
+            if context.is_admin:
+                # Admin bypass: verify thread exists without workflow-match check
+                stmt_thread = select(ChatThread).where(
+                    ChatThread.id == thread_id, ChatThread.owner_id == owner_id
+                )
+                if session.execute(stmt_thread).scalar_one_or_none() is None:
+                    raise NotFoundError(f"Thread {thread_id} introuvable")
+            else:
+                self._require_thread_record(
+                    session,
+                    thread_id,
+                    owner_id,
+                    expected,
+                )
             stmt = select(ChatThreadItem).where(
                 ChatThreadItem.id == item.id,
                 ChatThreadItem.thread_id == thread_id,
