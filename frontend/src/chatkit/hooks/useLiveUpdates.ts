@@ -7,7 +7,7 @@
 import { useEffect, useRef } from 'react';
 import type { Thread } from '../types';
 
-const POLL_INTERVAL_MS = 1500;
+const POLL_INTERVAL_MS = 800;
 
 interface UseLiveUpdatesOptions {
   apiUrl: string;

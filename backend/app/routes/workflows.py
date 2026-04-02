@@ -1576,23 +1576,37 @@ def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
     ]
 
 
-async def _auto_advance_student(thread_id: str, owner_id: str) -> None:
+async def _auto_advance_student(
+    thread_id: str, owner_id: str, workflow_id: int
+) -> None:
     """Trigger the workflow for a student's thread after an admin unlock.
 
     Runs in the background: loads the student user, builds a minimal
     ChatKitRequestContext, and calls the ChatKit server's ``respond()``
     with an empty input so the workflow advances to the next step
-    automatically.
+    automatically.  After execution, publishes a live-update signal so
+    the student's browser refreshes immediately.
     """
     import asyncio
 
     from ..chatkit import get_chatkit_server
     from ..chatkit_server.context import ChatKitRequestContext
     from ..database import SessionLocal
+    from ..live_updates import StepContentUpdate, live_update_manager
     from ..models import User
 
+    # Signal the student's frontend immediately so the masked input
+    # disappears while the workflow executes in the background.
+    await live_update_manager.publish(
+        StepContentUpdate(
+            workflow_id=workflow_id,
+            step_slug="__unlock__",
+            new_text="",
+        )
+    )
+
     # Small delay to let the DB commit propagate
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.2)
 
     try:
         server = get_chatkit_server()
@@ -1616,7 +1630,17 @@ async def _auto_advance_student(thread_id: str, owner_id: str) -> None:
 
         # Consume the stream to trigger the workflow execution
         async for _event in server.respond(thread, None, context):
-            pass  # We don't need to forward events; the student will see results on next load
+            pass
+
+        # Second signal after workflow execution so the student sees
+        # the new step content.
+        await live_update_manager.publish(
+            StepContentUpdate(
+                workflow_id=workflow_id,
+                step_slug="__unlock__",
+                new_text="",
+            )
+        )
 
         logger.info("[UNLOCK] Auto-advance completed for thread %s", thread_id)
     except Exception:
@@ -1893,7 +1917,7 @@ async def _execute_admin_voice_tool(
             import asyncio
 
             asyncio.create_task(
-                _auto_advance_student(thread_id, str(thread.owner_id))
+                _auto_advance_student(thread_id, str(thread.owner_id), workflow_id)
             )
 
             return (
