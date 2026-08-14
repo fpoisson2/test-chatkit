@@ -49,6 +49,9 @@ export type UseDataNodeHandlersParams = {
 const useDataNodeHandlers = ({
   updateNodeData,
 }: UseDataNodeHandlersParams) => {
+  const handleLabParametersChange = useCallback((nodeId: string, parameters: AgentParameters) => {
+    updateNodeData(nodeId, (data) => data.kind === "lab" ? updateNodeParameters(data, parameters) : data);
+  }, [updateNodeData]);
   // ========== Widget Node Handlers ==========
 
   const handleWidgetNodeSlugChange = useCallback(
@@ -470,6 +473,7 @@ const useDataNodeHandlers = ({
   );
 
   return {
+    handleLabParametersChange,
     // Widget handlers
     handleWidgetNodeSlugChange,
     handleWidgetNodeSourceChange,

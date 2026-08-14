@@ -45,6 +45,30 @@ class PortableJSONB(TypeDecorator):
         return dialect.type_descriptor(JSON())
 
 
+class LabActivity(Base):
+    __tablename__ = "lab_activities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    definition: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False, default=dict)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.UTC))
+
+
+class LabAttempt(Base):
+    __tablename__ = "lab_attempts"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    activity_id: Mapped[int] = mapped_column(ForeignKey("lab_activities.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    submitted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="in_progress")
+    validated_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False, default=dict)
+
+
 # Association table for many-to-many relationship between Workflow and LTIRegistration
 workflow_lti_registrations = Table(
     "workflow_lti_registrations",

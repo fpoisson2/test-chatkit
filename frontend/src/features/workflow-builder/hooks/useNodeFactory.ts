@@ -580,6 +580,21 @@ const useNodeFactory = ({
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
 
+  const handleAddLabNode = useCallback(() => {
+    const slug = `lab-${Date.now()}`;
+    const parameters: AgentParameters = {
+      title: "Laboratoire",
+      introduction: "Complétez ce document de laboratoire.",
+      duration_minutes: 180,
+      allow_revision: true,
+      adaptive_questions_enabled: true,
+      max_adaptive_questions: 2,
+      criteria: [{ id: "criterion-1", label: "Critère principal", description: "", weight: 100, max_points: 100 }],
+      sections: [{ id: "section-1", title: "Section 1", description: "", fields: [{ id: "field-1", label: "Réponse", prompt: "", type: "textarea", required: true, criterion_id: "criterion-1" }] }],
+    };
+    addNodeToGraph({ id: slug, position: { x: 400, y: 260 }, data: { slug, kind: "lab", displayName: humanizeSlug(slug), label: humanizeSlug(slug), isEnabled: true, agentKey: null, parameters, parametersText: stringifyAgentParameters(parameters), parametersError: null, metadata: {} }, draggable: true });
+  }, [addNodeToGraph, humanizeSlug]);
+
   return {
     handleAddAgentNode,
     handleAddVoiceAgentNode,
@@ -601,6 +616,7 @@ const useNodeFactory = ({
     handleAddEvaluatedStepNode,
     handleAddHelpLoopNode,
     handleAddGuidedExerciseNode,
+    handleAddLabNode,
     handleAddEndNode,
   };
 };

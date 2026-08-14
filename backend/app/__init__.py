@@ -81,6 +81,7 @@ else:
             github_ws,
             health,
             languages,
+            labs,
             lti,
             mcp,
             model_registry,
@@ -163,6 +164,7 @@ else:
         app.include_router(github_ws.router)
         app.include_router(health.router)
         app.include_router(languages.router)
+        app.include_router(labs.router)
         app.include_router(lti.router)
         app.include_router(model_registry.router)
         app.include_router(mcp.router)

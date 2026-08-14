@@ -720,6 +720,7 @@ class WorkflowGraphValidator:
                 "parallel_split",
                 "parallel_join",
                 "evaluated_step",
+                "lab",
                 "end",
             }:
                 raise WorkflowValidationError(
@@ -2927,7 +2928,7 @@ class WorkflowService:
             old_message = (old_params.get("message") or old_params.get("text") or old_params.get("instruction") or "") if isinstance(old_params, dict) else ""
 
             # Determine the correct parameter key based on step kind
-            _INSTRUCTION_KINDS = {"evaluated_step", "help_loop", "guided_exercise"}
+            _INSTRUCTION_KINDS = {"evaluated_step", "help_loop", "guided_exercise", "lab"}
             message_key = "instruction" if step.kind in _INSTRUCTION_KINDS else "message"
 
             # Update step parameters in-place

@@ -368,11 +368,20 @@ class LTIService:
         user_json = quote(json.dumps(user_data))
         token_encoded = quote(token)  # URL-encode the JWT token
 
+        # Les workflows qui contiennent un bloc laboratoire ouvrent l'interface
+        # document dédiée après le lancement LTI, tout en conservant le workflow
+        # et sa version active comme source de configuration.
+        has_lab_node = bool(
+            workflow.active_version
+            and any(step.kind == "lab" for step in workflow.active_version.steps)
+        )
+
         # Include workflow_id in launch URL.
         # LTI users now have API access to their workflows.
         launch_url = (
             f"{frontend_base}/lti/launch"
             f"?token={token_encoded}&user={user_json}&workflow={workflow.id}"
+            f"{'&lab=' + quote(workflow.slug) if has_lab_node else ''}"
             f"{'&thread_id=' + quote(thread_id) if thread_id else ''}"
         )
 

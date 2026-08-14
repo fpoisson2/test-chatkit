@@ -7,6 +7,7 @@ __all__ = [
     "docs",
     "health",
     "languages",
+    "labs",
     "lti",
     "mcp",
     "model_registry",

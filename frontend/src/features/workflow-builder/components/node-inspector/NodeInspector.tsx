@@ -80,6 +80,7 @@ import { WatchInspectorSection } from "./sections/WatchInspectorSection";
 import { ParallelSplitInspectorSection } from "./sections/ParallelSplitInspectorSection";
 import { WidgetInspectorSection } from "./sections/WidgetInspectorSection";
 import { DocxTemplateInspectorSection } from "./sections/DocxTemplateInspectorSection";
+import { LabInspectorSection } from "./sections/LabInspectorSection";
 
 export type NodeInspectorProps = {
   node: FlowNode;
@@ -211,6 +212,7 @@ const NodeInspector = ({
     handleDocxTemplateTemplatePathChange: onDocxTemplateTemplatePathChange,
     handleDocxTemplateOutputPathChange: onDocxTemplateOutputPathChange,
     handleDocxTemplateDataChange: onDocxTemplateDataChange,
+    handleLabParametersChange: onLabParametersChange,
   } = nodeHandlers;
 
   // LTI workflow-level handlers
@@ -690,6 +692,13 @@ const NodeInspector = ({
           availableModels={availableModels}
           availableModelsLoading={availableModelsLoading}
           onFieldChange={onGuidedExerciseFieldChange}
+        />
+      ) : null}
+
+      {kind === "lab" && !editingLocked ? (
+        <LabInspectorSection
+          parameters={parameters}
+          onParametersChange={(nextParameters) => onLabParametersChange(node.id, nextParameters)}
         />
       ) : null}
 

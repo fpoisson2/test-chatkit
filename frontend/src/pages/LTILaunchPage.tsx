@@ -26,6 +26,7 @@ export const LTILaunchPage = () => {
     const userJson = searchParams.get("user");
     const workflowId = searchParams.get("workflow");
     const threadId = searchParams.get("thread_id");
+    const labId = searchParams.get("lab");
 
     setDebugInfo(`Token: ${token ? "présent" : "absent"}, User: ${userJson ? "présent" : "absent"}, Workflow: ${workflowId || "absent"}, Thread: ${threadId || "absent"}`);
 
@@ -52,7 +53,7 @@ export const LTILaunchPage = () => {
       hasProcessed.current = true;
 
       // Immediate redirect - no setTimeout needed
-      window.location.replace(threadId ? `/c/${threadId}` : "/");
+      window.location.replace(labId ? `/lab/${encodeURIComponent(labId)}` : threadId ? `/c/${threadId}` : "/");
     } catch (error) {
       setError(`Erreur: ${error instanceof Error ? error.message : String(error)}`);
       hasProcessed.current = true;

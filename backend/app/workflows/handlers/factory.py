@@ -54,6 +54,9 @@ def create_state_machine(
     machine.register_handler("evaluated_step", EvaluatedStepHandler())
     machine.register_handler("help_loop", HelpLoopHandler())
     machine.register_handler("guided_exercise", GuidedExerciseHandler())
+    # Un laboratoire utilise le même cycle conversationnel de validation comme
+    # filet de sécurité; l'interface LTI dédiée rend le document structuré.
+    machine.register_handler("lab", GuidedExerciseHandler())
     machine.register_handler("parallel_split", ParallelSplitNodeHandler())
     machine.register_handler("parallel_join", ParallelJoinNodeHandler())
 

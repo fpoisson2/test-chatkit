@@ -87,6 +87,7 @@ export const NODE_COLORS: Record<NodeKind, string> = {
   evaluated_step: "#f59e0b",
   help_loop: "#06b6d4",
   guided_exercise: "#10b981",
+  lab: "#315e3d",
   end: "#7c3aed",
 };
 
@@ -112,6 +113,7 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   evaluated_step: "rgba(245, 158, 11, 0.14)",
   help_loop: "rgba(6, 182, 212, 0.18)",
   guided_exercise: "rgba(16, 185, 129, 0.16)",
+  lab: "rgba(49, 94, 61, 0.16)",
   end: "rgba(124, 58, 237, 0.12)",
 };
 
@@ -137,6 +139,7 @@ const NODE_GLOW_COLORS: Record<NodeKind, string> = {
   evaluated_step: "rgba(245, 158, 11, 0.45)",
   help_loop: "rgba(6, 182, 212, 0.5)",
   guided_exercise: "rgba(16, 185, 129, 0.45)",
+  lab: "rgba(49, 94, 61, 0.45)",
   end: "rgba(124, 58, 237, 0.45)",
 };
 
@@ -364,6 +367,7 @@ const NODE_KIND_LABEL_KEYS: Record<NodeKind, string> = {
   evaluated_step: "workflowBuilder.node.kind.evaluated_step",
   help_loop: "workflowBuilder.node.kind.help_loop",
   guided_exercise: "workflowBuilder.node.kind.guided_exercise",
+  lab: "workflowBuilder.node.kind.lab",
   end: "workflowBuilder.node.kind.end",
 };
 

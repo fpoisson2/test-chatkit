@@ -1127,6 +1127,7 @@ export const en: TranslationDictionary = {
   "workflowBuilder.node.kind.evaluated_step": "Evaluated step",
   "workflowBuilder.node.kind.help_loop": "Help loop",
   "workflowBuilder.node.kind.guided_exercise": "Guided exercise",
+  "workflowBuilder.node.kind.lab": "Laboratory",
   "workflowBuilder.node.kind.end": "End",
   "workflowBuilder.parallel.joinSlugLabel": "Associated join block",
   "workflowBuilder.parallel.joinSlugHelp": "Provide the slug of the matching parallel_join block.",

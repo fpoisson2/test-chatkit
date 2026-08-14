@@ -34,6 +34,8 @@ const LTILaunchPage = lazy(() =>
   import("./pages/LTILaunchPage").then((m) => ({ default: m.LTILaunchPage }))
 );
 const LandingPage = lazy(() => import("./pages/LandingPage"));
+const LabPage = lazy(() => import("./features/lab/LabPage"));
+const LabReviewPage = lazy(() => import("./features/lab/LabReviewPage"));
 
 // Configure React Query client
 const queryClient = new QueryClient({
@@ -159,6 +161,26 @@ export const App = () => (
             <RequireUser>
               <ConversationPage />
             </RequireUser>
+          }
+        />
+        <Route
+          path="lab/:activityId"
+          element={
+            <RequireUser>
+              <SuspenseRoute>
+                <LabPage />
+              </SuspenseRoute>
+            </RequireUser>
+          }
+        />
+        <Route
+          path="lab-review"
+          element={
+            <SuspenseRoute>
+              <RequireAdmin>
+                <LabReviewPage />
+              </RequireAdmin>
+            </SuspenseRoute>
           }
         />
         <Route

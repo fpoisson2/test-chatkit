@@ -31,6 +31,7 @@ export type NodeKind =
   | "evaluated_step"
   | "help_loop"
   | "guided_exercise"
+  | "lab"
   | "end";
 
 export type ApiWorkflowNode = {

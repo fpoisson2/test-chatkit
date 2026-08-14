@@ -24,6 +24,7 @@ export interface NodeHandlers {
   handleAddEvaluatedStepNode: () => void;
   handleAddHelpLoopNode: () => void;
   handleAddGuidedExerciseNode: () => void;
+  handleAddLabNode: () => void;
   handleAddEndNode: () => void;
 }
 
@@ -146,6 +147,7 @@ export const useBlockLibraryItems = ({
         shortLabel: "GE",
         onClick: nodeHandlers.handleAddGuidedExerciseNode,
       },
+      { key: "lab", kind: "lab", shortLabel: "LAB", onClick: nodeHandlers.handleAddLabNode },
       { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
     ];
 
@@ -176,6 +178,7 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddEvaluatedStepNode,
     nodeHandlers.handleAddHelpLoopNode,
     nodeHandlers.handleAddGuidedExerciseNode,
+    nodeHandlers.handleAddLabNode,
     nodeHandlers.handleAddEndNode,
   ]);
 };
