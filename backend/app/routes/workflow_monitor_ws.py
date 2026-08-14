@@ -86,19 +86,21 @@ def get_active_sessions(
     *,
     limit: int = DEFAULT_THREAD_SCAN_LIMIT,
     lookback_hours: int | None = DEFAULT_LOOKBACK_HOURS,
+    workflow_slug: str | None = None,
 ) -> list[dict[str, Any]]:
     """Récupère toutes les sessions actives (optimisé)."""
-    # Optimisation: Filtrer directement en SQL si possible, sinon filtrer en Python mais avec eager loading
-    # Note: Le filtrage JSONB dépend du dialecte DB, on reste générique ici mais on eager load
-    
-    # On ne récupère que les threads qui ont potentiellement un workflow
-    # Idéalement on filtrerait sur payload->'metadata'->'workflow' mais cela dépend de la DB
-    # Pour l'instant on charge tout mais avec les relations nécessaires pour éviter le N+1
-    stmt = select(ChatThread).options(
-        # Eager load pour éviter les requêtes N+1
-        # Note: User et Workflow ne sont pas des relations directes sur ChatThread dans le modèle actuel
-        # On devra les charger efficacement
-    )
+    stmt = select(ChatThread)
+
+    # Filter by workflow_slug: try denormalized column first, also include
+    # older threads where workflow_slug is NULL but the JSONB payload contains it.
+    if workflow_slug:
+        from sqlalchemy import or_, cast, String as SAString
+        stmt = stmt.where(
+            or_(
+                ChatThread.workflow_slug == workflow_slug,
+                ChatThread.payload["metadata"]["workflow"]["slug"].as_string() == workflow_slug,
+            )
+        )
 
     if lookback_hours is not None:
         stmt = stmt.where(
@@ -256,10 +258,11 @@ def get_active_sessions(
         # Determine status
         if has_end_step:
             session_status = "completed"
-            # Override current step to show the end step
+            # Keep the actual end step slug if known, fallback to "end"
+            if current_slug == "unknown":
+                current_slug = "end"
             if end_step_title:
                 current_step_display = end_step_title
-                current_slug = "end"
             elif current_step_display == "unknown":
                 current_step_display = "Terminé"
         elif wait_state:
@@ -293,8 +296,9 @@ def get_active_sessions(
             "status": session_status,
         })
 
-    # Déduplication: un seul thread par (utilisateur, workflow) — le plus récent.
-    deduped: dict[tuple[int, int], tuple[datetime, dict[str, Any]]] = {}
+    # Déduplication: un seul thread par (utilisateur, workflow).
+    # Priorité: completed > most recent activity.
+    deduped: dict[tuple[int, int], tuple[int, datetime, dict[str, Any]]] = {}
     for sess in active_sessions:
         key = (sess["user"]["id"], sess["workflow"]["id"])
         try:
@@ -304,11 +308,16 @@ def get_active_sessions(
         except Exception:
             last_activity = datetime.min.replace(tzinfo=timezone.utc)
 
-        existing = deduped.get(key)
-        if existing is None or last_activity > existing[0]:
-            deduped[key] = (last_activity, sess)
+        is_completed = 1 if sess["status"] == "completed" else 0
 
-    deduped_sessions = [entry[1] for entry in sorted(deduped.values(), key=lambda x: x[0], reverse=True)]
+        # Completed threads win over non-completed; among same status, most recent wins
+        rank = (is_completed, last_activity)
+
+        existing = deduped.get(key)
+        if existing is None or rank > (existing[0], existing[1]):
+            deduped[key] = (is_completed, last_activity, sess)
+
+    deduped_sessions = [entry[2] for entry in sorted(deduped.values(), key=lambda x: (x[0], x[1]), reverse=True)]
     if len(deduped_sessions) != len(active_sessions):
         logger.info(
             f"[WS_MONITOR] Deduped sessions: {len(active_sessions)} -> {len(deduped_sessions)} "
@@ -356,19 +365,7 @@ async def workflow_monitor_websocket(
         await websocket.close(code=4003, reason="Admin privileges required")
         return
 
-    def _fetch_sessions() -> list[dict[str, Any]]:
-        """Fetch active sessions with a fresh DB session."""
-        session = SessionLocal()
-        try:
-            return get_active_sessions(
-                session,
-                limit=thread_scan_limit,
-                lookback_hours=lookback_hours,
-            )
-        finally:
-            session.close()
-
-    # Paramètres optionnels (ex: ?limit=500&lookback_hours=168)
+    # Paramètres optionnels (ex: ?limit=500&lookback_hours=168&workflow_slug=my-workflow)
     thread_scan_limit = _parse_int_query(
         websocket.query_params.get("limit"),
         default=DEFAULT_THREAD_SCAN_LIMIT,
@@ -381,6 +378,20 @@ async def workflow_monitor_websocket(
         min_value=1,
         max_value=24 * 365,
     )
+    workflow_slug = websocket.query_params.get("workflow_slug") or None
+
+    def _fetch_sessions() -> list[dict[str, Any]]:
+        """Fetch active sessions with a fresh DB session."""
+        session = SessionLocal()
+        try:
+            return get_active_sessions(
+                session,
+                limit=thread_scan_limit,
+                lookback_hours=lookback_hours,
+                workflow_slug=workflow_slug,
+            )
+        finally:
+            session.close()
 
     try:
         await manager.connect(websocket)

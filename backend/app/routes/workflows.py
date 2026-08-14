@@ -1554,7 +1554,97 @@ def _get_admin_voice_tools_definitions() -> list[dict[str, Any]]:
                 "required": ["thread_id"],
             },
         },
+        {
+            "type": "function",
+            "name": "read_student_thread",
+            "description": (
+                "Read the conversation content of a student's thread to see what they wrote "
+                "and what the AI answered. Returns a transcript of recent messages."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "description": "The thread ID to read."},
+                    "last_n": {
+                        "type": "integer",
+                        "description": "Number of recent messages to return. Default 30.",
+                    },
+                },
+                "required": ["thread_id"],
+            },
+        },
     ]
+
+
+async def _auto_advance_student(
+    thread_id: str, owner_id: str, workflow_id: int
+) -> None:
+    """Trigger the workflow for a student's thread after an admin unlock.
+
+    Runs in the background: loads the student user, builds a minimal
+    ChatKitRequestContext, and calls the ChatKit server's ``respond()``
+    with an empty input so the workflow advances to the next step
+    automatically.  After execution, publishes a live-update signal so
+    the student's browser refreshes immediately.
+    """
+    import asyncio
+
+    from ..chatkit import get_chatkit_server
+    from ..chatkit_server.context import ChatKitRequestContext
+    from ..database import SessionLocal
+    from ..live_updates import StepContentUpdate, live_update_manager
+    from ..models import User
+
+    # Signal the student's frontend immediately so the masked input
+    # disappears while the workflow executes in the background.
+    await live_update_manager.publish(
+        StepContentUpdate(
+            workflow_id=workflow_id,
+            step_slug="__unlock__",
+            new_text="",
+        )
+    )
+
+    # Small delay to let the DB commit propagate
+    await asyncio.sleep(0.2)
+
+    try:
+        server = get_chatkit_server()
+
+        # Load the student user to build a proper context
+        with SessionLocal() as db:
+            user = db.get(User, int(owner_id))
+            if user is None:
+                logger.warning("[UNLOCK] Student user %s not found, cannot auto-advance", owner_id)
+                return
+
+            context = ChatKitRequestContext(
+                user_id=str(user.id),
+                email=user.email,
+                is_admin=False,
+                is_lti_user=bool(user.is_lti),
+            )
+
+        # Load the thread via the server's store
+        thread = await server.store.load_thread(thread_id, context=context)
+
+        # Consume the stream to trigger the workflow execution
+        async for _event in server.respond(thread, None, context):
+            pass
+
+        # Second signal after workflow execution so the student sees
+        # the new step content.
+        await live_update_manager.publish(
+            StepContentUpdate(
+                workflow_id=workflow_id,
+                step_slug="__unlock__",
+                new_text="",
+            )
+        )
+
+        logger.info("[UNLOCK] Auto-advance completed for thread %s", thread_id)
+    except Exception:
+        logger.exception("[UNLOCK] Auto-advance failed for thread %s", thread_id)
 
 
 async def _execute_admin_voice_tool(
@@ -1668,7 +1758,10 @@ async def _execute_admin_voice_tool(
         return f"Le champ '{field_key}' de l'étape '{step_slug}' a été amélioré et publié."
 
     elif tool_name == "get_student_progress":
-        sessions_list = get_active_sessions(session)
+        # Get workflow slug for filtering
+        workflow_obj = session.get(Workflow, workflow_id)
+        wf_slug = workflow_obj.slug if workflow_obj else None
+        sessions_list = get_active_sessions(session, workflow_slug=wf_slug)
         relevant = [
             s for s in sessions_list
             if s.get("workflow", {}).get("id") == workflow_id
@@ -1747,6 +1840,7 @@ async def _execute_admin_voice_tool(
 
     elif tool_name == "unlock_student":
         from ..chatkit_server.context import _get_wait_state_metadata, _set_wait_state_metadata
+        from ..models import WorkflowTransition
 
         thread_id = arguments.get("thread_id", "")
         thread = session.get(ChatThread, thread_id)
@@ -1755,14 +1849,168 @@ async def _execute_admin_voice_tool(
         wait_state = _get_wait_state_metadata(thread)
         if not wait_state:
             return f"Student in thread '{thread_id}' is not in a waiting state."
+
         current_slug = wait_state.get("slug", "unknown")
-        next_slug = wait_state.get("next_step_slug")
-        _set_wait_state_metadata(thread, None)
-        session.commit()
-        return (
-            f"Student in thread '{thread_id}' has been unblocked from step '{current_slug}'."
-            + (f" They will advance to '{next_slug}' on their next message." if next_slug else "")
+
+        # Find current step and its outgoing transitions to determine next step
+        current_step = session.scalar(
+            sa_select(WorkflowStep).where(
+                WorkflowStep.definition_id == active_def.id,
+                WorkflowStep.slug == current_slug,
+            )
         )
+
+        next_step_slug: str | None = None
+        if current_step is not None:
+            outgoing = list(session.scalars(
+                sa_select(WorkflowTransition).where(
+                    WorkflowTransition.definition_id == active_def.id,
+                    WorkflowTransition.source_step_id == current_step.id,
+                )
+            ).all())
+            if outgoing:
+                # Prefer unconditional transition, fall back to first
+                chosen = next(
+                    (t for t in outgoing if not t.condition), outgoing[0]
+                )
+                target = session.get(WorkflowStep, chosen.target_step_id)
+                if target is not None:
+                    next_step_slug = target.slug
+
+        if next_step_slug is not None:
+            # Rewrite the wait state to advance to the next step
+            existing_state = dict(wait_state.get("state", {}))
+
+            # Reset phase and counter keys for the current step across all handler types
+            _PHASE_PREFIXES = [
+                "evaluated_step_phase_",
+                "help_loop_phase_",
+                "guided_exercise_phase_",
+            ]
+            _COUNTER_PREFIXES = [
+                "evaluated_step_attempts_",
+                "help_loop_turns_",
+                "guided_exercise_attempts_",
+                "guided_exercise_help_turns_",
+            ]
+            for prefix in _PHASE_PREFIXES:
+                key = f"{prefix}{current_slug}"
+                if key in existing_state:
+                    existing_state[key] = "instruction"
+            for prefix in _COUNTER_PREFIXES:
+                key = f"{prefix}{current_slug}"
+                if key in existing_state:
+                    existing_state[key] = 0
+
+            new_wait_state = dict(wait_state)
+            new_wait_state["slug"] = next_step_slug
+            new_wait_state["next_step_slug"] = next_step_slug
+            new_wait_state["state"] = existing_state
+            new_wait_state.pop("input_item_id", None)
+            new_wait_state.pop("input_masked", None)
+
+            _set_wait_state_metadata(thread, new_wait_state)
+            session.commit()
+
+            # Fire background task to auto-advance the student without
+            # requiring them to send a message.
+            import asyncio
+
+            asyncio.create_task(
+                _auto_advance_student(thread_id, str(thread.owner_id), workflow_id)
+            )
+
+            return (
+                f"Student in thread '{thread_id}' has been unlocked from step "
+                f"'{current_slug}' and will automatically advance to '{next_step_slug}'."
+            )
+        else:
+            # Last step or step not found — clear wait state entirely
+            _set_wait_state_metadata(thread, None)
+            session.commit()
+            if current_step is None:
+                return (
+                    f"Warning: Step '{current_slug}' not found in active definition. "
+                    f"Wait state cleared as fallback for thread '{thread_id}'."
+                )
+            return (
+                f"Student in thread '{thread_id}' has been unlocked from the "
+                f"final step '{current_slug}'. The workflow will complete on "
+                f"their next message."
+            )
+
+    elif tool_name == "read_student_thread":
+        from ..models import ChatThreadItem
+
+        thread_id = arguments.get("thread_id", "")
+        last_n = int(arguments.get("last_n", 30))
+        thread = session.get(ChatThread, thread_id)
+        if thread is None:
+            return f"Error: Thread '{thread_id}' not found."
+
+        items = session.scalars(
+            sa_select(ChatThreadItem)
+            .where(ChatThreadItem.thread_id == thread_id)
+            .order_by(ChatThreadItem.created_at.desc())
+            .limit(last_n)
+        ).all()
+        items = list(reversed(items))
+
+        if not items:
+            return f"Thread '{thread_id}' has no messages."
+
+        owner = session.get(User, int(thread.owner_id)) if thread.owner_id else None
+        owner_name = (owner.display_name or owner.email) if owner else "Unknown"
+
+        lines = [f"Transcript for {owner_name} (thread {thread_id}, {len(items)} messages):"]
+        for item in items:
+            payload = item.payload or {}
+            item_type = payload.get("type", "")
+            role = payload.get("role", "")
+
+            is_user = (
+                role == "user"
+                or item_type == "user_message"
+                or (item_type == "message" and role == "user")
+            )
+            is_assistant = (
+                role == "assistant"
+                or item_type == "assistant_message"
+                or (item_type == "message" and role == "assistant")
+            )
+
+            if is_user:
+                content = payload.get("content", [])
+                text_parts = []
+                for part in (content if isinstance(content, list) else [content]):
+                    if isinstance(part, dict):
+                        text = part.get("text", "")
+                        if text and part.get("type") in ("input_text", "text", "output_text", None):
+                            text_parts.append(text)
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+                if text_parts:
+                    lines.append(f"[STUDENT] {' '.join(text_parts)}")
+
+            elif is_assistant:
+                content = payload.get("content", [])
+                text_parts = []
+                for part in (content if isinstance(content, list) else [content]):
+                    if isinstance(part, dict):
+                        text = part.get("text", "")
+                        if text and part.get("type") in ("output_text", "text", None):
+                            text_parts.append(text)
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+                if text_parts:
+                    lines.append(f"[AI] {' '.join(text_parts)}")
+
+            elif item_type == "widget":
+                widget = payload.get("widget", {})
+                widget_type = widget.get("type", "unknown")
+                lines.append(f"[WIDGET: {widget_type}]")
+
+        return "\n".join(lines)
 
     else:
         return f"Error: Unknown tool '{tool_name}'."
@@ -1914,3 +2162,209 @@ async def execute_admin_voice_tool(
         result = f"Error executing tool '{tool_name}': {str(e)}"
 
     return {"result": result}
+
+
+def _build_admin_chat_tools(
+    workflow_id: int, session: Session
+) -> list[Any]:
+    """Build agents SDK function tools that delegate to _execute_admin_voice_tool."""
+    from agents import function_tool
+
+    @function_tool
+    async def list_workflow_steps() -> str:
+        """List all editable steps in the workflow with their slugs, titles, types, and content fields."""
+        return await _execute_admin_voice_tool("list_workflow_steps", {}, workflow_id, session)
+
+    @function_tool
+    async def get_student_progress() -> str:
+        """Get the current progress of all students in the workflow, showing who is at which step."""
+        return await _execute_admin_voice_tool("get_student_progress", {}, workflow_id, session)
+
+    @function_tool
+    async def read_student_thread(thread_id: str, last_n: int = 30) -> str:
+        """Read the conversation content of a student's thread to see what they wrote and what the AI answered. Returns a transcript of recent messages."""
+        return await _execute_admin_voice_tool(
+            "read_student_thread", {"thread_id": thread_id, "last_n": last_n}, workflow_id, session
+        )
+
+    @function_tool
+    async def improve_step_content(step_slug: str, instructions: str, field: str = "") -> str:
+        """Improve the content of a specific field of a step using AI. Use 'field' to target a specific field (instruction, evaluation_prompt, feedback_prompt, agent_prompt, success_message, escalation_message). Defaults to the primary field if omitted."""
+        args: dict[str, Any] = {"step_slug": step_slug, "instructions": instructions}
+        if field:
+            args["field"] = field
+        return await _execute_admin_voice_tool("improve_step_content", args, workflow_id, session)
+
+    @function_tool
+    async def publish_step_message(step_slug: str, new_message: str, field: str = "") -> str:
+        """Publish new content for a specific field of a step, updating it live."""
+        args: dict[str, Any] = {"step_slug": step_slug, "new_message": new_message}
+        if field:
+            args["field"] = field
+        return await _execute_admin_voice_tool("publish_step_message", args, workflow_id, session)
+
+    @function_tool
+    async def update_step_config(step_slug: str, field: str, value: str) -> str:
+        """Update configuration fields of a step (model, provider, max_attempts, max_turns, exit_keyword, escalation_behavior, teacher_code, masked)."""
+        return await _execute_admin_voice_tool(
+            "update_step_config", {"step_slug": step_slug, "field": field, "value": value}, workflow_id, session
+        )
+
+    @function_tool
+    async def unlock_student(thread_id: str) -> str:
+        """Unblock a student stuck at a wait step by clearing their wait state so the workflow can advance."""
+        return await _execute_admin_voice_tool("unlock_student", {"thread_id": thread_id}, workflow_id, session)
+
+    return [
+        list_workflow_steps, get_student_progress, read_student_thread,
+        improve_step_content, publish_step_message, update_step_config, unlock_student,
+    ]
+
+
+@router.post("/api/workflows/{workflow_id}/admin-chat")
+async def admin_chat_stream(
+    workflow_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Streaming admin chat endpoint using the OpenAI Agents SDK."""
+    import json as json_mod
+
+    from agents import Agent, RunConfig, Runner
+    from openai.types.responses import ResponseTextDeltaEvent
+    from sqlalchemy import select as sa_select
+    from starlette.responses import StreamingResponse
+
+    from ..models import Workflow, WorkflowDefinition, WorkflowStep
+
+    _ensure_admin(current_user)
+
+    body = await request.json()
+    messages = body.get("messages", [])
+    if not messages:
+        raise HTTPException(status_code=400, detail="No messages provided")
+
+    workflow = session.get(Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    active_def = session.scalar(
+        sa_select(WorkflowDefinition).where(
+            WorkflowDefinition.workflow_id == workflow_id,
+            WorkflowDefinition.is_active == True,  # noqa: E712
+        )
+    )
+    if active_def is None:
+        raise HTTPException(status_code=404, detail="No active definition found")
+
+    steps = session.scalars(
+        sa_select(WorkflowStep)
+        .where(WorkflowStep.definition_id == active_def.id)
+        .order_by(WorkflowStep.position)
+    ).all()
+
+    step_descriptions: list[str] = []
+    for s in steps:
+        params = s.parameters or {}
+        title = params.get("title", s.display_name or s.slug)
+        msg = params.get("message", "") or ""
+        step_descriptions.append(
+            f"- slug: {s.slug}, title: {title}, type: {s.kind}"
+            + (f", message: {msg[:100]}" if msg else "")
+        )
+    steps_context = "\n".join(step_descriptions)
+
+    system_prompt = (
+        f"Tu es un assistant administrateur pour le workflow '{workflow.display_name}'. "
+        "Tu aides le professeur à comprendre la progression des étudiants et le contenu du workflow. "
+        "Sois concis et direct. Réponds dans la même langue que l'utilisateur. "
+        "Quand on te demande où en est un étudiant, utilise get_student_progress. "
+        "Quand on te demande ce qu'un étudiant a répondu ou le contenu de sa conversation, "
+        "utilise read_student_thread avec le thread_id obtenu via get_student_progress. "
+        "Quand on te demande les étapes du workflow, utilise list_workflow_steps."
+        f"\n\nÉtapes du workflow:\n{steps_context}"
+    )
+
+    # Resolve model: admin settings > default
+    from ..admin_settings import DEFAULT_ADMIN_CHAT_MODEL, get_thread_title_prompt_override
+    from ..config import get_settings as _get_runtime_settings
+
+    admin_db_settings = get_thread_title_prompt_override(session)
+    configured_model = (
+        admin_db_settings.admin_chat_model.strip()
+        if admin_db_settings and admin_db_settings.admin_chat_model and admin_db_settings.admin_chat_model.strip()
+        else DEFAULT_ADMIN_CHAT_MODEL
+    )
+    model_name = body.get("model") or configured_model
+    tools = _build_admin_chat_tools(workflow_id, session)
+
+    # Use a direct OpenAI client (bypasses LiteLLM proxy)
+    from openai import AsyncOpenAI
+    from agents import ModelProvider, OpenAIProvider
+
+    runtime_settings = _get_runtime_settings()
+    direct_client = AsyncOpenAI(api_key=runtime_settings.openai_api_key)
+    direct_provider = OpenAIProvider(openai_client=direct_client)
+    run_config = RunConfig(model_provider=direct_provider, tracing_disabled=True)
+
+    agent = Agent(
+        name="admin_chat",
+        instructions=system_prompt,
+        model=model_name,
+        tools=tools,
+    )
+
+    # Convert frontend messages to Agents SDK input format
+    input_items: list[dict[str, Any]] = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "user":
+            input_items.append({
+                "type": "message",
+                "role": "user",
+                "content": content,
+            })
+        elif role == "assistant":
+            input_items.append({
+                "type": "message",
+                "role": "assistant",
+                "content": content,
+            })
+
+    async def _stream():
+        from agents.stream_events import RawResponsesStreamEvent, RunItemStreamEvent
+
+        try:
+            result = Runner.run_streamed(
+                agent,
+                input=input_items,
+                max_turns=10,
+                run_config=run_config,
+            )
+
+            async for event in result.stream_events():
+                if isinstance(event, RawResponsesStreamEvent):
+                    if isinstance(event.data, ResponseTextDeltaEvent):
+                        yield f"data: {json_mod.dumps({'type': 'delta', 'content': event.data.delta})}\n\n"
+                elif isinstance(event, RunItemStreamEvent):
+                    if event.name == "tool_called":
+                        tool_name = getattr(event.item, "description", None) or ""
+                        # Extract the function name from the raw_item
+                        raw = getattr(event.item, "raw_item", None)
+                        fn_name = ""
+                        if raw:
+                            fn_name = getattr(raw, "name", "") or ""
+                            if not fn_name and hasattr(raw, "function"):
+                                fn_name = getattr(raw.function, "name", "") or ""
+                            if not fn_name:
+                                fn_name = getattr(raw, "call_id", "") or ""
+                        yield f"data: {json_mod.dumps({'type': 'tool_call', 'name': fn_name or tool_name})}\n\n"
+
+            yield f"data: {json_mod.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            logger.error("[ADMIN_CHAT] Streaming error: %s", e, exc_info=True)
+            yield f"data: {json_mod.dumps({'type': 'error', 'error': str(e)[:500]})}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")

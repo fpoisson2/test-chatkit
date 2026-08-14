@@ -605,14 +605,15 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
           } else if (selectedVersionId && availableIds.has(selectedVersionId)) {
             nextVersionId = selectedVersionId;
           } else {
-            const draft = draftVersionIdRef.current
-              ? orderedVersions.find((version) => version.id === draftVersionIdRef.current)
-              : null;
-            if (draft) {
-              nextVersionId = draft.id;
+            // Prefer the active (production) version, fall back to draft then first
+            const active = orderedVersions.find((version) => version.is_active);
+            if (active) {
+              nextVersionId = active.id;
             } else {
-              const active = orderedVersions.find((version) => version.is_active);
-              nextVersionId = active?.id ?? orderedVersions[0]?.id ?? null;
+              const draft = draftVersionIdRef.current
+                ? orderedVersions.find((version) => version.id === draftVersionIdRef.current)
+                : null;
+              nextVersionId = draft?.id ?? orderedVersions[0]?.id ?? null;
             }
           }
 

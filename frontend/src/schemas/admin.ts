@@ -83,7 +83,10 @@ export type SingleModelProviderFormData = z.infer<typeof singleModelProviderSche
 export const adminAppSettingsSchema = z.object({
   prompt: trimmedNonEmptyString,
   threadTitleModel: trimmedNonEmptyString,
-  selectedModelOption: z.string()
+  selectedModelOption: z.string(),
+  adminChatModel: z.string().default(""),
+  selectedAdminChatModelOption: z.string().default(""),
+  adminChatProviderId: z.string().default(""),
 });
 
 export type AdminAppSettingsFormData = z.infer<typeof adminAppSettingsSchema>;

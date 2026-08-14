@@ -45,6 +45,7 @@ interface UseWorkflowMonitorWebSocketOptions {
   token: string | null;
   enabled: boolean;
   lookbackHours?: number | null;
+  workflowSlug?: string | null;
   onUpdate?: (sessions: ActiveWorkflowSession[]) => void;
   onError?: (error: string) => void;
 }
@@ -103,6 +104,7 @@ const sanitizeApiBasePath = (pathname: string) => {
 const buildWorkflowMonitorUrl = (
   token: string,
   lookbackHours?: number | null,
+  workflowSlug?: string | null,
 ) => {
   if (typeof window === "undefined") {
     throw new Error("WebSocket non disponible dans cet environnement");
@@ -123,6 +125,9 @@ const buildWorkflowMonitorUrl = (
   if (lookbackHours !== null && lookbackHours !== undefined) {
     target.searchParams.set("lookback_hours", String(lookbackHours));
   }
+  if (workflowSlug) {
+    target.searchParams.set("workflow_slug", workflowSlug);
+  }
 
   return target.toString();
 };
@@ -131,6 +136,7 @@ export const useWorkflowMonitorWebSocket = ({
   token,
   enabled,
   lookbackHours,
+  workflowSlug,
   onUpdate,
   onError,
 }: UseWorkflowMonitorWebSocketOptions): UseWorkflowMonitorWebSocketReturn => {
@@ -154,8 +160,8 @@ export const useWorkflowMonitorWebSocket = ({
     if (!token) {
       throw new Error("Token manquant pour la connexion WebSocket");
     }
-    return buildWorkflowMonitorUrl(token, lookbackHours);
-  }, [token, lookbackHours]);
+    return buildWorkflowMonitorUrl(token, lookbackHours, workflowSlug);
+  }, [token, lookbackHours, workflowSlug]);
 
   const connect = useCallback(() => {
     if (!enabled || !token) {
@@ -233,7 +239,7 @@ export const useWorkflowMonitorWebSocket = ({
       onErrorRef.current?.("Failed to connect to WebSocket");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, token, lookbackHours]);
+  }, [enabled, token, lookbackHours, workflowSlug]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -295,7 +301,7 @@ export const useWorkflowMonitorWebSocket = ({
       disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, token, lookbackHours]);
+  }, [enabled, token, lookbackHours, workflowSlug]);
 
   return {
     sessions,
