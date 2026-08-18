@@ -51,6 +51,13 @@
 .lab-create-card { display: none; }
 .lab-document { display: none !important; }
 #root .lab-document, #root .lab-review-grid .lab-document { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; overflow: hidden !important; margin: 0 !important; padding: 0 !important; }
+.lab-feedback .lab-validation-list { display: none !important; }
+.lab-inline-validations { margin-top: 22px; padding-top: 16px; border-top: 1px solid #dce4e8; }
+.lab-inline-validations h3 { margin: 0 0 10px; }
+.lab-inline-validations > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #edf1f0; }
+.lab-inline-validations > div.is-approved { color: #176b49; }
+.lab-feedback > .lab-button:nth-last-child(2), .lab-feedback > .lab-button:last-child { position: fixed; z-index: 20; right: 20px; bottom: 20px; }
+.lab-feedback > .lab-button:nth-last-child(2) { right: 190px; }
 .lab-editor-preview { color: #17212b; font: 1rem/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .lab-editor-preview h1 { font-size: 2rem; border-bottom: 2px solid #087e70; padding-bottom: 10px; margin: 2.5rem 0 1rem; }
 .lab-editor-preview h2 { margin: 2rem 0 .75rem; font-size: 1.45rem; }
