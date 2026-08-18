@@ -74,14 +74,20 @@ def _columns(value: str) -> list[dict[str, Any]]:
 def parse_lab_markdown(source: str, *, slug: str) -> dict[str, Any]:
     """Compile readable Markdown directives into deterministic form blocks."""
 
+    schema_version = 3
     blocks: list[dict[str, Any]] = []
     fields: list[dict[str, Any]] = []
     ids: set[str] = set()
+    headings: dict[int, str] = {}
     cursor = 0
     for match in _DIRECTIVE.finditer(source):
         markdown = source[cursor : match.start()].strip()
         if markdown:
             blocks.append({"type": "markdown", "content": markdown})
+            for heading in re.finditer(r"^(#{2,6})\s+(.+?)\s*$", markdown, re.MULTILINE):
+                level = len(heading.group(1))
+                headings[level] = heading.group(2).strip()
+                headings = {key: value for key, value in headings.items() if key <= level}
         kind = match.group(1)
         attrs = _attributes(match.group(2))
         field_id = attrs.get("id")
@@ -93,6 +99,8 @@ def parse_lab_markdown(source: str, *, slug: str) -> dict[str, Any]:
             raise LabMarkdownError(f"Identifiant de champ dupliqué: {field_id}")
         ids.add(field_id)
         field: dict[str, Any] = {"type": kind, **attrs}
+        if headings:
+            field["section"] = " › ".join(headings[level] for level in sorted(headings))
         if not isinstance(field.get("label"), str):
             raise LabMarkdownError(f"Le champ {field_id} doit avoir un label")
         if kind in {"radio", "select"}:
@@ -122,10 +130,12 @@ def parse_lab_markdown(source: str, *, slug: str) -> dict[str, Any]:
         blocks.append({"type": "markdown", "content": trailing})
     title_match = re.search(r"^#\s+(.+)$", source, re.MULTILINE)
     return {
-        "schema_version": 2,
+        "schema_version": schema_version,
         "slug": slug,
         "title": title_match.group(1).strip() if title_match else slug,
-        "content_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+        "content_hash": hashlib.sha256(
+            f"lab-schema:{schema_version}\n{source}".encode("utf-8")
+        ).hexdigest(),
         "blocks": blocks,
         "fields": fields,
     }

@@ -28,7 +28,7 @@ class LabService:
             self.session.add(activity)
             self.session.flush()
         latest = self.latest_version(activity)
-        if latest is None or latest.content_hash != definition["content_hash"]:
+        if latest is None or latest.content_hash != definition["content_hash"] or latest.definition != definition:
             self.session.add(LabVersion(
                 activity_id=activity.id, version=(latest.version + 1) if latest else 1,
                 content_hash=definition["content_hash"], source_markdown=source,

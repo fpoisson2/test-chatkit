@@ -214,7 +214,12 @@ def list_lab_attempts(
     ).order_by(desc(LabAttempt.updated_at))).all()
     return [{**_attempt_payload(attempt), "user": {"id": user.id, "email": user.email,
              "display_name": user.display_name}, "version": version.version,
-             "answers": attempt.payload.get("responses", {})}
+             "answers": attempt.payload.get("responses", {}),
+             "teacher_validation_fields": [
+                 {"id": field["id"], "label": field["label"], "section": field.get("section")}
+                 for field in version.definition.get("fields", [])
+                 if field.get("type") == "teacher_validation"
+             ]}
             for attempt, user, version in rows]
 
 

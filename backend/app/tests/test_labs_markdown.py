@@ -42,6 +42,14 @@ def test_parser_rejects_duplicate_ids() -> None:
         )
 
 
+def test_teacher_validation_keeps_markdown_section_context() -> None:
+    definition = parse_lab_markdown(
+        '# Test\n## Partie 1\n### Montage\n{{ teacher_validation id="montage_ok" label="Faire vérifier le montage" }}',
+        slug="test",
+    )
+    assert definition["fields"][0]["section"] == "Partie 1 › Montage"
+
+
 def test_parser_compiles_typed_table_columns() -> None:
     definition = parse_lab_markdown(
         '# Test\n{{ table id="measurements" label="Mesures" columns="value:Valeur:number:V|quality:Qualité:select:bonne;moyenne" rows="r1:Ligne" required=true }}',

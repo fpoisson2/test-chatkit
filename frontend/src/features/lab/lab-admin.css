@@ -37,6 +37,13 @@
 .lab-version-upload > div { display: grid; gap: 3px; margin-right: auto; }
 .lab-version-upload > div span, .lab-version-upload__file { font-size: .75rem; color: #64748b; }
 .lab-version-upload label input { display: none; }
+.lab-validation-list { margin: 20px 0; }
+.lab-validation-list h3 { margin: 0 0 10px; font-size: .85rem; }
+.lab-validation-list .lab-review-summary { align-items: flex-start; margin: 9px 0; background: #f8fafc; color: #475569; }
+.lab-validation-list .lab-review-summary.is-approved { background: #eef8f0; color: #315e3d; }
+.lab-validation-list .lab-review-summary > div { flex: 1; }
+.lab-validation-section { display: block; margin-bottom: 5px; color: #087e70; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .035em; }
+.lab-validation-list .lab-review-summary .lab-button { width: 100%; margin-top: 10px; }
 
 @media (max-width: 700px) {
   .lab-version-upload { align-items: stretch; flex-direction: column; }
