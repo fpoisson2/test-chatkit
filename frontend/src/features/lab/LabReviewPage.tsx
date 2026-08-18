@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, ClipboardCheck, Edit3, ExternalLink, Plus, RotateCcw, Send, Upload } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth";
 import "./lab.css";
 import "./lab-buttons.css";
@@ -18,6 +18,7 @@ const isImageAnswer = (value: unknown): value is { id: string; name?: string } =
 
 export default function LabReviewPage() {
   const { token } = useAuth();
+  const [searchParams] = useSearchParams();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [slug, setSlug] = useState(""), [attempts, setAttempts] = useState<Attempt[]>([]), [versions, setVersions] = useState<Version[]>([]);
   const [selectedId, setSelectedId] = useState<string>(), [message, setMessage] = useState(""), [error, setError] = useState("");
@@ -34,8 +35,8 @@ export default function LabReviewPage() {
     const response = await fetch("/api/labs/admin/catalog", { headers });
     if (!response.ok) throw new Error((await response.json()).detail ?? "Catalogue inaccessible");
     const result = await response.json() as { labs: Lab[] };
-    setLabs(result.labs); setSlug((current) => current || result.labs[0]?.slug || "");
-  }, [token]);
+    setLabs(result.labs); setSlug((current) => searchParams.get("lab") || current || result.labs[0]?.slug || "");
+  }, [searchParams, token]);
 
   const loadLab = useCallback(async () => {
     if (!token || !slug) { setAttempts([]); setVersions([]); return; }
@@ -98,7 +99,7 @@ export default function LabReviewPage() {
     {selected && <LabResponseReview attempt={selected} onGrade={gradeField} />}
     {selected && <FeedbackEditor value={feedback} onChange={setFeedback} onGenerate={generateFeedback} />}
     {selected && Object.entries(selected.answers).some(([, value]) => isImageAnswer(value)) && <section className="lab-review-images"><h2>Images de la copie</h2>{Object.entries(selected.answers).filter(([, value]) => isImageAnswer(value)).map(([id, value]) => <div key={id}><strong>{id}</strong><AuthenticatedReviewImage attemptId={selected.id} image={value as { id: string; name?: string }} token={token ?? ""} /></div>)}</section>}
-    {token && <LabCreateModal token={token} onCreated={(result) => { setSlug(result.slug); setMessage(`${result.title} a été créé et publié.`); void loadCatalog(); }} />}
+    {token && searchParams.get("new") === "1" && <LabCreateModal token={token} showTrigger={false} onCreated={(result) => { setSlug(result.slug); setMessage(`${result.title} a été créé et publié.`); void loadCatalog(); }} />}
     {editing && token && <LabVisualEditor slug={slug} token={token} onClose={() => setEditing(false)} onPublished={(text) => { setMessage(text); void refresh(); }} />}
   </main>;
 }
