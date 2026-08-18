@@ -63,6 +63,7 @@ export default function LabReviewPage() {
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibilityChange); window.removeEventListener("focus", updateCopies); };
   }, [loadLab, slug, token]);
   const selected = attempts.find((attempt) => attempt.id === selectedId);
+  useEffect(() => { document.querySelectorAll<HTMLElement>(".lab-review-grid > .lab-document").forEach(element => element.remove()); }, [attempts, slug]);
   useEffect(() => { setScore(selected?.score == null ? "0" : String(selected.score)); }, [selected?.id, selected?.score]);
 
   const create = async (event: FormEvent) => {
