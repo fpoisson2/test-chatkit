@@ -49,7 +49,7 @@
 .lab-feedback-editor textarea { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid #cbd5e1; border-radius: 7px; resize: vertical; }
 @media (max-width: 700px) { .lab-feedback-editor { grid-template-columns: 1fr; } }
 .lab-create-card { display: none; }
-.lab-document { display: none; }
+.lab-document { display: none !important; }
 .lab-editor-preview { color: #17212b; font: 1rem/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .lab-editor-preview h1 { font-size: 2rem; border-bottom: 2px solid #087e70; padding-bottom: 10px; margin: 2.5rem 0 1rem; }
 .lab-editor-preview h2 { margin: 2rem 0 .75rem; font-size: 1.45rem; }
@@ -61,7 +61,7 @@
 .lab-editor-preview th, .lab-editor-preview td { padding: 10px 12px; border: 1px solid #aebfba; text-align: left; vertical-align: top; line-height: 1.45; }
 .lab-editor-preview th { background: #e8f1ef; color: #173f38; font-weight: 800; }
 .lab-editor-preview tbody tr:nth-child(even) { background: #f8faf9; }
-.lab-format-menu { position: absolute; z-index: 3; top: 8px; right: 44px; display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid #dce5e1; border-radius: 9px; background: rgb(255 255 255 / 96%); box-shadow: 0 8px 22px rgb(23 63 56 / 14%); }
+.lab-format-menu { position: sticky; z-index: 5; top: 8px; display: flex; flex-wrap: wrap; gap: 6px; width: fit-content; margin: -8px 0 8px auto; padding: 6px; border: 1px solid #dce5e1; border-radius: 9px; background: rgb(255 255 255 / 96%); box-shadow: 0 8px 22px rgb(23 63 56 / 14%); }
 .lab-format-menu button { border: 1px solid #cbd8d2; border-radius: 7px; padding: 6px 9px; background: #fff; color: #385344; font-size: .75rem; font-weight: 700; cursor: pointer; }
 .lab-format-menu button:hover { background: #eaf3e8; border-color: #087e70; }
 .lab-create-modal-backdrop { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 55%); }
