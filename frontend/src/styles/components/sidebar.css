@@ -1000,6 +1000,10 @@
 .chatkit-sidebar__lab-item, .chatkit-sidebar__lab-new { padding: 8px; font-size: var(--font-text-sm-size); }
 .chatkit-sidebar__lab-item:hover, .chatkit-sidebar__lab-item:focus-visible, .chatkit-sidebar__lab-new:hover, .chatkit-sidebar__lab-new:focus-visible, .chatkit-sidebar__lab-menu-heading button:hover { background: var(--alpha-06); color: var(--color-text-strong); outline: none; }
 .chatkit-sidebar__lab-new { color: var(--primary-color); font-weight: var(--font-weight-semibold); }
+.chatkit-sidebar__lab-menu--compact { align-items: center; margin-inline: 0; padding-inline: 0; border-top: 0; }
+.chatkit-sidebar__lab-menu--compact .chatkit-sidebar__lab-menu-heading span { display: none; }
+.chatkit-sidebar__lab-menu--compact .chatkit-sidebar__lab-menu-heading { padding-inline: 0; }
+.chatkit-sidebar__lab-menu--compact .chatkit-sidebar__lab-item, .chatkit-sidebar__lab-menu--compact .chatkit-sidebar__lab-new { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: var(--radius-full); }
 
 .chatkit-sidebar__workflow-menu button {
   transition-duration: var(--transition-duration-basic);

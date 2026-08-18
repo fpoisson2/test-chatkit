@@ -535,7 +535,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 </div>
                 {renderAppSwitcher()}
               </header>
-              {(sidebarContent || collapsedSidebarContent || navigationItems.length > 0) && (
+              {(sidebarContent || collapsedSidebarContent || navigationItems.length > 0 || (activeApplication === "labs" && token)) && (
                 <div className="chatkit-sidebar__main">
                   {sidebarContent ? (
                     <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
@@ -630,6 +630,5 @@ function LabSidebarMenu({ token, tabIndex, collapsed }: { token: string; tabInde
   const navigate = useNavigate();
   const [labs, setLabs] = useState<{ slug: string; title: string }[]>([]);
   useEffect(() => { fetch("/api/labs", { headers: { Authorization: `Bearer ${token}` } }).then(response => response.ok ? response.json() : []).then(result => setLabs(result as { slug: string; title: string }[])).catch(() => setLabs([])); }, [token]);
-  if (collapsed) return null;
-  return <nav className="chatkit-sidebar__lab-menu" aria-label="Laboratoires"><div className="chatkit-sidebar__lab-menu-heading"><span>Laboratoires</span><button type="button" onClick={() => navigate("/lab-review?new=1")} tabIndex={tabIndex} aria-label="Nouveau laboratoire">+</button></div>{labs.map(lab => <button type="button" key={lab.slug} onClick={() => navigate(`/lab/${lab.slug}`)} tabIndex={tabIndex} className="chatkit-sidebar__lab-item">{lab.title}</button>)}<button type="button" onClick={() => navigate("/lab-review?new=1")} tabIndex={tabIndex} className="chatkit-sidebar__lab-new">+ Nouveau laboratoire</button></nav>;
+  return <nav className={`chatkit-sidebar__lab-menu${collapsed ? " chatkit-sidebar__lab-menu--compact" : ""}`} aria-label="Laboratoires"><div className="chatkit-sidebar__lab-menu-heading"><span>Laboratoires</span><button type="button" onClick={() => navigate("/lab-review?new=1")} tabIndex={tabIndex} aria-label="Nouveau laboratoire">+</button></div>{labs.map(lab => <button type="button" key={lab.slug} onClick={() => navigate(`/lab/${lab.slug}`)} tabIndex={tabIndex} className="chatkit-sidebar__lab-item" aria-label={lab.title}>{collapsed ? "L" : lab.title}</button>)}<button type="button" onClick={() => navigate("/lab-review?new=1")} tabIndex={tabIndex} className="chatkit-sidebar__lab-new">{collapsed ? "+" : "+ Nouveau laboratoire"}</button></nav>;
 }
