@@ -33,6 +33,7 @@ const LTIDeepLinkPage = lazy(() => import("./pages/LTIDeepLinkPage"));
 const LTILaunchPage = lazy(() =>
   import("./pages/LTILaunchPage").then((m) => ({ default: m.LTILaunchPage }))
 );
+const LTIExpiredPage = lazy(() => import("./pages/LTIExpiredPage"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const LabPage = lazy(() => import("./features/lab/LabPage"));
 const LabReviewPage = lazy(() => import("./features/lab/LabReviewPage"));
@@ -143,6 +144,14 @@ export const App = () => (
         element={
           <SuspenseRoute fallback={null}>
             <LTILaunchPage />
+          </SuspenseRoute>
+        }
+      />
+      <Route
+        path="/lti/expired"
+        element={
+          <SuspenseRoute>
+            <LTIExpiredPage />
           </SuspenseRoute>
         }
       />

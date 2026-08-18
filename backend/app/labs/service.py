@@ -39,9 +39,19 @@ class LabService:
             self.session.add(activity)
             self.session.flush()
         latest = self.latest_version(activity)
-        if latest is None or latest.content_hash != definition["content_hash"] or latest.definition != definition:
+        existing = self.session.scalar(select(LabVersion).where(
+            LabVersion.activity_id == activity.id,
+            LabVersion.content_hash == definition["content_hash"],
+        ))
+        if latest is None:
             self.session.add(LabVersion(
-                activity_id=activity.id, version=(latest.version + 1) if latest else 1,
+                activity_id=activity.id, version=1,
+                content_hash=definition["content_hash"], source_markdown=source,
+                definition=definition,
+            ))
+        elif latest.content_hash != definition["content_hash"] and existing is None:
+            self.session.add(LabVersion(
+                activity_id=activity.id, version=latest.version + 1,
                 content_hash=definition["content_hash"], source_markdown=source,
                 definition=definition,
             ))
@@ -60,9 +70,13 @@ class LabService:
         return activity
 
     def latest_version(self, activity: LabActivity) -> LabVersion | None:
-        return self.session.scalar(select(LabVersion).where(
-            LabVersion.activity_id == activity.id
-        ).order_by(desc(LabVersion.version)).limit(1))
+        query = select(LabVersion).where(LabVersion.activity_id == activity.id)
+        current_hash = (activity.definition or {}).get("content_hash")
+        if current_hash:
+            current = self.session.scalar(query.where(LabVersion.content_hash == current_hash))
+            if current is not None:
+                return current
+        return self.session.scalar(query.order_by(desc(LabVersion.version)).limit(1))
 
     def _resource_link_id(self, user: User, activity: LabActivity) -> int | None:
         lti_session = self.session.scalar(select(LTIUserSession).where(

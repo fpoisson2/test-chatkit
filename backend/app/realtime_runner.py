@@ -855,10 +855,10 @@ class RealtimeVoiceSessionOrchestrator:
         has_version_segment = bool(path_segments) and path_segments[-1].lower() == "v1"
 
         if has_version_segment:
-            target_path = f"{normalized_path}/realtime/client_secrets"
+            target_path = f"{normalized_path}/realtime/sessions"
         else:
             base_path = normalized_path or ""
-            target_path = f"{base_path}/v1/realtime/client_secrets"
+            target_path = f"{base_path}/v1/realtime/sessions"
 
         if not target_path.startswith("/"):
             target_path = "/" + target_path

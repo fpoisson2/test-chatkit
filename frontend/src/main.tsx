@@ -13,9 +13,16 @@ import "./styles/index.css";
 // Active les mocks en mode développement pour tester sans backend
 enableDevMocks();
 
-// Register service worker for PWA installability
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+// Register the PWA service worker in production. In development, remove any
+// previously registered worker so it cannot serve stale Vite modules.
+if ("serviceWorker" in navigator) {
+  if (import.meta.env.PROD) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  } else {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => void registration.unregister());
+    }).catch(() => {});
+  }
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
