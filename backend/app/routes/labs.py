@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import datetime
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,8 @@ from ..labs import (
     validate_slug,
 )
 from ..models import LabActivity, LabAttempt, LabVersion, LTIUserSession, User
+from ..labs.storage import read_lab_package, resolve_local_asset_url, safe_asset_path, save_student_image, storage_root, stored_image_path
+from ..labs.service import calculate_grade
 
 router = APIRouter(prefix="/api/labs", tags=["labs"])
 
@@ -46,10 +49,57 @@ class GradeRequest(BaseModel):
     publish_to_moodle: bool = False
 
 
+class FieldGradeRequest(BaseModel):
+    field_id: str
+    rating: str
+    comment: str | None = None
+
+
+@router.post("/admin/attempts/{attempt_id}/generate-feedback")
+async def generate_attempt_feedback(
+    attempt_id: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, str]:
+    attempt = session.get(LabAttempt, attempt_id)
+    if attempt is None:
+        raise HTTPException(404, "Tentative introuvable")
+    definition = LabService(session).version_for(attempt).definition
+    fields = {field["id"]: field for field in definition.get("fields", [])}
+    grades = attempt.payload.get("field_grades", {})
+    summary = [{"champ": fields.get(field_id, {}).get("label", field_id),
+                "réponse": attempt.payload.get("responses", {}).get(field_id),
+                "évaluation": grade.get("rating"), "commentaire": grade.get("comment")}
+               for field_id, grade in grades.items()]
+    if not summary:
+        raise HTTPException(409, "Corrigez au moins un champ avant de générer la rétroaction")
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(409, "Aucune clé OpenAI n’est configurée")
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.chatkit_api_base)
+        response = await client.responses.create(
+            model="gpt-5.6-luna",
+            input=("Rédige en français canadien une rétroaction pédagogique concise et constructive pour l’étudiant. "
+                   "Appuie-toi uniquement sur la correction fournie, souligne un point réussi, explique les améliorations prioritaires "
+                   "et termine par une prochaine action concrète. N’invente aucune mesure. Ne mentionne pas le modèle IA.\n\n"
+                   + json.dumps({"note": attempt.validated_score, "correction": summary}, ensure_ascii=False, default=str)),
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"Génération de la rétroaction impossible: {exc}") from exc
+    feedback = response.output_text.strip()
+    return {"feedback": feedback, "model": "gpt-5.6-luna"}
+
+
 class LabCreateRequest(BaseModel):
     slug: str
     source_path: str
     description: str | None = None
+
+
+class LabSourceRequest(BaseModel):
+    source: str = Field(min_length=1, max_length=2_000_000)
 
 
 def _attempt(session: Session, attempt_id: str, user: User) -> LabAttempt:
@@ -71,6 +121,7 @@ def _attempt_payload(attempt: LabAttempt) -> dict[str, Any]:
         "teacher_validations": attempt.payload.get("teacher_validations", {}),
         "feedback": attempt.payload.get("feedback"),
         "score": attempt.validated_score,
+        "field_grades": attempt.payload.get("field_grades", {}),
         "version_migrations": attempt.payload.get("version_migrations", []),
     }
 
@@ -121,21 +172,13 @@ async def upload_lab(
     normalized_slug = validate_slug(slug)
     if session.scalar(select(LabActivity).where(LabActivity.slug == normalized_slug)) is not None:
         raise HTTPException(409, "Ce slug de laboratoire existe déjà")
-    if not file.filename or not file.filename.lower().endswith(".md"):
-        raise HTTPException(422, "Seuls les fichiers Markdown .md sont acceptés")
-    content = await file.read(2_000_001)
-    if len(content) > 2_000_000:
-        raise HTTPException(413, "Le fichier Markdown dépasse la limite de 2 Mo")
-    try:
-        source = content.decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(422, "Le fichier doit être encodé en UTF-8") from None
+    source, source_path = await read_lab_package(file, normalized_slug)
     try:
         parse_lab_markdown(source, slug=normalized_slug)
     except ValueError as exc:
         raise HTTPException(422, f"Markdown enrichi invalide: {exc}") from exc
     activity = LabService(session).sync(slug=normalized_slug, source=source,
-        description=description or file.filename, source_path=f"upload://{file.filename}")
+        description=description or file.filename, source_path=source_path)
     version = LabService(session).latest_version(activity)
     return {"id": activity.id, "slug": activity.slug, "title": activity.title,
             "source_path": activity.source_path, "version": version.version if version else None}
@@ -150,20 +193,13 @@ async def upload_new_lab_version(
     _admin: User = Depends(require_admin),
 ) -> dict[str, Any]:
     activity = LabService(session).get_activity(activity_slug)
-    if not file.filename or not file.filename.lower().endswith(".md"):
-        raise HTTPException(422, "Seuls les fichiers Markdown .md sont acceptés")
-    content = await file.read(2_000_001)
-    if len(content) > 2_000_000:
-        raise HTTPException(413, "Le fichier Markdown dépasse la limite de 2 Mo")
+    source, source_path = await read_lab_package(file, activity.slug)
     try:
-        source = content.decode("utf-8")
         parse_lab_markdown(source, slug=activity.slug)
-    except UnicodeDecodeError:
-        raise HTTPException(422, "Le fichier doit être encodé en UTF-8") from None
     except ValueError as exc:
         raise HTTPException(422, f"Markdown enrichi invalide: {exc}") from exc
     activity = LabService(session).sync(slug=activity.slug, source=source,
-        description=description or activity.description, source_path=f"upload://{file.filename}")
+        description=description or activity.description, source_path=source_path)
     version = LabService(session).latest_version(activity)
     return {"slug": activity.slug, "title": activity.title,
             "source_path": activity.source_path, "version": version.version if version else None}
@@ -205,6 +241,55 @@ def list_lab_versions(
             for item in versions]
 
 
+@router.get("/admin/{activity_slug}/editor")
+def get_lab_editor_source(
+    activity_slug: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    activity = LabService(session).get_activity(activity_slug)
+    version = LabService(session).latest_version(activity)
+    if version is None:
+        raise HTTPException(409, "Laboratoire non publié")
+    return {"source": version.source_markdown, "definition": version.definition, "version": version.version}
+
+
+@router.post("/admin/{activity_slug}/editor")
+def publish_lab_editor_source(
+    activity_slug: str,
+    payload: LabSourceRequest,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    activity = LabService(session).get_activity(activity_slug)
+    try:
+        parse_lab_markdown(payload.source, slug=activity.slug)
+    except ValueError as exc:
+        raise HTTPException(422, f"Document invalide: {exc}") from exc
+    activity = LabService(session).sync(slug=activity.slug, source=payload.source,
+        description=activity.description, source_path="editor://visual")
+    version = LabService(session).latest_version(activity)
+    return {"slug": activity.slug, "title": activity.title, "version": version.version if version else None}
+
+
+@router.post("/admin/{activity_slug}/assets")
+async def upload_editor_asset(
+    activity_slug: str,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, str]:
+    activity = LabService(session).get_activity(activity_slug)
+    metadata = await save_student_image(file, f"editor-{activity.slug}", "course")
+    source = stored_image_path(str(metadata["storage_key"]))
+    package_id = "editor"
+    target_dir = storage_root() / "course" / activity.slug / package_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / source.name
+    source.replace(target)
+    return {"url": f"/api/labs/assets/{activity.slug}/{package_id}/{target.name}", "name": str(metadata["name"])}
+
+
 @router.get("/admin/{activity_slug}/attempts")
 def list_lab_attempts(
     activity_slug: str,
@@ -224,8 +309,30 @@ def list_lab_attempts(
                  {"id": field["id"], "label": field["label"], "section": field.get("section")}
                  for field in version.definition.get("fields", [])
                  if field.get("type") == "teacher_validation"
-             ]}
+             ], "response_fields": [field for field in version.definition.get("fields", []) if field.get("type") != "teacher_validation"]}
             for attempt, user, version in rows]
+
+
+@router.post("/admin/attempts/{attempt_id}/field-grade")
+def grade_attempt_field(
+    attempt_id: str,
+    payload: FieldGradeRequest,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    attempt = session.get(LabAttempt, attempt_id)
+    if attempt is None:
+        raise HTTPException(404, "Tentative introuvable")
+    definition = LabService(session).version_for(attempt).definition
+    field_ids = {field["id"] for field in definition.get("fields", []) if field.get("type") != "teacher_validation"}
+    if payload.field_id not in field_ids or payload.rating not in {"correct", "partial", "incorrect", "ungraded"}:
+        raise HTTPException(422, "Évaluation de champ invalide")
+    grades = dict(attempt.payload.get("field_grades", {}))
+    grades[payload.field_id] = {"rating": payload.rating, "comment": payload.comment}
+    attempt.validated_score = calculate_grade(definition, grades)
+    attempt.payload = {**attempt.payload, "field_grades": grades, "score_maximum": 100}
+    attempt.updated_at = datetime.datetime.now(datetime.UTC)
+    return _attempt_payload(attempt)
 
 
 @router.post("/admin/attempts/{attempt_id}/teacher-validation")
@@ -276,7 +383,9 @@ async def grade_attempt(
     attempt = session.get(LabAttempt, attempt_id)
     if attempt is None:
         raise HTTPException(404, "Tentative introuvable")
-    attempt.validated_score = payload.score
+    definition = LabService(session).version_for(attempt).definition
+    field_grades = attempt.payload.get("field_grades", {})
+    attempt.validated_score = calculate_grade(definition, field_grades) if field_grades else payload.score
     attempt.status = "evaluated"
     attempt.payload = {**attempt.payload, "feedback": payload.feedback,
                        "score_maximum": payload.maximum, "ags_status": "not_requested"}
@@ -324,6 +433,11 @@ def list_labs(
     return [{"id": item.id, "slug": item.slug, "title": item.title, "description": item.description} for item in activities]
 
 
+@router.get("/assets/{activity_slug}/{package_id}/{asset_path:path}")
+def get_lab_asset(activity_slug: str, package_id: str, asset_path: str) -> FileResponse:
+    return FileResponse(safe_asset_path(validate_slug(activity_slug), package_id, asset_path))
+
+
 @router.get("/{activity_slug}")
 def get_lab(
     activity_slug: str,
@@ -361,6 +475,45 @@ def save_lab(
     return _attempt_payload(attempt)
 
 
+@router.post("/attempts/{attempt_id}/images/{field_id}")
+async def upload_attempt_image(
+    attempt_id: str,
+    field_id: str,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    attempt = _attempt(session, attempt_id, user)
+    if attempt.status != "in_progress":
+        raise HTTPException(409, "Cette tentative est verrouillée")
+    definition = LabService(session).version_for(attempt).definition
+    fields = {field["id"]: field for field in definition.get("fields", [])}
+    if field_id not in fields or fields[field_id].get("type") != "image":
+        raise HTTPException(422, "Champ image inconnu")
+    metadata = await save_student_image(file, attempt.id, field_id)
+    return {"image": metadata}
+
+
+@router.get("/attempts/{attempt_id}/images/{image_id}")
+def get_attempt_image(
+    attempt_id: str,
+    image_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> FileResponse:
+    attempt = session.get(LabAttempt, attempt_id)
+    if attempt is None or (attempt.user_id != user.id and not user.is_admin):
+        raise HTTPException(404, "Image introuvable")
+    for value in attempt.payload.get("responses", {}).values():
+        if isinstance(value, dict) and value.get("id") == image_id and value.get("storage_key"):
+            return FileResponse(stored_image_path(value["storage_key"]), media_type=value.get("content_type"), filename=value.get("name"))
+    directory = storage_root() / "student" / attempt_id
+    pending = list(directory.glob(f"{image_id}.*")) if directory.is_dir() else []
+    if len(pending) == 1:
+        return FileResponse(pending[0])
+    raise HTTPException(404, "Image introuvable")
+
+
 @router.post("/attempts/{attempt_id}/submit")
 def submit_lab(
     attempt_id: str,
@@ -394,6 +547,7 @@ def export_lab_attempt(
         validations=attempt.payload.get("teacher_validations", {}),
         status=attempt.status,
         updated_at=attempt.updated_at,
+        image_resolver=lambda value: stored_image_path(value) if value.startswith("student/") else resolve_local_asset_url(value),
     )
     filename = f"{activity.slug if activity else 'laboratoire'}-copie.docx"
     return StreamingResponse(

@@ -3,7 +3,8 @@ from __future__ import annotations
 import datetime
 import re
 from io import BytesIO
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
@@ -91,13 +92,25 @@ def _plain_markdown(value: str) -> str:
     return value.strip()
 
 
-def _add_markdown(document: Document, content: str, *, document_title: str) -> None:
+def _add_markdown(document: Document, content: str, *, document_title: str, image_resolver: Callable[[str], Path | None] | None = None) -> None:
     """Render the course Markdown structures used by laboratory sources."""
     lines = content.splitlines()
     index = 0
     while index < len(lines):
         raw = lines[index].strip()
         if not raw:
+            index += 1
+            continue
+        image = re.fullmatch(r"!\[([^\]]*)\]\(([^)]+)\)", raw)
+        if image:
+            path = image_resolver(image.group(2)) if image_resolver else None
+            if path and path.is_file():
+                document.add_picture(str(path), width=Inches(5.8))
+                if image.group(1):
+                    caption = document.add_paragraph(image.group(1))
+                    caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            else:
+                document.add_paragraph(_plain_markdown(raw))
             index += 1
             continue
         if raw.startswith("|") and index + 1 < len(lines) and re.match(r"^\s*\|?\s*:?-+", lines[index + 1]):
@@ -149,7 +162,8 @@ def _add_markdown(document: Document, content: str, *, document_title: str) -> N
 
 def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[str, Any],
                            answers: dict[str, Any], validations: dict[str, Any],
-                           status: str, updated_at: datetime.datetime | None) -> bytes:
+                           status: str, updated_at: datetime.datetime | None,
+                           image_resolver: Callable[[str], Path | None] | None = None) -> bytes:
     """Create a compact-reference-guide snapshot of the current attempt."""
     document = Document()
     section = document.sections[0]
@@ -178,7 +192,7 @@ def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[st
 
     for block in definition.get("blocks", []):
         if block.get("type") == "markdown":
-            _add_markdown(document, str(block.get("content", "")), document_title=title)
+            _add_markdown(document, str(block.get("content", "")), document_title=title, image_resolver=image_resolver)
             continue
         field = block["field"]
         label = str(field.get("label", field.get("id", "Réponse")))
@@ -191,6 +205,14 @@ def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[st
             document.add_paragraph(text)
             continue
         value = answers.get(field["id"])
+        if field.get("type") == "image":
+            document.add_heading(label, level=2)
+            if isinstance(value, dict) and value.get("storage_key") and image_resolver:
+                path = image_resolver(str(value["storage_key"]))
+                if path and path.is_file():
+                    document.add_picture(str(path), width=Inches(5.8))
+                    document.add_paragraph(str(value.get("name") or "Image"))
+            continue
         if field.get("type") in {"table", "matrix"}:
             document.add_heading(label, level=2)
             visible = set(field.get("visible_columns", []))

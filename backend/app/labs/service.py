@@ -13,6 +13,17 @@ from ..models import LabActivity, LabAttempt, LabVersion, LTIUserSession, User
 from .parser import parse_lab_markdown
 
 
+def calculate_grade(definition: dict[str, Any], grades: dict[str, Any]) -> float:
+    fields = [field for field in definition.get("fields", []) if field.get("type") != "teacher_validation"]
+    explicit = [float(field.get("points", 0)) for field in fields]
+    weights = explicit if any(explicit) else ([100 / len(fields)] * len(fields) if fields else [])
+    if any(explicit):
+        total = sum(weights) or 1
+        weights = [weight / total * 100 for weight in weights]
+    factors = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0, "ungraded": 0.0}
+    return round(sum(weight * factors.get(str(grades.get(field["id"], {}).get("rating", "ungraded")), 0) for field, weight in zip(fields, weights)), 2)
+
+
 class LabService:
     """Deterministic laboratory lifecycle, independent from workflows/ChatKit."""
 
@@ -155,6 +166,13 @@ class LabService:
                     else:
                         normalized_cells[key] = str(cell) if cell is not None else ""
                 normalized[field_id] = normalized_cells
+            elif kind == "image":
+                if value in (None, ""):
+                    normalized[field_id] = None
+                elif not isinstance(value, dict) or not isinstance(value.get("id"), str):
+                    raise HTTPException(422, f"{field['label']}: image invalide")
+                else:
+                    normalized[field_id] = {key: value.get(key) for key in ("id", "field_id", "name", "content_type", "size", "storage_key")}
             elif value is None or isinstance(value, str):
                 normalized[field_id] = value
             else:

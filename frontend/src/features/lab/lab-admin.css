@@ -28,3 +28,5 @@
   .lab-version-upload { align-items: stretch; flex-direction: column; }
   .lab-version-upload > div { margin-right: 0; }
 }
+.lab-ai-feedback-action, .lab-review-images { width: min(1200px, calc(100% - 32px)); box-sizing: border-box; margin: 14px auto; }
+.lab-review-images { display: grid; gap: 12px; padding: 18px; border: 1px solid #dce4e8; border-radius: 14px; background: #fff; }

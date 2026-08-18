@@ -59,3 +59,8 @@
     min-width: 120px;
   }
 }
+.lab-image-control { display: grid; gap: 10px; }
+.lab-image-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.lab-image-actions input { display: none; }
+.lab-uploaded-image { display: block; max-width: min(100%, 760px); max-height: 520px; object-fit: contain; border: 1px solid #d7e2dd; border-radius: 10px; background: #f8faf9; }
+.lab-image-loading, .lab-image-control small { color: #64748b; font-size: .78rem; }

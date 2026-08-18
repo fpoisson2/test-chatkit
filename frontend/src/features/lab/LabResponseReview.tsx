@@ -1,0 +1,21 @@
+import { useEffect, useMemo, useState } from "react";
+import { Check, Minus, X } from "lucide-react";
+import "./lab-response-review.css";
+
+type Field = { id: string; label: string; type: string; unit?: string; points?: number; rows?: { id: string; label: string }[]; columns?: { id: string; label: string; unit?: string }[]; visible_columns?: string[] };
+type Grade = { rating: "correct" | "partial" | "incorrect" | "ungraded"; comment?: string };
+type Attempt = { id: string; answers: Record<string, unknown>; response_fields: Field[]; field_grades: Record<string, Grade>; score?: number };
+
+export default function LabResponseReview({ attempt, onGrade }: { attempt: Attempt; onGrade: (fieldId: string, rating: Grade["rating"], comment: string) => Promise<void> }) {
+  const [comments, setComments] = useState<Record<string, string>>({});
+  useEffect(() => setComments(Object.fromEntries(Object.entries(attempt.field_grades ?? {}).map(([id, grade]) => [id, grade.comment ?? ""]))), [attempt.id, attempt.field_grades]);
+  const weights = useMemo(() => { const explicit = attempt.response_fields.map(field => Number(field.points ?? 0)); const total = explicit.reduce((sum, value) => sum + value, 0); return Object.fromEntries(attempt.response_fields.map((field, index) => [field.id, total ? explicit[index] / total * 100 : 100 / Math.max(attempt.response_fields.length, 1)])); }, [attempt.response_fields]);
+  return <section className="lab-answer-review"><header><div><span className="lab-kicker">Correction détaillée</span><h2>Réponses de l’étudiant</h2></div><strong className="lab-calculated-score">{Number(attempt.score ?? 0).toLocaleString("fr-CA", { maximumFractionDigits: 2 })} / 100</strong></header>{attempt.response_fields.map(field => { const grade = attempt.field_grades?.[field.id]; return <article className={`lab-graded-field is-${grade?.rating ?? "ungraded"}`} key={field.id}><div className="lab-graded-field__heading"><div><strong>{field.label}</strong><span>{weights[field.id].toLocaleString("fr-CA", { maximumFractionDigits: 1 })} points</span></div><div className="lab-rating-buttons" aria-label={`Correction de ${field.label}`}><button title="Correct" className={grade?.rating === "correct" ? "selected" : ""} onClick={() => onGrade(field.id, "correct", comments[field.id] ?? "")}><Check /></button><button title="Partiellement correct" className={grade?.rating === "partial" ? "selected" : ""} onClick={() => onGrade(field.id, "partial", comments[field.id] ?? "")}><Minus /></button><button title="Incorrect" className={grade?.rating === "incorrect" ? "selected" : ""} onClick={() => onGrade(field.id, "incorrect", comments[field.id] ?? "")}><X /></button></div></div><Answer field={field} value={attempt.answers[field.id]} /><label>Commentaire de correction<textarea rows={2} value={comments[field.id] ?? ""} onChange={event => setComments(current => ({ ...current, [field.id]: event.target.value }))} onBlur={() => grade?.rating && onGrade(field.id, grade.rating, comments[field.id] ?? "")} /></label></article>; })}</section>;
+}
+
+function Answer({ field, value }: { field: Field; value: unknown }) {
+  if (field.type === "table" || field.type === "matrix") { const cells = value && typeof value === "object" ? value as Record<string, unknown> : {}; const visible = new Set(field.visible_columns ?? []); const columns = (field.columns ?? []).filter(column => !visible.size || visible.has(column.id)); return <div className="lab-review-table-wrap"><table><thead><tr><th />{columns.map(column => <th key={column.id}>{column.label}{column.unit ? ` (${column.unit})` : ""}</th>)}</tr></thead><tbody>{field.rows?.map(row => <tr key={row.id}><th>{row.label}</th>{columns.map(column => <td key={column.id}>{String(cells[`${row.id}.${column.id}`] ?? "")}</td>)}</tr>)}</tbody></table></div>; }
+  if (field.type === "checkbox") return <div className="lab-review-value">{value === true ? "Oui" : "Non"}</div>;
+  if (field.type === "image" && value && typeof value === "object") return <div className="lab-review-value">Image téléversée : {String((value as Record<string, unknown>).name ?? "image")}</div>;
+  return <div className="lab-review-value">{value === undefined || value === null || value === "" ? <span className="lab-empty-answer">Aucune réponse</span> : String(value)}{field.unit && value !== "" ? ` ${field.unit}` : ""}</div>;
+}

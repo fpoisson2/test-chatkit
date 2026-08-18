@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import base64
 
 import pytest
 from fastapi import HTTPException
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.labs.parser import LabMarkdownError, parse_lab_markdown
 from app.labs.export import build_lab_attempt_docx
 from app.labs.service import LabService
+from app.labs.service import calculate_grade
 from app.labs.source import available_markdown_sources, resolve_markdown_path
 from app.lti.service import LTIService
 from app.models import Base, User
@@ -33,6 +35,42 @@ def test_parser_preserves_markdown_and_compiles_fields() -> None:
     ]
     assert definition["blocks"][0]["type"] == "markdown"
     assert definition["fields"][2]["rows"] == [{"id": "r1", "label": "Ligne 1"}]
+
+
+def test_parser_supports_student_image_field() -> None:
+    definition = parse_lab_markdown(
+        '# Test\n{{ image id="montage" label="Photo du montage" required=true }}', slug="test"
+    )
+    assert definition["fields"][0]["type"] == "image"
+
+
+def test_field_grades_calculate_weighted_score() -> None:
+    definition = parse_lab_markdown(
+        '# Test\n{{ text id="aa" label="A" points=25 }}\n{{ text id="bb" label="B" points=75 }}', slug="test"
+    )
+    score = calculate_grade(definition, {
+        "aa": {"rating": "correct"}, "bb": {"rating": "partial"},
+    })
+    assert score == 62.5
+
+
+def test_word_export_embeds_student_image(tmp_path) -> None:
+    from io import BytesIO
+    from docx import Document
+
+    image = tmp_path / "pixel.png"
+    image.write_bytes(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="))
+    definition = parse_lab_markdown(
+        '# Test\n{{ image id="montage" label="Photo du montage" }}', slug="test"
+    )
+    content = build_lab_attempt_docx(
+        title="Test", student_name="Étudiante", definition=definition,
+        answers={"montage": {"id": "x", "name": "pixel.png", "storage_key": "student/x/pixel.png"}},
+        validations={}, status="in_progress", updated_at=datetime.datetime.now(datetime.UTC),
+        image_resolver=lambda _value: image,
+    )
+    document = Document(BytesIO(content))
+    assert len(document.inline_shapes) == 1
 
 
 def test_word_export_contains_current_answers() -> None:

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CheckCircle2, Cloud, CloudOff, Download, FileCheck2, Save } from "lucide-react";
+import { CheckCircle2, Cloud, CloudOff, Download, FileCheck2, ImagePlus, Save, Trash2 } from "lucide-react";
 import { useAuth } from "../../auth";
 import "./lab.css";
 import "./lab-buttons.css";
@@ -157,7 +157,7 @@ export default function LabPage() {
     <article className="lab-form-document">
       {data.activity.definition.blocks.map((block, index) => block.type === "markdown"
         ? <ReactMarkdown key={index} remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
-        : <FieldControl key={block.field.id} field={block.field} value={answers[block.field.id]} disabled={locked} onChange={update} teacherValidation={data.attempt.teacher_validations?.[block.field.id]} />)}
+        : <FieldControl key={block.field.id} field={block.field} value={answers[block.field.id]} disabled={locked} onChange={update} attemptId={data.attempt.id} teacherValidation={data.attempt.teacher_validations?.[block.field.id]} />)}
       <footer className="lab-submit-row">
         <button className="lab-button" disabled={exporting} onClick={downloadWord}>
           <Download size={18} /> {exporting ? "Création du document…" : "Télécharger ma copie Word"}
@@ -170,7 +170,7 @@ export default function LabPage() {
   </main>;
 }
 
-function FieldControl({ field, value, disabled, onChange, teacherValidation }: { field: Field; value: unknown; disabled: boolean; onChange: (id: string, value: unknown) => void; teacherValidation?: TeacherValidation }) {
+function FieldControl({ field, value, disabled, onChange, attemptId, teacherValidation }: { field: Field; value: unknown; disabled: boolean; onChange: (id: string, value: unknown) => void; attemptId: string; teacherValidation?: TeacherValidation }) {
   const label = <label htmlFor={`lab-${field.id}`}>{field.label}{field.unit ? ` (${field.unit})` : ""}{field.required && <em> *</em>}</label>;
   if (field.type === "table" || field.type === "matrix") {
     const cells = (value && typeof value === "object" ? value : {}) as Record<string, string>;
@@ -178,8 +178,38 @@ function FieldControl({ field, value, disabled, onChange, teacherValidation }: {
     return <section className="lab-control lab-grid-control">{label}<div className="lab-table-wrap"><table><thead><tr><th />{columns.map((column) => <th key={column.id}>{column.label}{column.unit ? ` (${column.unit})` : ""}</th>)}</tr></thead><tbody>{field.rows?.map((row) => <tr key={row.id}><th>{row.label}</th>{columns.map((column) => { const key = `${row.id}.${column.id}`; const cellValue = cells[key] ?? ""; return <td key={key}>{column.input_type === "select" || column.input_type === "color" ? <select aria-label={`${row.label} — ${column.label}`} value={cellValue} disabled={disabled} onChange={(event) => onChange(field.id, { ...cells, [key]: event.target.value })}><option value="">Sélectionner…</option>{column.input_type === "color" ? ["noir", "brun", "rouge", "orange", "jaune", "vert", "bleu", "violet", "gris", "blanc", "or", "argent"].map((option) => <option key={option} value={option}>{option}</option>) : column.options?.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <input type={column.input_type === "number" ? "number" : "text"} step={column.input_type === "number" ? "any" : undefined} aria-label={`${row.label} — ${column.label}`} value={cellValue} disabled={disabled || column.input_type === "readonly"} onChange={(event) => onChange(field.id, { ...cells, [key]: event.target.value })} />}</td>; })}</tr>)}</tbody></table></div></section>;
   }
   if (field.type === "teacher_validation") return <section className={`lab-control lab-teacher-validation ${teacherValidation?.approved ? "is-approved" : ""}`}><strong>{field.label}</strong>{teacherValidation?.approved ? <p><CheckCircle2 size={18} /> Validée par {teacherValidation.teacher_name ?? "la personne enseignante"}{teacherValidation.comment ? ` — ${teacherValidation.comment}` : ""}</p> : <p>Validation à effectuer par la personne enseignante.</p>}</section>;
+  if (field.type === "image") return <ImageField field={field} value={value} disabled={disabled} onChange={onChange} attemptId={attemptId} />;
   if (field.type === "checkbox") return <section className="lab-control lab-check"><label><input type="checkbox" checked={value === true} disabled={disabled} onChange={(event) => onChange(field.id, event.target.checked)} /> {field.label}{field.required && <em> *</em>}</label></section>;
   if (field.type === "select" || field.type === "radio") return <section className="lab-control">{label}<select id={`lab-${field.id}`} value={String(value ?? "")} disabled={disabled} onChange={(event) => onChange(field.id, event.target.value)}><option value="">Sélectionner…</option>{field.options?.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></section>;
   if (field.type === "textarea") return <section className="lab-control">{label}<textarea id={`lab-${field.id}`} rows={field.rows ?? 3} value={String(value ?? "")} disabled={disabled} onChange={(event) => onChange(field.id, event.target.value)} /></section>;
   return <section className="lab-control">{label}<div className="lab-input-unit"><input id={`lab-${field.id}`} type={field.type === "number" ? "number" : "text"} step={field.step ?? "any"} value={String(value ?? "")} disabled={disabled} onChange={(event) => onChange(field.id, event.target.value)} />{field.unit && <span>{field.unit}</span>}</div></section>;
+}
+
+function ImageField({ field, value, disabled, onChange, attemptId }: { field: Field; value: unknown; disabled: boolean; onChange: (id: string, value: unknown) => void; attemptId: string }) {
+  const { token } = useAuth();
+  const metadata = value && typeof value === "object" ? value as { id?: string; name?: string } : null;
+  const [uploading, setUploading] = useState(false);
+  const upload = async (file: File | undefined) => {
+    if (!file || !token || !attemptId) return;
+    setUploading(true);
+    try {
+      const form = new FormData(); form.append("file", file);
+      const response = await fetch(`/api/labs/attempts/${encodeURIComponent(attemptId)}/images/${encodeURIComponent(field.id)}`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+      if (!response.ok) throw new Error((await response.json()).detail ?? "Téléversement impossible");
+      const result = await response.json() as { image: Record<string, unknown> };
+      onChange(field.id, result.image);
+    } finally { setUploading(false); }
+  };
+  return <section className="lab-control lab-image-control"><label>{field.label}{field.required && <em> *</em>}</label>{metadata?.id && <AuthImage src={`/api/labs/attempts/${attemptId}/images/${metadata.id}`} token={token} alt={metadata.name ?? field.label} />}<div className="lab-image-actions"><label className="lab-button"><ImagePlus size={18} /> {uploading ? "Téléversement…" : metadata ? "Remplacer l’image" : "Ajouter une image"}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={disabled || uploading} onChange={(event) => void upload(event.target.files?.[0])} /></label>{metadata && !disabled && <button type="button" className="lab-button" onClick={() => onChange(field.id, null)}><Trash2 size={17} /> Retirer</button>}</div><small>JPEG, PNG, WebP ou GIF · maximum 10 Mo</small></section>;
+}
+
+function AuthImage({ src, token, alt }: { src: string; token?: string | null; alt: string }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!token) return;
+    let active = true, objectUrl = "";
+    fetch(src, { headers: { Authorization: `Bearer ${token}` } }).then((response) => { if (!response.ok) throw new Error(); return response.blob(); }).then((blob) => { if (active) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); } }).catch(() => undefined);
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [src, token]);
+  return url ? <img className="lab-uploaded-image" src={url} alt={alt} /> : <span className="lab-image-loading">Chargement de l’image…</span>;
 }

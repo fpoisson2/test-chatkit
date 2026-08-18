@@ -12,7 +12,7 @@ class LabMarkdownError(ValueError):
 
 _DIRECTIVE = re.compile(r"\{\{\s*([a-z_]+)\s+(.*?)\}\}", re.DOTALL)
 _ID = re.compile(r"^[a-z][a-z0-9_]{1,127}$")
-_SCALAR_TYPES = {"text", "number", "textarea", "checkbox", "radio", "select", "teacher_validation"}
+_SCALAR_TYPES = {"text", "number", "textarea", "checkbox", "radio", "select", "image", "teacher_validation"}
 
 
 def _attributes(raw: str) -> dict[str, Any]:
@@ -27,7 +27,7 @@ def _attributes(raw: str) -> dict[str, Any]:
         key, value = token.split("=", 1)
         if value.lower() in {"true", "false"}:
             values[key] = value.lower() == "true"
-        elif key in {"rows", "min", "max", "step"}:
+        elif key in {"rows", "min", "max", "step", "points"}:
             try:
                 values[key] = float(value) if "." in value else int(value)
             except ValueError:

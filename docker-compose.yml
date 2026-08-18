@@ -16,9 +16,11 @@ services:
     volumes:
       - .:/workspace
       - ../243-1J5-LI:/course/243-1J5-LI:ro
+      - lab-uploads:/var/lib/edxo/labs
     environment:
       LAB_COURSE_MARKDOWN_PATH: /course/243-1J5-LI/labo/Labo-01/Laboratoire 1 - Appropriation de l'environnement de travail.md
       LAB_COURSE_ROOT: /course/243-1J5-LI
+      LAB_UPLOAD_ROOT: /var/lib/edxo/labs
       MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
       MODEL_API_BASE: ${MODEL_API_BASE:-}
       MODEL_API_KEY_ENV: ${MODEL_API_KEY_ENV:-}
@@ -186,3 +188,4 @@ volumes:
   frontend-node_modules:
   postgres-data:
   redis-data:
+  lab-uploads:
