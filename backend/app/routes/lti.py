@@ -258,6 +258,36 @@ async def list_deep_link_workflows(
     ]
 
 
+@router.get("/api/lti/deep-link/resources")
+async def list_deep_link_resources(
+    state: str,
+    session: Session = Depends(get_session),
+) -> list[dict[str, Any]]:
+    """List independent labs alongside legacy workflow resources."""
+    from sqlalchemy import select
+    from ..models import LabActivity, LTIUserSession
+
+    lti_session = session.scalar(
+        select(LTIUserSession).where(LTIUserSession.state == state)
+    )
+    if not lti_session:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session LTI invalide ou expirée")
+    workflows = await list_deep_link_workflows(state=state, session=session)
+    labs = session.scalars(select(LabActivity).order_by(LabActivity.title)).all()
+    return [
+        {**workflow, "resource_type": "workflow"} for workflow in workflows
+    ] + [
+        {
+            "id": lab.id,
+            "slug": lab.slug,
+            "display_name": lab.title,
+            "description": lab.description,
+            "resource_type": "lab",
+        }
+        for lab in labs
+    ]
+
+
 @router.get("/api/lti/workflows")
 async def list_lti_workflows(
     issuer: str | None = None,
@@ -499,13 +529,14 @@ async def lti_deep_link_page(state: str | None = None, id_token: str | None = No
         const state = "{state_escaped}";
         const idToken = "{id_token_escaped}";
         let selectedWorkflowIds = [];
+        let selectedLabIds = [];
 
         async function loadWorkflows() {{
             try {{
                 if (!state) {{
                     throw new Error('Paramètre state manquant');
                 }}
-                const response = await fetch('/api/lti/deep-link/workflows?state=' + encodeURIComponent(state));
+                const response = await fetch('/api/lti/deep-link/resources?state=' + encodeURIComponent(state));
                 if (!response.ok) {{
                     const data = await response.json().catch(() => ({{}}));
                     throw new Error(data.detail || 'Impossible de charger les workflows');
@@ -532,9 +563,10 @@ async def lti_deep_link_page(state: str | None = None, id_token: str | None = No
                 html += `
                     <label class="workflow-item">
                         <input type="checkbox" name="workflow" value="${{w.id}}"
-                               onchange="toggleWorkflow(${{w.id}})">
+                               onchange="toggleResource('${{w.resource_type}}', ${{w.id}})">
                         <div class="workflow-info">
                             <h3>${{w.display_name}}</h3>
+                            <small>${{w.resource_type === 'lab' ? 'Laboratoire' : 'Workflow'}}</small>
                             ${{w.description ? '<p>' + w.description + '</p>' : ''}}
                         </div>
                     </label>
@@ -549,21 +581,22 @@ async def lti_deep_link_page(state: str | None = None, id_token: str | None = No
             document.getElementById('workflowForm').addEventListener('submit', handleSubmit);
         }}
 
-        function toggleWorkflow(workflowId) {{
-            const index = selectedWorkflowIds.indexOf(workflowId);
+        function toggleResource(resourceType, resourceId) {{
+            const target = resourceType === 'lab' ? selectedLabIds : selectedWorkflowIds;
+            const index = target.indexOf(resourceId);
             if (index > -1) {{
-                selectedWorkflowIds.splice(index, 1);
+                target.splice(index, 1);
             }} else {{
-                selectedWorkflowIds.push(workflowId);
+                target.push(resourceId);
             }}
-            document.getElementById('submitBtn').disabled = selectedWorkflowIds.length === 0;
+            document.getElementById('submitBtn').disabled = selectedWorkflowIds.length + selectedLabIds.length === 0;
         }}
 
         async function handleSubmit(e) {{
             e.preventDefault();
 
-            if (selectedWorkflowIds.length === 0) {{
-                alert('Veuillez sélectionner au moins un workflow');
+            if (selectedWorkflowIds.length + selectedLabIds.length === 0) {{
+                alert('Veuillez sélectionner au moins une ressource');
                 return;
             }}
 
@@ -586,6 +619,7 @@ async def lti_deep_link_page(state: str | None = None, id_token: str | None = No
                         state: state,
                         id_token: idToken,
                         workflow_ids: selectedWorkflowIds,
+                        lab_ids: selectedLabIds,
                     }}),
                 }});
 
@@ -652,9 +686,11 @@ async def lti_deep_link(
 
     workflow_ids = _as_int_sequence(payload.get("workflow_ids"))
     workflow_slugs = _as_str_sequence(payload.get("workflow_slugs"))
+    lab_ids = _as_int_sequence(payload.get("lab_ids"))
+    lab_slugs = _as_str_sequence(payload.get("lab_slugs"))
 
     # Si aucun workflow n'est sélectionné, servir la page de sélection directement
-    if not workflow_ids and not workflow_slugs:
+    if not workflow_ids and not workflow_slugs and not lab_ids and not lab_slugs:
         # Serve the selection page directly instead of redirecting
         # Moodle expects a direct HTML response, not a redirect
         logger.info("No workflows selected, serving selection page directly")
@@ -667,4 +703,6 @@ async def lti_deep_link(
         id_token=id_token,
         workflow_ids=workflow_ids,
         workflow_slugs=workflow_slugs,
+        lab_ids=lab_ids,
+        lab_slugs=lab_slugs,
     )

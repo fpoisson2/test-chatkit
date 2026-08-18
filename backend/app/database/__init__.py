@@ -14,14 +14,10 @@ from ..config import get_settings
 logger = logging.getLogger("chatkit.server")
 settings = get_settings()
 
-engine: Engine = create_engine(
-    settings.database_url,
-    future=True,
-    pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=30,
-    pool_timeout=60,
-)
+_engine_options = {"future": True, "pool_pre_ping": True}
+if not settings.database_url.startswith("sqlite"):
+    _engine_options.update(pool_size=20, max_overflow=30, pool_timeout=60)
+engine: Engine = create_engine(settings.database_url, **_engine_options)
 SessionLocal = sessionmaker(
     bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
 )

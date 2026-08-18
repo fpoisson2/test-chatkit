@@ -430,6 +430,9 @@ def register_database_startup(app: FastAPI) -> None:
         run_ad_hoc_migrations()
         ensure_vector_indexes()
         with SessionLocal() as session:
+            from ..labs import sync_bundled_labs
+
+            sync_bundled_labs(session)
             override = get_thread_title_prompt_override(session)
             runtime_settings = apply_runtime_model_overrides(override)
         configure_model_provider(runtime_settings)

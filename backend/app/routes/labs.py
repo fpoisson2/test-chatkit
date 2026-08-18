@@ -1,130 +1,363 @@
-"""API des activités de laboratoire structurées.
-
-La première version expose un contrat persistant léger dans la colonne JSON de
-la table dédiée. La correction IA réelle peut ensuite être remplacée par le
-runner configuré dans le builder sans modifier le contrat frontend.
-"""
+"""Deterministic laboratory APIs, intentionally independent from workflows."""
 from __future__ import annotations
 
 import datetime
-import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..database import get_session
-from ..dependencies import get_current_user
-from ..models import LabActivity, LabAttempt, User, Workflow, WorkflowDefinition
+from sqlalchemy import desc, select
+
+from ..chatkit_server.context import ChatKitRequestContext
+from ..config import get_settings
+from ..database import SessionLocal, get_session
+from ..dependencies import get_current_user, require_admin
+from ..labs import (
+    LabService, available_markdown_sources, parse_lab_markdown, resolve_markdown_path,
+    validate_slug,
+)
+from ..models import LabActivity, LabAttempt, LabVersion, LTIUserSession, User
 
 router = APIRouter(prefix="/api/labs", tags=["labs"])
 
 
 class LabSaveRequest(BaseModel):
-    responses: dict[str, str] = Field(default_factory=dict)
-    attachments: list[dict[str, Any]] = Field(default_factory=list)
+    answers: dict[str, Any] = Field(default_factory=dict)
+    revision: int = Field(ge=0)
 
 
-class LabSubmitRequest(LabSaveRequest):
-    pass
+class TeacherValidationRequest(BaseModel):
+    field_id: str
+    approved: bool = True
+    comment: str | None = None
 
 
-class LabValidateRequest(BaseModel):
-    score: float = Field(ge=0, le=100)
-    feedback: str = ""
+class GradeRequest(BaseModel):
+    score: float = Field(ge=0)
+    maximum: float = Field(default=100, gt=0)
+    feedback: str | None = None
+    publish_to_moodle: bool = False
 
 
-def _activity_or_404(session: Session, activity_id: str) -> LabActivity:
-    activity = session.scalar(select(LabActivity).where(LabActivity.slug == activity_id))
-    if not activity:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Laboratoire introuvable")
-    return activity
+class LabCreateRequest(BaseModel):
+    slug: str
+    source_path: str
+    description: str | None = None
 
 
-def _attempt_or_404(session: Session, attempt_id: str, user: User) -> LabAttempt:
-    attempt = session.scalar(select(LabAttempt).where(LabAttempt.id == attempt_id, LabAttempt.user_id == user.id))
-    if not attempt:
+def _attempt(session: Session, attempt_id: str, user: User) -> LabAttempt:
+    attempt = session.get(LabAttempt, attempt_id)
+    if attempt is None or attempt.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tentative introuvable")
     return attempt
 
 
-@router.get("/{activity_id}")
-def get_lab(activity_id: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
-    activity = _activity_or_404(session, activity_id)
-    return {"id": activity.slug, **activity.definition}
+def _attempt_payload(attempt: LabAttempt) -> dict[str, Any]:
+    return {
+        "id": attempt.id,
+        "status": attempt.status,
+        "revision": attempt.revision,
+        "answers": attempt.payload.get("responses", {}),
+        "started_at": attempt.started_at,
+        "updated_at": attempt.updated_at,
+        "submitted_at": attempt.submitted_at,
+        "teacher_validations": attempt.payload.get("teacher_validations", {}),
+        "feedback": attempt.payload.get("feedback"),
+        "score": attempt.validated_score,
+        "version_migrations": attempt.payload.get("version_migrations", []),
+    }
 
 
-@router.get("/workflow/{workflow_slug}")
-def get_lab_from_workflow(workflow_slug: str, session: Session = Depends(get_session), _user: User = Depends(get_current_user)):
-    workflow = session.scalar(select(Workflow).where(Workflow.slug == workflow_slug))
-    if not workflow or not workflow.active_version_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Workflow laboratoire introuvable")
-    definition = session.scalar(select(WorkflowDefinition).where(WorkflowDefinition.id == workflow.active_version_id))
-    lab_step = next((step for step in (definition.steps if definition else []) if step.kind == "lab"), None)
-    if not lab_step:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Aucun bloc laboratoire configuré")
-    return {"id": workflow.slug, "title": workflow.display_name, "courseName": workflow.description or "Activité Moodle", "durationSeconds": int(lab_step.parameters.get("duration_minutes", 180)) * 60, "introduction": lab_step.parameters.get("introduction", ""), "sections": lab_step.parameters.get("sections", []), "criteria": lab_step.parameters.get("criteria", []), "adaptiveQuestionsEnabled": bool(lab_step.parameters.get("adaptive_questions_enabled", True)), "maxAdaptiveQuestions": int(lab_step.parameters.get("max_adaptive_questions", 2)), "allowRevision": bool(lab_step.parameters.get("allow_revision", True))}
+@router.get("/admin/catalog")
+def lab_admin_catalog(
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    activities = session.scalars(select(LabActivity).order_by(LabActivity.title)).all()
+    labs = []
+    for activity in activities:
+        version = LabService(session).latest_version(activity)
+        attempt_count = session.query(LabAttempt).filter(LabAttempt.activity_id == activity.id).count()
+        labs.append({"id": activity.id, "slug": activity.slug, "title": activity.title,
+                     "description": activity.description, "source_path": activity.source_path,
+                     "version": version.version if version else None,
+                     "field_count": len(activity.definition.get("fields", [])),
+                     "attempt_count": attempt_count})
+    return {"labs": labs, "sources": available_markdown_sources()}
 
 
-@router.post("/{activity_id}/attempt")
-def start_or_resume_lab(activity_id: str, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    activity = _activity_or_404(session, activity_id)
-    attempt = session.scalar(select(LabAttempt).where(LabAttempt.activity_id == activity.id, LabAttempt.user_id == user.id, LabAttempt.status.in_(["in_progress", "revision_requested"])).order_by(LabAttempt.created_at.desc()))
-    if not attempt:
-        now = datetime.datetime.now(datetime.UTC)
-        attempt = LabAttempt(id=str(uuid.uuid4()), activity_id=activity.id, user_id=user.id, started_at=now, created_at=now, updated_at=now, status="in_progress", payload={"responses": {}, "attachments": [], "feedback": []})
-        session.add(attempt)
-        session.commit()
-    return {"id": attempt.id, "activity_id": activity.slug, "started_at": attempt.started_at, "status": attempt.status, **attempt.payload}
+@router.post("/admin")
+def create_lab(
+    payload: LabCreateRequest,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    slug = validate_slug(payload.slug)
+    if session.scalar(select(LabActivity).where(LabActivity.slug == slug)) is not None:
+        raise HTTPException(409, "Ce slug de laboratoire existe déjà")
+    path = resolve_markdown_path(payload.source_path)
+    activity = LabService(session).sync(slug=slug, source=path.read_text(encoding="utf-8"),
+        description=payload.description or f"Source: {path.name}", source_path=str(path))
+    version = LabService(session).latest_version(activity)
+    return {"id": activity.id, "slug": activity.slug, "title": activity.title,
+            "source_path": str(path), "version": version.version if version else None}
+
+
+@router.post("/admin/upload")
+async def upload_lab(
+    slug: str = Form(...),
+    description: str | None = Form(None),
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    normalized_slug = validate_slug(slug)
+    if session.scalar(select(LabActivity).where(LabActivity.slug == normalized_slug)) is not None:
+        raise HTTPException(409, "Ce slug de laboratoire existe déjà")
+    if not file.filename or not file.filename.lower().endswith(".md"):
+        raise HTTPException(422, "Seuls les fichiers Markdown .md sont acceptés")
+    content = await file.read(2_000_001)
+    if len(content) > 2_000_000:
+        raise HTTPException(413, "Le fichier Markdown dépasse la limite de 2 Mo")
+    try:
+        source = content.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(422, "Le fichier doit être encodé en UTF-8") from None
+    try:
+        parse_lab_markdown(source, slug=normalized_slug)
+    except ValueError as exc:
+        raise HTTPException(422, f"Markdown enrichi invalide: {exc}") from exc
+    activity = LabService(session).sync(slug=normalized_slug, source=source,
+        description=description or file.filename, source_path=f"upload://{file.filename}")
+    version = LabService(session).latest_version(activity)
+    return {"id": activity.id, "slug": activity.slug, "title": activity.title,
+            "source_path": activity.source_path, "version": version.version if version else None}
+
+
+@router.post("/admin/{activity_slug}/upload")
+async def upload_new_lab_version(
+    activity_slug: str,
+    description: str | None = Form(None),
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    activity = LabService(session).get_activity(activity_slug)
+    if not file.filename or not file.filename.lower().endswith(".md"):
+        raise HTTPException(422, "Seuls les fichiers Markdown .md sont acceptés")
+    content = await file.read(2_000_001)
+    if len(content) > 2_000_000:
+        raise HTTPException(413, "Le fichier Markdown dépasse la limite de 2 Mo")
+    try:
+        source = content.decode("utf-8")
+        parse_lab_markdown(source, slug=activity.slug)
+    except UnicodeDecodeError:
+        raise HTTPException(422, "Le fichier doit être encodé en UTF-8") from None
+    except ValueError as exc:
+        raise HTTPException(422, f"Markdown enrichi invalide: {exc}") from exc
+    activity = LabService(session).sync(slug=activity.slug, source=source,
+        description=description or activity.description, source_path=f"upload://{file.filename}")
+    version = LabService(session).latest_version(activity)
+    return {"slug": activity.slug, "title": activity.title,
+            "source_path": activity.source_path, "version": version.version if version else None}
+
+
+@router.post("/admin/{activity_slug}/sync")
+def sync_lab_source(
+    activity_slug: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    activity = LabService(session).get_activity(activity_slug)
+    if not activity.source_path:
+        raise HTTPException(409, "Aucune source Markdown n'est associée à ce laboratoire")
+    if activity.source_path.startswith("upload://"):
+        raise HTTPException(409, "Téléversez le Markdown modifié pour publier une nouvelle version")
+    path = resolve_markdown_path(activity.source_path)
+    source = path.read_text(encoding="utf-8")
+    activity = LabService(session).sync(
+        slug=activity_slug, source=source, description=activity.description,
+        source_path=str(path),
+    )
+    version = LabService(session).latest_version(activity)
+    return {"slug": activity.slug, "source_path": str(path), "version": version.version if version else None}
+
+
+@router.get("/admin/{activity_slug}/versions")
+def list_lab_versions(
+    activity_slug: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> list[dict[str, Any]]:
+    activity = LabService(session).get_activity(activity_slug)
+    versions = session.scalars(select(LabVersion).where(
+        LabVersion.activity_id == activity.id
+    ).order_by(desc(LabVersion.version))).all()
+    return [{"id": item.id, "version": item.version, "content_hash": item.content_hash,
+             "created_at": item.created_at, "field_count": len(item.definition.get("fields", []))}
+            for item in versions]
+
+
+@router.get("/admin/{activity_slug}/attempts")
+def list_lab_attempts(
+    activity_slug: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> list[dict[str, Any]]:
+    activity = LabService(session).get_activity(activity_slug)
+    rows = session.execute(select(LabAttempt, User, LabVersion).join(
+        User, User.id == LabAttempt.user_id
+    ).join(LabVersion, LabVersion.id == LabAttempt.version_id).where(
+        LabAttempt.activity_id == activity.id
+    ).order_by(desc(LabAttempt.updated_at))).all()
+    return [{**_attempt_payload(attempt), "user": {"id": user.id, "email": user.email,
+             "display_name": user.display_name}, "version": version.version,
+             "answers": attempt.payload.get("responses", {})}
+            for attempt, user, version in rows]
+
+
+@router.post("/admin/attempts/{attempt_id}/teacher-validation")
+def validate_teacher_step(
+    attempt_id: str,
+    payload: TeacherValidationRequest,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    attempt = session.get(LabAttempt, attempt_id)
+    if attempt is None:
+        raise HTTPException(404, "Tentative introuvable")
+    definition = LabService(session).version_for(attempt).definition
+    teacher_ids = {field["id"] for field in definition["fields"] if field["type"] == "teacher_validation"}
+    if payload.field_id not in teacher_ids:
+        raise HTTPException(422, "Étape de validation inconnue")
+    validations = dict(attempt.payload.get("teacher_validations", {}))
+    validations[payload.field_id] = {"approved": payload.approved, "comment": payload.comment,
+        "teacher_id": admin.id, "teacher_name": admin.display_name or admin.email,
+        "validated_at": datetime.datetime.now(datetime.UTC).isoformat()}
+    attempt.payload = {**attempt.payload, "teacher_validations": validations}
+    attempt.updated_at = datetime.datetime.now(datetime.UTC)
+    return _attempt_payload(attempt)
+
+
+@router.post("/admin/attempts/{attempt_id}/reopen")
+def reopen_attempt(
+    attempt_id: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    attempt = session.get(LabAttempt, attempt_id)
+    if attempt is None:
+        raise HTTPException(404, "Tentative introuvable")
+    attempt.status = "in_progress"
+    attempt.submitted_at = None
+    attempt.revision += 1
+    return _attempt_payload(attempt)
+
+
+@router.post("/admin/attempts/{attempt_id}/grade")
+async def grade_attempt(
+    attempt_id: str,
+    payload: GradeRequest,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    attempt = session.get(LabAttempt, attempt_id)
+    if attempt is None:
+        raise HTTPException(404, "Tentative introuvable")
+    attempt.validated_score = payload.score
+    attempt.status = "evaluated"
+    attempt.payload = {**attempt.payload, "feedback": payload.feedback,
+                       "score_maximum": payload.maximum, "ags_status": "not_requested"}
+    if payload.publish_to_moodle:
+        # Lazy import avoids the existing ChatKit/AGS module cycle at app startup.
+        from ..lti.ags import LTIAGSClient
+
+        lti_session = session.scalar(select(LTIUserSession).where(
+            LTIUserSession.user_id == attempt.user_id,
+            LTIUserSession.resource_link_id == attempt.resource_link_id,
+        ).order_by(desc(LTIUserSession.launched_at)).limit(1))
+        if lti_session is None or not lti_session.platform_user_id:
+            raise HTTPException(409, "Aucun contexte Moodle AGS associé à cette tentative")
+        resource = lti_session.resource_link
+        context = ChatKitRequestContext(
+            user_id=str(attempt.user_id), email=None, is_lti_user=True,
+            lti_session_id=lti_session.id, lti_registration_id=lti_session.registration_id,
+            lti_deployment_id=lti_session.deployment_id,
+            lti_resource_link_id=lti_session.resource_link_id,
+            lti_resource_link_ref=resource.resource_link_id if resource else None,
+            lti_platform_user_id=lti_session.platform_user_id,
+            lti_platform_context_id=lti_session.platform_context_id,
+            ags_line_items_endpoint=lti_session.ags_line_items_endpoint,
+            ags_line_item_endpoint=lti_session.ags_line_item_endpoint,
+            ags_scopes=tuple(lti_session.ags_scopes or []),
+            ags_default_score_maximum=payload.maximum,
+            ags_default_label="Laboratoire",
+        )
+        variable_id = f"lab-{attempt.activity_id}"
+        client = LTIAGSClient(settings=get_settings(), session_factory=SessionLocal)
+        line_item = await client.ensure_line_item(context=context, variable_id=variable_id,
+            max_score=payload.maximum, comment=payload.feedback)
+        await client.publish_score(context=context, line_item_id=line_item or variable_id,
+            variable_id=variable_id, score=payload.score, max_score=payload.maximum)
+        attempt.payload = {**attempt.payload, "ags_status": "published"}
+    return _attempt_payload(attempt)
+
+
+@router.get("")
+def list_labs(
+    session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    activities = session.scalars(select(LabActivity).order_by(LabActivity.title)).all()
+    return [{"id": item.id, "slug": item.slug, "title": item.title, "description": item.description} for item in activities]
+
+
+@router.get("/{activity_slug}")
+def get_lab(
+    activity_slug: str,
+    session: Session = Depends(get_session),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    activity = LabService(session).get_activity(activity_slug)
+    return {
+        "id": activity.id, "slug": activity.slug, "title": activity.title,
+        "description": activity.description, "definition": activity.definition,
+    }
+
+
+@router.post("/{activity_slug}/attempt")
+def start_or_resume_lab(
+    activity_slug: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    service = LabService(session)
+    activity = service.get_activity(activity_slug)
+    attempt = service.get_or_create_attempt(activity, user)
+    return {"activity": {"slug": activity.slug, "title": activity.title, "definition": activity.definition}, "attempt": _attempt_payload(attempt)}
 
 
 @router.patch("/attempts/{attempt_id}")
-def save_lab(attempt_id: str, payload: LabSaveRequest, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    attempt = _attempt_or_404(session, attempt_id, user)
-    if attempt.status in {"validated", "expired"}:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Cette copie est verrouillée")
-    attempt.payload = {**attempt.payload, "responses": payload.responses, "attachments": payload.attachments}
-    attempt.updated_at = datetime.datetime.now(datetime.UTC)
-    session.commit()
-    return {"saved_at": attempt.updated_at, "status": attempt.status}
+def save_lab(
+    attempt_id: str,
+    payload: LabSaveRequest,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    attempt = _attempt(session, attempt_id, user)
+    LabService(session).save(attempt, payload.answers, payload.revision)
+    return _attempt_payload(attempt)
 
 
 @router.post("/attempts/{attempt_id}/submit")
-def submit_lab(attempt_id: str, payload: LabSubmitRequest, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    attempt = _attempt_or_404(session, attempt_id, user)
-    if attempt.status in {"validated", "expired"}:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Cette copie est verrouillée")
-    attempt.payload = {**attempt.payload, "responses": payload.responses, "attachments": payload.attachments, "feedback": [{"author": "IA", "message": "Proposition générée selon les critères du laboratoire."}]}
-    attempt.status = "submitted"
-    attempt.submitted_at = datetime.datetime.now(datetime.UTC)
-    attempt.updated_at = attempt.submitted_at
-    session.commit()
-    return {"status": attempt.status, "proposed_score": attempt.payload.get("proposed_score", 0), "feedback": attempt.payload["feedback"]}
-
-
-@router.post("/attempts/{attempt_id}/revision")
-def request_revision(attempt_id: str, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    attempt = _attempt_or_404(session, attempt_id, user)
-    if attempt.status != "submitted":
-        raise HTTPException(status.HTTP_409_CONFLICT, "La révision n’est pas disponible dans cet état")
-    attempt.status = "revision_requested"
-    attempt.updated_at = datetime.datetime.now(datetime.UTC)
-    session.commit()
-    return {"status": attempt.status}
-
-
-@router.post("/attempts/{attempt_id}/validate")
-def validate_lab(attempt_id: str, payload: LabValidateRequest, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    if not user.is_admin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Validation réservée aux enseignants")
-    attempt = session.get(LabAttempt, attempt_id)
-    if not attempt:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tentative introuvable")
-    attempt.status = "validated"
-    attempt.validated_score = payload.score
-    attempt.payload = {**attempt.payload, "teacher_feedback": payload.feedback}
-    attempt.updated_at = datetime.datetime.now(datetime.UTC)
-    session.commit()
-    return {"status": attempt.status, "score": attempt.validated_score, "moodle_publication": "pending_ags"}
+def submit_lab(
+    attempt_id: str,
+    payload: LabSaveRequest,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    attempt = _attempt(session, attempt_id, user)
+    LabService(session).submit(attempt, payload.answers, payload.revision)
+    return _attempt_payload(attempt)

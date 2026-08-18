@@ -50,21 +50,48 @@ class LabActivity(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="Laboratoire")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     definition: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False, default=dict)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.UTC))
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.UTC), onupdate=lambda: datetime.datetime.now(datetime.UTC))
+
+
+class LabVersion(Base):
+    """Immutable compiled snapshot of a laboratory Markdown source."""
+
+    # Kept separate from the legacy workflow-backed ``lab_versions`` table.
+    __tablename__ = "lab_activity_versions"
+    __table_args__ = (
+        UniqueConstraint("activity_id", "version", name="uq_lab_versions_activity_version"),
+        UniqueConstraint("activity_id", "content_hash", name="uq_lab_versions_activity_hash"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    activity_id: Mapped[int] = mapped_column(ForeignKey("lab_activities.id", ondelete="CASCADE"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    definition: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.UTC))
 
 
 class LabAttempt(Base):
-    __tablename__ = "lab_attempts"
+    # Independent deterministic lab attempts; the legacy table remains intact.
+    __tablename__ = "lab_activity_attempts"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     activity_id: Mapped[int] = mapped_column(ForeignKey("lab_activities.id", ondelete="CASCADE"), index=True)
+    version_id: Mapped[int | None] = mapped_column(ForeignKey("lab_activity_versions.id", ondelete="RESTRICT"), nullable=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    resource_link_id: Mapped[int | None] = mapped_column(ForeignKey("lti_resource_links.id", ondelete="SET NULL"), nullable=True, index=True)
     started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     submitted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="in_progress")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     validated_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False, default=dict)
 
@@ -1148,6 +1175,12 @@ class LTIResourceLink(Base):
         nullable=True,
         index=True,
     )
+    lab_activity_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("lab_activities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -1164,6 +1197,7 @@ class LTIResourceLink(Base):
         "LTIDeployment", back_populates="resource_links"
     )
     workflow: Mapped[Workflow | None] = relationship("Workflow")
+    lab_activity: Mapped[LabActivity | None] = relationship("LabActivity")
     user_sessions: Mapped[list["LTIUserSession"]] = relationship(
         "LTIUserSession", back_populates="resource_link"
     )

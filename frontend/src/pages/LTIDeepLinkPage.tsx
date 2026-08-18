@@ -6,12 +6,13 @@ interface WorkflowOption {
   slug: string;
   display_name: string;
   description: string | null;
+  resource_type: "workflow" | "lab";
 }
 
 export default function LTIDeepLinkPage() {
   const [searchParams] = useSearchParams();
   const [workflows, setWorkflows] = useState<WorkflowOption[]>([]);
-  const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<number[]>([]);
+  const [selectedResourceKeys, setSelectedResourceKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -22,7 +23,8 @@ export default function LTIDeepLinkPage() {
   useEffect(() => {
     async function loadWorkflows() {
       try {
-        const response = await fetch("/api/lti/workflows");
+        if (!state) throw new Error("Session LTI manquante");
+        const response = await fetch(`/api/lti/deep-link/resources?state=${encodeURIComponent(state)}`);
         if (!response.ok) {
           throw new Error("Impossible de charger les workflows");
         }
@@ -36,21 +38,22 @@ export default function LTIDeepLinkPage() {
     }
 
     loadWorkflows();
-  }, []);
+  }, [state]);
 
-  const handleToggleWorkflow = (workflowId: number) => {
-    setSelectedWorkflowIds((prev) =>
-      prev.includes(workflowId)
-        ? prev.filter((id) => id !== workflowId)
-        : [...prev, workflowId]
+  const handleToggleResource = (resource: WorkflowOption) => {
+    const key = `${resource.resource_type}:${resource.id}`;
+    setSelectedResourceKeys((prev) =>
+      prev.includes(key)
+        ? prev.filter((item) => item !== key)
+        : [...prev, key]
     );
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (selectedWorkflowIds.length === 0) {
-      alert("Veuillez sélectionner au moins un workflow");
+    if (selectedResourceKeys.length === 0) {
+      alert("Veuillez sélectionner au moins une ressource");
       return;
     }
 
@@ -71,7 +74,8 @@ export default function LTIDeepLinkPage() {
         body: JSON.stringify({
           state,
           id_token: idToken,
-          workflow_ids: selectedWorkflowIds,
+          workflow_ids: selectedResourceKeys.filter((key) => key.startsWith("workflow:")).map((key) => Number(key.split(":")[1])),
+          lab_ids: selectedResourceKeys.filter((key) => key.startsWith("lab:")).map((key) => Number(key.split(":")[1])),
         }),
       });
 
@@ -105,8 +109,8 @@ export default function LTIDeepLinkPage() {
     return (
       <div className="lti-deep-link-page">
         <div className="container">
-          <h1>Sélection de workflow LTI</h1>
-          <p>Chargement des workflows disponibles...</p>
+          <h1>Sélection de ressource LTI</h1>
+          <p>Chargement des ressources disponibles...</p>
         </div>
       </div>
     );
@@ -116,7 +120,7 @@ export default function LTIDeepLinkPage() {
     return (
       <div className="lti-deep-link-page">
         <div className="container">
-          <h1>Sélection de workflow LTI</h1>
+          <h1>Sélection de ressource LTI</h1>
           <div className="error-message">
             <p>Erreur: {error}</p>
           </div>
@@ -129,11 +133,8 @@ export default function LTIDeepLinkPage() {
     return (
       <div className="lti-deep-link-page">
         <div className="container">
-          <h1>Sélection de workflow LTI</h1>
-          <p>Aucun workflow n'est activé pour LTI.</p>
-          <p>
-            Veuillez activer l'option LTI sur au moins un workflow dans les paramètres.
-          </p>
+          <h1>Sélection de ressource LTI</h1>
+          <p>Aucune ressource n'est disponible pour LTI.</p>
         </div>
       </div>
     );
@@ -142,21 +143,22 @@ export default function LTIDeepLinkPage() {
   return (
     <div className="lti-deep-link-page">
       <div className="container">
-        <h1>Sélection de workflow LTI</h1>
-        <p>Sélectionnez un ou plusieurs workflows à ajouter à votre cours Moodle:</p>
+        <h1>Sélection de ressource LTI</h1>
+        <p>Sélectionnez un laboratoire ou un workflow à ajouter au cours Moodle.</p>
 
         <form onSubmit={handleSubmit}>
           <div className="workflow-list">
             {workflows.map((workflow) => (
-              <label key={workflow.id} className="workflow-item">
+              <label key={`${workflow.resource_type}:${workflow.id}`} className="workflow-item">
                 <input
                   type="checkbox"
-                  checked={selectedWorkflowIds.includes(workflow.id)}
-                  onChange={() => handleToggleWorkflow(workflow.id)}
+                  checked={selectedResourceKeys.includes(`${workflow.resource_type}:${workflow.id}`)}
+                  onChange={() => handleToggleResource(workflow)}
                   disabled={submitting}
                 />
                 <div className="workflow-info">
                   <h3>{workflow.display_name}</h3>
+                  <small>{workflow.resource_type === "lab" ? "Laboratoire" : "Workflow"}</small>
                   {workflow.description && <p>{workflow.description}</p>}
                 </div>
               </label>
@@ -170,7 +172,7 @@ export default function LTIDeepLinkPage() {
           )}
 
           <div className="actions">
-            <button type="submit" disabled={submitting || selectedWorkflowIds.length === 0}>
+            <button type="submit" disabled={submitting || selectedResourceKeys.length === 0}>
               {submitting ? "Envoi en cours..." : "Ajouter au cours"}
             </button>
           </div>

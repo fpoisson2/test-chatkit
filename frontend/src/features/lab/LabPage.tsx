@@ -1,90 +1,153 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CheckCircle2, Cloud, CloudOff, FileCheck2, Save } from "lucide-react";
 import { useAuth } from "../../auth";
-import { Check, ChevronRight, Clock3, FileCheck2, ImagePlus, RotateCcw, Save, Sparkles, Upload, X } from "lucide-react";
-import { demoLabActivity } from "./demoData";
-import { loadAssessment, loadLabActivity, loadLabAttempt, saveAssessment, saveLabAttempt } from "./storage";
-import type { LabAssessment, LabAttempt, LabAttachment, LabField } from "./types";
 import "./lab.css";
 
-const formatTime = (seconds: number) => `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+type Option = { id: string; label: string; input_type?: "text" | "number" | "select" | "color" | "readonly"; unit?: string; options?: string[] };
+type Field = {
+  id: string; type: string; label: string; required?: boolean; unit?: string;
+  rows?: number; options?: Option[]; columns?: Option[]; min?: number;
+  max?: number; step?: number | "any"; visible_columns?: string[];
+};
+type Block = { type: "markdown"; content: string } | { type: "field"; field: Field };
+type TeacherValidation = { approved: boolean; comment?: string; teacher_name?: string; validated_at?: string };
+type Attempt = { id: string; status: string; revision: number; answers: Record<string, unknown>; updated_at: string; teacher_validations?: Record<string, TeacherValidation>; feedback?: string; score?: number };
+type LaunchPayload = { activity: { slug: string; title: string; definition: { blocks: Block[]; fields: Field[] } }; attempt: Attempt };
 
-function assess(attempt: LabAttempt, activity = demoLabActivity): LabAssessment {
-  const filled = Object.values(attempt.responses).filter((value) => value.trim()).length;
-  const total = activity.sections.flatMap((section) => section.fields).length;
-  const score = Math.round((filled / total) * 100);
-  const byCriterion = Object.fromEntries(activity.criteria.map((criterion) => [criterion.id, {
-    score: Math.round((score / 100) * criterion.maxPoints),
-    feedback: score > 70 ? "Les éléments attendus sont présents. Précisez encore votre justification scientifique." : "Ajoutez des données concrètes et reliez-les explicitement à ce critère.",
-  }]));
-  return { score, maxScore: 100, summary: "Proposition générée à partir des critères du laboratoire. Elle doit être validée par l’enseignant.", byCriterion, adaptiveQuestions: score < 80 ? ["Quelle donnée supplémentaire renforcerait votre conclusion?", "Comment vérifieriez-vous la principale source d’erreur?"] : [] };
-}
+const pendingKey = (slug: string) => `edxo.lab.pending.${slug}`;
 
 export default function LabPage() {
-  const { activityId = "chimie-acide-base" } = useParams<{ activityId: string }>();
+  const { activityId = "laboratoire-1" } = useParams<{ activityId: string }>();
   const { token } = useAuth();
-  const [activity, setActivity] = useState(() => ({ ...loadLabActivity(activityId), id: activityId }));
-  const [attempt, setAttempt] = useState(() => loadLabAttempt(activity.id));
-  const [assessment, setAssessment] = useState<LabAssessment | null>(() => loadAssessment(activity.id));
-  const [remaining, setRemaining] = useState(() => Math.max(0, activity.durationSeconds - Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000)));
-  const [saved, setSaved] = useState(true);
-  const [activeSection, setActiveSection] = useState(0);
+  const [data, setData] = useState<LaunchPayload | null>(null);
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "offline" | "error">("saved");
+  const [error, setError] = useState<string | null>(null);
+  const dirty = useRef(false);
 
   useEffect(() => {
-    if (!token || activityId === "chimie-acide-base") return;
-    fetch(`/api/labs/workflow/${encodeURIComponent(activityId)}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((response) => response.ok ? response.json() : null)
-      .then((remote) => { if (remote) setActivity(remote); })
-      .catch(() => {});
+    if (!token) return;
+    fetch(`/api/labs/${encodeURIComponent(activityId)}/attempt`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}` },
+    }).then(async (response) => {
+      if (!response.ok) throw new Error((await response.json()).detail ?? "Chargement impossible");
+      return response.json() as Promise<LaunchPayload>;
+    }).then((payload) => {
+      setData(payload);
+      const pending = localStorage.getItem(pendingKey(activityId));
+      setAnswers(pending ? { ...payload.attempt.answers, ...JSON.parse(pending) } : payload.attempt.answers);
+    }).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, [activityId, token]);
 
-  const locked = attempt.status === "validated" || attempt.status === "expired";
-  const canEdit = !locked;
-
-  useEffect(() => {
-    if (!canEdit) return;
-    const timer = window.setInterval(() => setRemaining(Math.max(0, activity.durationSeconds - Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000))), 1000);
-    return () => window.clearInterval(timer);
-  }, [activity.durationSeconds, attempt.startedAt, canEdit]);
-
-  useEffect(() => {
-    if (remaining === 0 && canEdit) {
-      const expired = { ...attempt, status: "expired" as const };
-      setAttempt(expired); saveLabAttempt(expired);
+  const save = useCallback(async () => {
+    if (!data || !token || !dirty.current || data.attempt.status !== "in_progress") return;
+    setSaveState("saving");
+    localStorage.setItem(pendingKey(activityId), JSON.stringify(answers));
+    try {
+      const response = await fetch(`/api/labs/attempts/${data.attempt.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ answers, revision: data.attempt.revision }),
+      });
+      if (!response.ok) throw new Error((await response.json()).detail ?? "Sauvegarde impossible");
+      const attempt = await response.json() as Attempt;
+      setData((current) => current && ({ ...current, attempt }));
+      localStorage.removeItem(pendingKey(activityId));
+      dirty.current = false;
+      setSaveState("saved");
+    } catch (reason) {
+      setSaveState(navigator.onLine ? "error" : "offline");
+      setError(reason instanceof Error ? reason.message : String(reason));
     }
-  }, [remaining, canEdit, attempt]);
+  }, [activityId, answers, data, token]);
 
-  const update = useCallback((fieldId: string, value: string) => {
-    setAttempt((current) => { const next = { ...current, responses: { ...current.responses, [fieldId]: value } }; saveLabAttempt(next); return next; });
-    setSaved(false);
-    window.setTimeout(() => setSaved(true), 450);
-  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(save, 700);
+    return () => window.clearTimeout(timer);
+  }, [answers, save]);
+  useEffect(() => {
+    const retry = () => { if (dirty.current) void save(); };
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [save]);
 
-  const addImage = useCallback((field: LabField, file: File) => {
-    if (!file.type.startsWith("image/") || file.size > 5_000_000) return;
-    const reader = new FileReader();
-    reader.onload = () => setAttempt((current) => { const attachment: LabAttachment = { id: `${field.id}-${Date.now()}`, fieldId: field.id, name: file.name, type: file.type, dataUrl: String(reader.result) }; const next = { ...current, attachments: [...current.attachments.filter((item) => item.fieldId !== field.id), attachment] }; saveLabAttempt(next); return next; });
-    reader.readAsDataURL(file);
-  }, []);
+  const update = (id: string, value: unknown) => {
+    dirty.current = true;
+    setError(null);
+    setAnswers((current) => ({ ...current, [id]: value }));
+  };
 
-  const removeImage = (id: string) => setAttempt((current) => { const next = { ...current, attachments: current.attachments.filter((item) => item.id !== id) }; saveLabAttempt(next); return next; });
-  const submit = () => { const next = { ...attempt, status: "submitted" as const, submittedAt: new Date().toISOString() }; const result = assess(next, activity); setAttempt(next); setAssessment(result); saveLabAttempt(next); saveAssessment(activity.id, result); };
-  const revise = () => { const next = { ...attempt, status: "revision_requested" as const, revisionCount: attempt.revisionCount + 1 }; setAttempt(next); saveLabAttempt(next); };
-  const requestTeacherReview = () => { const next = { ...attempt, status: "submitted" as const }; setAttempt(next); saveLabAttempt(next); };
-  const currentSection = activity.sections[activeSection];
-  const completion = useMemo(() => { const fields = activity.sections.flatMap((section) => section.fields); return Math.round((fields.filter((field) => attempt.responses[field.id]?.trim() || attempt.attachments.some((item) => item.fieldId === field.id)).length / fields.length) * 100); }, [activity.sections, attempt]);
+  const submit = async () => {
+    if (!data || !token || data.attempt.status !== "in_progress") return;
+    setSaveState("saving");
+    const response = await fetch(`/api/labs/attempts/${data.attempt.id}/submit`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ answers, revision: data.attempt.revision }),
+    });
+    if (!response.ok) {
+      setError((await response.json()).detail ?? "Remise impossible");
+      setSaveState("error");
+      return;
+    }
+    const attempt = await response.json() as Attempt;
+    setData({ ...data, attempt });
+    localStorage.removeItem(pendingKey(activityId));
+    dirty.current = false;
+    setSaveState("saved");
+  };
 
-  return <main className="lab-shell">
-    <header className="lab-topbar"><div><span className="lab-eyebrow">{activity.courseName}</span><h1>{activity.title}</h1></div><div className={`lab-timer ${remaining < 900 ? "lab-timer--urgent" : ""}`}><Clock3 size={18} /><span>{formatTime(remaining)}</span><small>restant</small></div></header>
-    <div className="lab-progress"><div><span>Progression du document</span><strong>{completion}%</strong></div><div className="lab-progress__track"><span style={{ width: `${completion}%` }} /></div><span className="lab-save"><Save size={14} /> {saved ? "Enregistré" : "Enregistrement…"}</span></div>
-    <div className="lab-layout">
-      <aside className="lab-outline"><p className="lab-outline__label">Votre démarche</p>{activity.sections.map((section, index) => <button key={section.id} className={index === activeSection ? "is-active" : ""} onClick={() => setActiveSection(index)}><span>{String(index + 1).padStart(2, "0")}</span>{section.title.replace(/^\d+\. /, "")}{index < activeSection && <Check size={15} />}</button>)}<div className="lab-note"><Sparkles size={17} /><p><strong>Coéquipier IA</strong><br />Vous pouvez revoir vos réponses après chaque rétroaction.</p></div></aside>
-      <section className="lab-document"><div className="lab-intro"><span className="lab-kicker">Document de laboratoire</span><p>{activity.introduction}</p></div><div className="lab-section-heading"><div><span className="lab-kicker">Section {activeSection + 1} sur {activity.sections.length}</span><h2>{currentSection.title.replace(/^\d+\. /, "")}</h2><p>{currentSection.description}</p></div><span className="lab-status">{attempt.status === "in_progress" ? "En cours" : attempt.status === "revision_requested" ? "Révision ouverte" : attempt.status}</span></div>{currentSection.fields.map((field) => <Field key={field.id} field={field} value={attempt.responses[field.id] ?? ""} attachment={attempt.attachments.find((item) => item.fieldId === field.id)} disabled={!canEdit} onChange={update} onImage={addImage} onRemoveImage={removeImage} />)}<div className="lab-section-actions">{activeSection > 0 && <button className="lab-button lab-button--quiet" onClick={() => setActiveSection((index) => index - 1)}>Précédent</button>}{activeSection < activity.sections.length - 1 ? <button className="lab-button lab-button--primary" onClick={() => setActiveSection((index) => index + 1)}>Continuer <ChevronRight size={17} /></button> : canEdit && <button className="lab-button lab-button--primary" onClick={submit}><FileCheck2 size={17} /> Soumettre pour correction</button>}</div></section>
-      <aside className="lab-feedback"><div className="lab-feedback__heading"><Sparkles size={17} /><div><strong>Rétroaction IA</strong><span>{assessment ? "Proposition disponible" : "Pendant votre travail"}</span></div></div>{assessment ? <><div className="lab-score"><strong>{assessment.score}<small>/100</small></strong><span>proposition IA</span></div><p>{assessment.summary}</p>{activity.criteria.map((criterion) => <div className="lab-criterion" key={criterion.id}><div><strong>{criterion.label}</strong><span>{assessment.byCriterion[criterion.id]?.score}/{criterion.maxPoints}</span></div><p>{assessment.byCriterion[criterion.id]?.feedback}</p></div>)}{assessment.adaptiveQuestions.length > 0 && <div className="lab-questions"><span>Questions suggérées</span>{assessment.adaptiveQuestions.map((question) => <p key={question}>{question}</p>)}</div>}{attempt.status === "submitted" && <button className="lab-button lab-button--outline" onClick={revise}><RotateCcw size={16} /> Corriger mes réponses</button>}{attempt.status === "revision_requested" && <button className="lab-button lab-button--primary" onClick={requestTeacherReview}>Envoyer la révision</button>}</> : <div className="lab-empty-feedback"><Sparkles size={26} /><p>Remplissez le document. Une rétroaction ciblée apparaîtra après votre soumission.</p></div>}</aside>
-    </div>
+  const completion = useMemo(() => {
+    if (!data) return 0;
+    const required = data.activity.definition.fields.filter((field) => field.required && field.type !== "teacher_validation");
+    const filled = required.filter((field) => {
+      const value = answers[field.id];
+      return value === true || (typeof value === "string" && value.trim() !== "") || (value && typeof value === "object" && Object.keys(value).length > 0) || typeof value === "number";
+    });
+    return required.length ? Math.round(filled.length / required.length * 100) : 100;
+  }, [answers, data]);
+
+  if (error && !data) return <main className="lab-loading lab-error">{error}</main>;
+  if (!data) return <main className="lab-loading">Chargement du laboratoire…</main>;
+  const locked = data.attempt.status !== "in_progress";
+
+  return <main className="lab-form-shell">
+    <header className="lab-form-header">
+      <div><span className="lab-kicker">Laboratoire interactif</span><h1>{data.activity.title}</h1></div>
+      <div className={`lab-save-state lab-save-state--${saveState}`}>
+        {saveState === "offline" ? <CloudOff size={18} /> : saveState === "saved" ? <Cloud size={18} /> : <Save size={18} />}
+        {saveState === "saved" ? "Progression enregistrée" : saveState === "saving" ? "Enregistrement…" : saveState === "offline" ? "Hors ligne — sauvegarde locale" : "Sauvegarde à reprendre"}
+      </div>
+    </header>
+    <div className="lab-form-progress"><span style={{ width: `${completion}%` }} /><strong>{completion}%</strong></div>
+    {locked && <div className="lab-submitted"><CheckCircle2 /> Tentative remise — les réponses sont verrouillées.</div>}
+    {error && <div className="lab-inline-error">{error}</div>}
+    <article className="lab-form-document">
+      {data.activity.definition.blocks.map((block, index) => block.type === "markdown"
+        ? <ReactMarkdown key={index} remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
+        : <FieldControl key={block.field.id} field={block.field} value={answers[block.field.id]} disabled={locked} onChange={update} teacherValidation={data.attempt.teacher_validations?.[block.field.id]} />)}
+      <footer className="lab-submit-row">
+        <button className="lab-button lab-button--primary" disabled={locked || saveState === "saving"} onClick={submit}>
+          <FileCheck2 size={18} /> Remettre définitivement
+        </button>
+      </footer>
+    </article>
   </main>;
 }
 
-function Field({ field, value, attachment, disabled, onChange, onImage, onRemoveImage }: { field: LabField; value: string; attachment?: LabAttachment; disabled: boolean; onChange: (id: string, value: string) => void; onImage: (field: LabField, file: File) => void; onRemoveImage: (id: string) => void }) {
-  return <article className="lab-field"><label htmlFor={`field-${field.id}`}><span>{field.label}{field.required && <em>*</em>}</span><small>{field.prompt}</small></label>{field.type === "image" ? <div className="lab-upload">{attachment ? <div className="lab-image-preview"><img src={attachment.dataUrl} alt={attachment.name} /><button type="button" onClick={() => onRemoveImage(attachment.id)} disabled={disabled} aria-label="Supprimer l’image"><X size={16} /></button></div> : <label className="lab-upload__drop"><ImagePlus size={24} /><strong>Ajouter une image</strong><small>PNG, JPG ou WEBP · 5 Mo maximum</small><input type="file" accept="image/*" disabled={disabled} onChange={(event) => { const file = event.target.files?.[0]; if (file) onImage(field, file); }} /></label>}</div> : field.type === "select" ? <select id={`field-${field.id}`} value={value} disabled={disabled} onChange={(event) => onChange(field.id, event.target.value)}><option value="">Sélectionner…</option>{field.options?.map((option) => <option key={option}>{option}</option>)}</select> : <textarea id={`field-${field.id}`} value={value} disabled={disabled} onChange={(event) => onChange(field.id, event.target.value)} placeholder={field.placeholder} rows={field.type === "number" ? 2 : 5} inputMode={field.type === "number" ? "decimal" : undefined} />}</article>;
+function FieldControl({ field, value, disabled, onChange, teacherValidation }: { field: Field; value: unknown; disabled: boolean; onChange: (id: string, value: unknown) => void; teacherValidation?: TeacherValidation }) {
+  const label = <label htmlFor={`lab-${field.id}`}>{field.label}{field.unit ? ` (${field.unit})` : ""}{field.required && <em> *</em>}</label>;
+  if (field.type === "table" || field.type === "matrix") {
+    const cells = (value && typeof value === "object" ? value : {}) as Record<string, string>;
+    const columns = field.columns?.filter((column) => !field.visible_columns?.length || field.visible_columns.includes(column.id)) ?? [];
+    return <section className="lab-control lab-grid-control">{label}<div className="lab-table-wrap"><table><thead><tr><th />{columns.map((column) => <th key={column.id}>{column.label}{column.unit ? ` (${column.unit})` : ""}</th>)}</tr></thead><tbody>{field.rows?.map((row) => <tr key={row.id}><th>{row.label}</th>{columns.map((column) => { const key = `${row.id}.${column.id}`; const cellValue = cells[key] ?? ""; return <td key={key}>{column.input_type === "select" || column.input_type === "color" ? <select aria-label={`${row.label} — ${column.label}`} value={cellValue} disabled={disabled} onChange={(event) => onChange(field.id, { ...cells, [key]: event.target.value })}><option value="">Sélectionner…</option>{column.input_type === "color" ? ["noir", "brun", "rouge", "orange", "jaune", "vert", "bleu", "violet", "gris", "blanc", "or", "argent"].map((option) => <option key={option} value={option}>{option}</option>) : column.options?.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <input type={column.input_type === "number" ? "number" : "text"} step={column.input_type === "number" ? "any" : undefined} aria-label={`${row.label} — ${column.label}`} value={cellValue} disabled={disabled || column.input_type === "readonly"} onChange={(event) => onChange(field.id, { ...cells, [key]: event.target.value })} />}</td>; })}</tr>)}</tbody></table></div></section>;
+  }
+  if (field.type === "teacher_validation") return <section className={`lab-control lab-teacher-validation ${teacherValidation?.approved ? "is-approved" : ""}`}><strong>{field.label}</strong>{teacherValidation?.approved ? <p><CheckCircle2 size={18} /> Validée par {teacherValidation.teacher_name ?? "la personne enseignante"}{teacherValidation.comment ? ` — ${teacherValidation.comment}` : ""}</p> : <p>Validation à effectuer par la personne enseignante.</p>}</section>;
+  if (field.type === "checkbox") return <section className="lab-control lab-check"><label><input type="checkbox" checked={value === true} disabled={disabled} onChange={(event) => onChange(field.id, event.target.checked)} /> {field.label}{field.required && <em> *</em>}</label></section>;
+  if (field.type === "select" || field.type === "radio") return <section className="lab-control">{label}<select id={`lab-${field.id}`} value={String(value ?? "")} disabled={disabled} onChange={(event) => onChange(field.id, event.target.value)}><option value="">Sélectionner…</option>{field.options?.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></section>;
+  if (field.type === "textarea") return <section className="lab-control">{label}<textarea id={`lab-${field.id}`} rows={field.rows ?? 3} value={String(value ?? "")} disabled={disabled} onChange={(event) => onChange(field.id, event.target.value)} /></section>;
+  return <section className="lab-control">{label}<div className="lab-input-unit"><input id={`lab-${field.id}`} type={field.type === "number" ? "number" : "text"} step={field.step ?? "any"} value={String(value ?? "")} disabled={disabled} onChange={(event) => onChange(field.id, event.target.value)} />{field.unit && <span>{field.unit}</span>}</div></section>;
 }

@@ -1,0 +1,44 @@
+.lab-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  box-sizing: border-box;
+  border: 1px solid #b8c8c4;
+  border-radius: 9px;
+  padding: 10px 14px;
+  background: #fff;
+  color: #17483f;
+  font: 700 .86rem/1.2 Inter, system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(23, 33, 43, .06);
+  transition: background .15s, border-color .15s, transform .15s;
+}
+
+.lab-button:hover { border-color: #087e70; background: #f0fdfa; }
+.lab-button:active { transform: translateY(1px); }
+.lab-button--primary { border-color: #087e70; background: #087e70; color: #fff; }
+.lab-button--primary:hover { border-color: #06675d; background: #06675d; }
+.lab-button:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+.lab-version-upload {
+  width: min(1200px, 100%);
+  box-sizing: border-box;
+  margin: 0 auto 18px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dce4e8;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.lab-version-upload > div { display: grid; gap: 3px; margin-right: auto; }
+.lab-version-upload > div span, .lab-version-upload__file { font-size: .75rem; color: #64748b; }
+.lab-version-upload label input { display: none; }
+
+@media (max-width: 700px) {
+  .lab-version-upload { align-items: stretch; flex-direction: column; }
+  .lab-version-upload > div { margin-right: 0; }
+}

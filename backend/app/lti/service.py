@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from ..config import Settings, get_settings
 from ..models import (
     ChatThread,
+    LabActivity,
     LTIDeployment,
     LTIRegistration,
     LTIResourceLink,
@@ -276,18 +277,18 @@ class LTIService:
             existing=session_record.resource_link,
         )
 
-        workflow = self._resolve_workflow(
-            payload,
-            resource_link,
-            session_record.deployment,
+        lab_activity = self._resolve_lab_activity(payload, resource_link)
+        workflow = None if lab_activity else self._resolve_workflow(
+            payload, resource_link, session_record.deployment
         )
-        if workflow is None:
+        if workflow is None and lab_activity is None:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail="Aucun workflow associé au lancement LTI",
+                detail="Aucune ressource associée au lancement LTI",
             )
 
         resource_link.workflow = workflow
+        resource_link.lab_activity = lab_activity
 
         user = self._provision_user(payload)
         session_record.user = user
@@ -342,7 +343,7 @@ class LTIService:
         self.session.commit()
 
         thread_id: str | None = None
-        if resource_link is not None:
+        if resource_link is not None and workflow is not None:
             thread_id = self._ensure_lti_thread(user=user, resource_link=resource_link, workflow=workflow)
 
         token = create_access_token(user)
@@ -368,20 +369,11 @@ class LTIService:
         user_json = quote(json.dumps(user_data))
         token_encoded = quote(token)  # URL-encode the JWT token
 
-        # Les workflows qui contiennent un bloc laboratoire ouvrent l'interface
-        # document dédiée après le lancement LTI, tout en conservant le workflow
-        # et sa version active comme source de configuration.
-        has_lab_node = bool(
-            workflow.active_version
-            and any(step.kind == "lab" for step in workflow.active_version.steps)
-        )
-
-        # Include workflow_id in launch URL.
-        # LTI users now have API access to their workflows.
         launch_url = (
             f"{frontend_base}/lti/launch"
-            f"?token={token_encoded}&user={user_json}&workflow={workflow.id}"
-            f"{'&lab=' + quote(workflow.slug) if has_lab_node else ''}"
+            f"?token={token_encoded}&user={user_json}"
+            f"{'&workflow=' + str(workflow.id) if workflow else ''}"
+            f"{'&lab=' + quote(lab_activity.slug) if lab_activity else ''}"
             f"{'&thread_id=' + quote(thread_id) if thread_id else ''}"
         )
 
@@ -627,6 +619,8 @@ class LTIService:
         id_token: str,
         workflow_ids: Sequence[int] | None = None,
         workflow_slugs: Sequence[str] | None = None,
+        lab_ids: Sequence[int] | None = None,
+        lab_slugs: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         session_record = self._get_session_from_state(state)
         payload = self._verify_id_token(session_record.registration, id_token)
@@ -641,10 +635,11 @@ class LTIService:
             )
 
         selected_workflows = self._collect_workflows(workflow_ids, workflow_slugs)
-        if not selected_workflows:
+        selected_labs = self._collect_labs(lab_ids, lab_slugs)
+        if not selected_workflows and not selected_labs:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail="Aucun workflow sélectionné",
+                detail="Aucune ressource sélectionnée",
             )
 
         # Extract return URL from Deep Linking settings
@@ -714,6 +709,19 @@ class LTIService:
                     },
                 }
             )
+        for lab in selected_labs:
+            content_items.append(
+                {
+                    "type": "ltiResourceLink",
+                    "title": lab.title,
+                    "url": launch_url,
+                    "custom": {
+                        "resource_type": "lab",
+                        "lab_activity_id": str(lab.id),
+                        "lab_slug": lab.slug,
+                    },
+                }
+            )
 
         now = _now_utc()
         expires_at = now + datetime.timedelta(minutes=5)
@@ -741,7 +749,7 @@ class LTIService:
                 content_items
             ),
             "https://purl.imsglobal.org/spec/lti-dl/claim/msg": (
-                "Workflows sélectionnés"
+                "Ressources sélectionnées"
             ),
         }
 
@@ -968,6 +976,32 @@ class LTIService:
         self.session.flush()
         return link
 
+    def _resolve_lab_activity(
+        self,
+        payload: Mapping[str, Any],
+        resource_link: LTIResourceLink | None,
+    ) -> LabActivity | None:
+        custom = payload.get("https://purl.imsglobal.org/spec/lti/claim/custom", {})
+        resolved: LabActivity | None = None
+        if isinstance(custom, Mapping):
+            lab_id = custom.get("lab_activity_id")
+            if lab_id is not None:
+                try:
+                    resolved = self.session.get(LabActivity, int(lab_id))
+                except (TypeError, ValueError):
+                    resolved = None
+            if resolved is None and custom.get("lab_slug"):
+                resolved = self.session.scalar(
+                    select(LabActivity).where(
+                        LabActivity.slug == str(custom["lab_slug"])
+                    )
+                )
+        if resolved is None and resource_link is not None:
+            resolved = resource_link.lab_activity
+        if resolved is not None and resource_link is not None:
+            resource_link.lab_activity = resolved
+        return resolved
+
     def _resolve_workflow(
         self,
         payload: Mapping[str, Any],
@@ -1151,6 +1185,35 @@ class LTIService:
                     collected.append(wf)
                     seen.add(wf.id)
 
+        return collected
+
+    def _collect_labs(
+        self,
+        lab_ids: Sequence[int] | None,
+        lab_slugs: Sequence[str] | None,
+    ) -> list[LabActivity]:
+        collected: list[LabActivity] = []
+        seen: set[int] = set()
+        if lab_ids:
+            rows = self.session.scalars(
+                select(LabActivity).where(LabActivity.id.in_(list(lab_ids)))
+            ).all()
+            by_id = {lab.id: lab for lab in rows}
+            for identifier in lab_ids:
+                lab = by_id.get(identifier)
+                if lab and lab.id not in seen:
+                    collected.append(lab)
+                    seen.add(lab.id)
+        if lab_slugs:
+            rows = self.session.scalars(
+                select(LabActivity).where(LabActivity.slug.in_(list(lab_slugs)))
+            ).all()
+            by_slug = {lab.slug: lab for lab in rows}
+            for slug in lab_slugs:
+                lab = by_slug.get(slug)
+                if lab and lab.id not in seen:
+                    collected.append(lab)
+                    seen.add(lab.id)
         return collected
 
     def _validate_common_claims(

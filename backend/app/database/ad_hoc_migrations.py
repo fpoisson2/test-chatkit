@@ -41,6 +41,33 @@ def _run_ad_hoc_migrations() -> None:
     with engine.begin() as connection:
         inspector = inspect(connection)
         table_names = set(inspector.get_table_names())
+        if "lab_activities" in table_names:
+            columns = {column["name"] for column in inspect(connection).get_columns("lab_activities")}
+            for name, definition in (
+                ("title", "VARCHAR(255) NOT NULL DEFAULT 'Laboratoire'"),
+                ("description", "TEXT"),
+                ("source_path", "TEXT"),
+                ("updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ):
+                if name not in columns:
+                    connection.execute(text(f"ALTER TABLE lab_activities ADD COLUMN {name} {definition}"))
+        if "lti_resource_links" in table_names:
+            columns = {column["name"] for column in inspect(connection).get_columns("lti_resource_links")}
+            if "lab_activity_id" not in columns:
+                connection.execute(text("ALTER TABLE lti_resource_links ADD COLUMN lab_activity_id INTEGER"))
+        if "app_settings" in table_names:
+            columns = {column["name"] for column in inspect(connection).get_columns("app_settings")}
+            for name in ("admin_chat_model", "admin_chat_provider_id"):
+                if name not in columns:
+                    connection.execute(
+                        text(f"ALTER TABLE app_settings ADD COLUMN {name} VARCHAR(128)")
+                    )
+        if "users" in table_names:
+            columns = {column["name"] for column in inspect(connection).get_columns("users")}
+            if "display_name" not in columns:
+                connection.execute(
+                    text("ALTER TABLE users ADD COLUMN display_name VARCHAR(255)")
+                )
         if "available_models" not in table_names:
             logger.info("Création de la table available_models manquante")
             AvailableModel.__table__.create(bind=connection)

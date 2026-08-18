@@ -15,6 +15,7 @@ cryptography
 uvicorn[standard]
 python-dotenv
 httpx
+httpx-sse
 playwright
 sqlalchemy
 psycopg[binary]
