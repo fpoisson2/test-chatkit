@@ -7,6 +7,7 @@ import datetime
 import hashlib
 import json
 import logging
+import re
 import secrets
 import uuid
 from collections.abc import Mapping, Sequence
@@ -278,6 +279,11 @@ class LTIService:
         )
 
         lab_activity = self._resolve_lab_activity(payload, resource_link)
+        if lab_activity is None and self._payload_requests_lab(payload):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Le laboratoire associé à ce lien Moodle est introuvable",
+            )
         workflow = None if lab_activity else self._resolve_workflow(
             payload, resource_link, session_record.deployment
         )
@@ -713,7 +719,10 @@ class LTIService:
             content_items.append(
                 {
                     "type": "ltiResourceLink",
-                    "title": lab.title,
+                    # Moodle installations do not all preserve Deep Linking custom
+                    # parameters. Keep a stable fallback in the resource title,
+                    # matching the existing workflow strategy.
+                    "title": f"{lab.title} [lab:{lab.slug}]",
                     "url": launch_url,
                     "custom": {
                         "resource_type": "lab",
@@ -996,11 +1005,33 @@ class LTIService:
                         LabActivity.slug == str(custom["lab_slug"])
                     )
                 )
+        if resolved is None:
+            resource_claim = payload.get(
+                "https://purl.imsglobal.org/spec/lti/claim/resource_link", {}
+            )
+            title = resource_claim.get("title") if isinstance(resource_claim, Mapping) else None
+            if isinstance(title, str):
+                match = re.search(r"\[lab:([^\]]+)\]", title)
+                if match:
+                    resolved = self.session.scalar(
+                        select(LabActivity).where(LabActivity.slug == match.group(1))
+                    )
         if resolved is None and resource_link is not None:
             resolved = resource_link.lab_activity
         if resolved is not None and resource_link is not None:
             resource_link.lab_activity = resolved
         return resolved
+
+    @staticmethod
+    def _payload_requests_lab(payload: Mapping[str, Any]) -> bool:
+        custom = payload.get("https://purl.imsglobal.org/spec/lti/claim/custom", {})
+        if isinstance(custom, Mapping) and custom.get("resource_type") == "lab":
+            return True
+        resource_claim = payload.get(
+            "https://purl.imsglobal.org/spec/lti/claim/resource_link", {}
+        )
+        title = resource_claim.get("title") if isinstance(resource_claim, Mapping) else None
+        return isinstance(title, str) and re.search(r"\[lab:[^\]]+\]", title) is not None
 
     def _resolve_workflow(
         self,
@@ -1008,8 +1039,6 @@ class LTIService:
         resource_link: LTIResourceLink | None,
         deployment: LTIDeployment,
     ) -> Workflow | None:
-        import re
-
         custom_claim = payload.get(
             "https://purl.imsglobal.org/spec/lti/claim/custom", {}
         )

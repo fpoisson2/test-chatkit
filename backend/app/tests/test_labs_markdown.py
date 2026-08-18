@@ -109,6 +109,22 @@ def test_lti_resolves_lab_claim_without_workflow() -> None:
         assert resolved is activity
 
 
+def test_lti_resolves_lab_from_moodle_resource_title_fallback() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        activity = LabService(session).sync(slug="test", source=SOURCE)
+        lti_service = object.__new__(LTIService)
+        lti_service.session = session
+        payload = {
+            "https://purl.imsglobal.org/spec/lti/claim/resource_link": {
+                "title": "Laboratoire test [lab:test]",
+            }
+        }
+        assert lti_service._resolve_lab_activity(payload, None) is activity
+        assert lti_service._payload_requests_lab(payload) is True
+
+
 def test_in_progress_attempt_migrates_to_latest_version_by_stable_id() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
