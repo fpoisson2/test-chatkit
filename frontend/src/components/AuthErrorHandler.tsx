@@ -1,8 +1,21 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 import { ApiError, setGlobalUnauthorizedHandler } from "../utils/backend";
+
+const RETURN_URL_KEY = "chatkit:auth:return_url";
+
+/**
+ * Save the current URL so the user can be redirected back after re-authentication.
+ */
+export function getReturnUrl(): string | null {
+  return window.localStorage.getItem(RETURN_URL_KEY);
+}
+
+export function clearReturnUrl(): void {
+  window.localStorage.removeItem(RETURN_URL_KEY);
+}
 
 /**
  * Global handler for authentication errors.
@@ -12,6 +25,7 @@ import { ApiError, setGlobalUnauthorizedHandler } from "../utils/backend";
 export const AuthErrorHandler = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const { logout, user } = useAuth();
 
   // Track if we've already handled logout to prevent multiple redirects
@@ -24,14 +38,28 @@ export const AuthErrorHandler = () => {
     }
     isHandlingLogout.current = true;
 
+    // Save the current URL so the user can return after re-authentication
+    const currentPath = location.pathname + location.search + location.hash;
+    if (currentPath && currentPath !== "/login") {
+      window.localStorage.setItem(RETURN_URL_KEY, currentPath);
+    }
+
+    const isLtiUser = user?.is_lti || localStorage.getItem('lti_launch_workflow_id') !== null;
+
     logout();
-    navigate("/login", { replace: true });
+
+    if (isLtiUser) {
+      // LTI users can't use /login — show a message telling them to re-launch from Moodle
+      navigate("/lti/expired", { replace: true });
+    } else {
+      navigate("/login", { replace: true });
+    }
 
     // Reset the flag after a short delay to allow re-handling if needed
     setTimeout(() => {
       isHandlingLogout.current = false;
     }, 1000);
-  }, [logout, navigate]);
+  }, [logout, navigate, location, user]);
 
   // Register global handler for non-React Query API calls
   useEffect(() => {

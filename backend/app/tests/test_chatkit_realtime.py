@@ -274,7 +274,7 @@ def test_open_voice_session_prefers_openai_slug(
     assert isinstance(requests, list)
     assert len(requests) == 1
     request = requests[0]
-    assert request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    assert request["url"] == "https://api.openai.com/v1/realtime/sessions"
     payload = request["json"]
     assert isinstance(payload, dict)
     assert payload.get("voice") == "verse"
@@ -760,7 +760,7 @@ def test_openai_slug_ignores_mismatched_provider_id(
     assert isinstance(requests, list)
     assert len(requests) == 1
     request = requests[0]
-    assert request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    assert request["url"] == "https://api.openai.com/v1/realtime/sessions"
     headers = request["headers"]
     assert isinstance(headers, dict)
     assert headers.get("Authorization") == "Bearer openai-key"
@@ -819,7 +819,7 @@ def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) ->
     assert len(requests) == 2
 
     first_request = requests[0]
-    assert first_request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    assert first_request["url"] == "https://api.openai.com/v1/realtime/sessions"
     first_payload = first_request["json"]
     assert isinstance(first_payload, dict)
     assert first_payload.get("voice") == "alloy"
@@ -828,7 +828,7 @@ def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) ->
     assert "voice" not in session_payload
 
     second_request = requests[1]
-    assert second_request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    assert second_request["url"] == "https://api.openai.com/v1/realtime/sessions"
     second_payload = second_request["json"]
     assert isinstance(second_payload, dict)
     assert "voice" not in second_payload

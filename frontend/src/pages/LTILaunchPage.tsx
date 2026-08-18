@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth, type AuthUser } from "../auth";
 import { LoadingSpinner } from "../components/feedback/LoadingSpinner";
+import { getReturnUrl, clearReturnUrl } from "../components/AuthErrorHandler";
 
 /**
  * LTI Launch Handler Page
@@ -52,8 +53,15 @@ export const LTILaunchPage = () => {
 
       hasProcessed.current = true;
 
-      // Immediate redirect - no setTimeout needed
-      window.location.replace(labId ? `/lab/${encodeURIComponent(labId)}` : threadId ? `/c/${threadId}` : "/");
+      // If the user was redirected here after a session expiration, send them back
+      // to the URL they were on. Otherwise use the lab, deep-link thread, or home.
+      const returnUrl = getReturnUrl();
+      if (returnUrl) {
+        clearReturnUrl();
+        window.location.replace(returnUrl);
+      } else {
+        window.location.replace(labId ? `/lab/${encodeURIComponent(labId)}` : threadId ? `/c/${threadId}` : "/");
+      }
     } catch (error) {
       setError(`Erreur: ${error instanceof Error ? error.message : String(error)}`);
       hasProcessed.current = true;
