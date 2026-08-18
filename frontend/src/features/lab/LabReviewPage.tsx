@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, ClipboardCheck, Edit3, ExternalLink, Plus, RotateCcw, Send, Upload } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth";
 import "./lab.css";
 import "./lab-buttons.css";
@@ -23,7 +23,7 @@ export default function LabReviewPage() {
   const [slug, setSlug] = useState(""), [attempts, setAttempts] = useState<Attempt[]>([]), [versions, setVersions] = useState<Version[]>([]);
   const [selectedId, setSelectedId] = useState<string>(), [message, setMessage] = useState(""), [error, setError] = useState("");
   const [newSlug, setNewSlug] = useState(""), [description, setDescription] = useState("");
-  const [upload, setUpload] = useState<File | null>(null), [replacement, setReplacement] = useState<File | null>(null);
+  const [upload, setUpload] = useState<File | null>(null);
   const [score, setScore] = useState("100"), [feedback, setFeedback] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [editing, setEditing] = useState(false);
@@ -62,7 +62,7 @@ export default function LabReviewPage() {
     window.addEventListener("focus", updateCopies);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibilityChange); window.removeEventListener("focus", updateCopies); };
   }, [loadLab, slug, token]);
-  const selected = attempts.find((attempt) => attempt.id === selectedId), currentLab = labs.find((lab) => lab.slug === slug);
+  const selected = attempts.find((attempt) => attempt.id === selectedId);
   useEffect(() => { setScore(selected?.score == null ? "0" : String(selected.score)); }, [selected?.id, selected?.score]);
 
   const create = async (event: FormEvent) => {
@@ -73,14 +73,6 @@ export default function LabReviewPage() {
     if (!response.ok) { setError((await response.json()).detail ?? "Création impossible"); return; }
     const result = await response.json(); setNewSlug(""); setDescription(""); setUpload(null); setSlug(result.slug); setMessage(`${result.title} a été créé et publié.`); await loadCatalog();
   };
-  const publishVersion = async () => {
-    if (!replacement) { setError("Choisissez le nouveau fichier Markdown."); return; }
-    setError(""); setMessage("");
-    const form = new FormData(); form.append("file", replacement);
-    const response = await fetch(`/api/labs/admin/${slug}/upload`, { method: "POST", headers, body: form });
-    if (!response.ok) { setError((await response.json()).detail ?? "Publication impossible"); return; }
-    const result = await response.json(); setReplacement(null); setMessage(`Nouvelle version publiée — version ${result.version}.`); await refresh();
-  };
   const action = async (path: string, body?: unknown) => {
     const response = await fetch(path, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
     if (!response.ok) { setError((await response.json()).detail ?? "Opération impossible"); return; }
@@ -89,11 +81,9 @@ export default function LabReviewPage() {
   const gradeField = async (fieldId: string, rating: "correct" | "partial" | "incorrect" | "ungraded", comment: string) => { await action(`/api/labs/admin/attempts/${selected?.id}/field-grade`, { field_id: fieldId, rating, comment }); };
   const generateFeedback = async () => { if (!selected) return; setMessage("Génération de la rétroaction…"); const response = await fetch(`/api/labs/admin/attempts/${selected.id}/generate-feedback`, { method: "POST", headers }); if (!response.ok) { setError((await response.json()).detail ?? "Génération impossible"); setMessage(""); return; } const result = await response.json(); setFeedback(result.feedback); setMessage("Rétroaction générée avec gpt-5.6-luna. Relisez-la avant de l’enregistrer."); };
 
-  return <main className="lab-shell"><header className="lab-topbar"><div><span className="lab-eyebrow">Laboratoires déterministes</span><h1>Gestion des laboratoires</h1></div>{slug && <div className="lab-admin-actions"><button className="lab-button lab-button--primary" onClick={() => setEditing(true)}><Edit3 size={17} /> Modifier visuellement</button><Link className="lab-button" to={`/lab/${slug}`}><ExternalLink size={17} /> Prévisualiser</Link></div>}</header>
+  return <main className="lab-shell"><header className="lab-topbar"><div><span className="lab-eyebrow">Laboratoires déterministes</span><h1>Gestion des laboratoires</h1></div>{slug && <div className="lab-admin-actions"><button className="lab-button lab-button--primary" onClick={() => setEditing(true)}><Edit3 size={17} /> Modifier visuellement</button></div>}</header>
     {message && <div className="lab-submitted">{message}</div>}{error && <div className="lab-inline-error">{error}</div>}
     <section className="lab-create-card"><h2><Plus size={20} /> Nouveau laboratoire</h2><form onSubmit={create} className="lab-create-form"><label className="lab-upload-label">Markdown ou ZIP avec images<input required type="file" accept=".md,.zip,text/markdown,application/zip" onChange={(event) => setUpload(event.target.files?.[0] ?? null)} /><small>{upload?.name ?? "Markdown: 2 Mo · ZIP: 25 Mo"}</small></label><label>Slug<input required pattern="[a-z][a-z0-9-]+" placeholder="laboratoire-2" value={newSlug} onChange={(event) => setNewSlug(event.target.value.toLowerCase())} /></label><label>Description<input placeholder="243-1J5-LI — Laboratoire 2" value={description} onChange={(event) => setDescription(event.target.value)} /></label><button className="lab-button lab-button--primary" type="submit"><Upload size={17} /> Téléverser et publier</button></form></section>
-    <nav className="lab-catalog-tabs" aria-label="Laboratoires">{labs.map((lab) => <button key={lab.slug} className={lab.slug === slug ? "is-selected" : ""} onClick={() => setSlug(lab.slug)}><strong>{lab.title}</strong><span>v{lab.version ?? "—"} · {lab.field_count} champs · {lab.attempt_count} tentative(s)</span></button>)}</nav>
-    {currentLab && <section className="lab-version-upload"><div><strong>Publier une nouvelle version</strong><span>Markdown seul ou ZIP contenant le Markdown et ses images.</span></div><label className="lab-button"><Upload size={17} /> Choisir le fichier<input type="file" accept=".md,.zip,text/markdown,application/zip" onChange={(event) => setReplacement(event.target.files?.[0] ?? null)} /></label><span className="lab-version-upload__file">{replacement?.name}</span><button className="lab-button lab-button--primary" disabled={!replacement} onClick={publishVersion}>Publier</button></section>}
     {slug && <div className="lab-review-grid"><section className="lab-document"><div className="lab-section-heading"><div><span className="lab-kicker">{versions.length} version(s)</span><h2>Copies étudiantes</h2><p>Version publiée : {versions[0]?.version ?? "—"} · {versions[0]?.field_count ?? 0} champs</p><span className="lab-live-status"><span /> Actualisation automatique{lastRefresh ? ` · ${lastRefresh.toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}</span></div></div>{!attempts.length && <p>Aucune tentative pour le moment.</p>}{attempts.map((attempt) => <button key={attempt.id} className={`lab-attempt-row ${selectedId === attempt.id ? "is-selected" : ""}`} onClick={() => { setSelectedId(attempt.id); setFeedback(attempt.feedback ?? ""); setScore(String(attempt.score ?? 100)); }}><strong>{attempt.user.display_name || attempt.user.email}</strong><span>Version {attempt.version} · {attempt.status} · {new Date(attempt.updated_at).toLocaleString("fr-CA")}</span></button>)}{selected && <div className="lab-review-section"><h3>Réponses</h3>{Object.entries(selected.answers).map(([id, value]) => <div className="lab-review-answer" key={id}><strong>{id}</strong><p>{typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}</p></div>)}</div>}</section>
       <aside className="lab-feedback"><div className="lab-feedback__heading"><ClipboardCheck size={17} /><div><strong>Validation et évaluation</strong><span>{selected?.user.email ?? "Sélectionnez une copie"}</span></div></div>{selected && <>{selected.teacher_validation_fields.length > 0 && <div className="lab-validation-list"><h3>Validations enseignantes</h3>{selected.teacher_validation_fields.map((field) => { const validation = selected.teacher_validations[field.id]; return <div className={`lab-review-summary ${validation?.approved ? "is-approved" : ""}`} key={field.id}><CheckCircle2 size={18} /><div>{field.section && <span className="lab-validation-section">{field.section}</span>}<p><strong>{field.label}</strong><br />{validation?.approved ? `Validée par ${validation.teacher_name}` : "En attente de validation"}</p><button className="lab-button" onClick={() => action(`/api/labs/admin/attempts/${selected.id}/teacher-validation`, { field_id: field.id, approved: !validation?.approved, comment: validation?.approved ? "Validation retirée" : "Étape vérifiée" })}>{validation?.approved ? "Retirer la validation" : "Valider cette étape"}</button></div></div>})}</div>} {selected.status !== "in_progress" && <button className="lab-button" onClick={() => action(`/api/labs/admin/attempts/${selected.id}/reopen`)}><RotateCcw size={17} /> Permettre à l’étudiant de modifier sa copie</button>}<label className="lab-review-label">Note / 100<input type="number" min="0" max="100" value={score} onChange={(event) => setScore(event.target.value)} /></label><label className="lab-review-label">Rétroaction<textarea rows={6} value={feedback} onChange={(event) => setFeedback(event.target.value)} /></label><button className="lab-button lab-button--primary" onClick={() => action(`/api/labs/admin/attempts/${selected.id}/grade`, { score: Number(score), maximum: 100, feedback, publish_to_moodle: false })}><ClipboardCheck size={17} /> Enregistrer l’évaluation</button><button className="lab-button" onClick={() => action(`/api/labs/admin/attempts/${selected.id}/grade`, { score: Number(score), maximum: 100, feedback, publish_to_moodle: true })}><Send size={17} /> Publier dans Moodle</button></>}</aside></div>}
     {selected && <LabResponseReview attempt={selected} onGrade={gradeField} />}
