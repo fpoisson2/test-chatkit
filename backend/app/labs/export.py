@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import re
 from io import BytesIO
 from typing import Any
 
@@ -75,12 +76,75 @@ def _set_table_geometry(table, widths: list[int]) -> None:
 
 def _answer_text(value: Any) -> str:
     if value in (None, ""):
-        return "Non répondu"
+        return ""
     if value is True:
         return "Oui"
     if value is False:
         return "Non"
     return str(value)
+
+
+def _plain_markdown(value: str) -> str:
+    value = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"(`+|\*\*|__|\*|_)", "", value)
+    return value.strip()
+
+
+def _add_markdown(document: Document, content: str, *, document_title: str) -> None:
+    """Render the course Markdown structures used by laboratory sources."""
+    lines = content.splitlines()
+    index = 0
+    while index < len(lines):
+        raw = lines[index].strip()
+        if not raw:
+            index += 1
+            continue
+        if raw.startswith("|") and index + 1 < len(lines) and re.match(r"^\s*\|?\s*:?-+", lines[index + 1]):
+            rows: list[list[str]] = []
+            while index < len(lines) and lines[index].strip().startswith("|"):
+                cells = [_plain_markdown(cell) for cell in lines[index].strip().strip("|").split("|")]
+                rows.append(cells)
+                index += 1
+            if len(rows) >= 2:
+                data_rows = [rows[0], *rows[2:]]
+                column_count = max(len(row) for row in data_rows)
+                table = document.add_table(rows=len(data_rows), cols=column_count)
+                table.style = "Table Grid"
+                for row_index, source_row in enumerate(data_rows):
+                    for column_index in range(column_count):
+                        table.cell(row_index, column_index).text = source_row[column_index] if column_index < len(source_row) else ""
+                        if row_index == 0:
+                            _shade(table.cell(row_index, column_index), "E8F1EF")
+                            for run in table.cell(row_index, column_index).paragraphs[0].runs:
+                                _font(run, size=9.5, bold=True, color=INK)
+                _set_table_geometry(table, [9360 // column_count] * column_count)
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.+)$", raw)
+        if heading:
+            text = _plain_markdown(heading.group(2))
+            if not (len(heading.group(1)) == 1 and text == document_title):
+                document.add_heading(text, level=min(len(heading.group(1)), 3))
+            index += 1
+            continue
+        if re.fullmatch(r"-{3,}", raw):
+            index += 1
+            continue
+        if re.match(r"^[-*+]\s+", raw):
+            paragraph = document.add_paragraph(style="List Bullet")
+            paragraph.paragraph_format.space_after = Pt(4)
+            paragraph.add_run(_plain_markdown(re.sub(r"^[-*+]\s+", "", raw)))
+            index += 1
+            continue
+        paragraph_lines = [raw]
+        index += 1
+        while index < len(lines):
+            candidate = lines[index].strip()
+            if not candidate or candidate.startswith(("#", "|", "- ", "* ", "+ ")):
+                break
+            paragraph_lines.append(candidate)
+            index += 1
+        document.add_paragraph(_plain_markdown(" ".join(paragraph_lines)))
 
 
 def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[str, Any],
@@ -112,12 +176,11 @@ def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[st
     state_label = {"in_progress": "En cours", "submitted": "Remise", "evaluated": "Évaluée"}.get(status, status)
     _font(metadata.add_run(f"Étudiant : {student_name}\nÉtat : {state_label} · Dernier enregistrement : {date_label}"), size=10, color=MUTED)
 
-    current_section: str | None = None
-    for field in definition.get("fields", []):
-        field_section = field.get("section")
-        if field_section and field_section != current_section:
-            document.add_heading(field_section, level=1)
-            current_section = field_section
+    for block in definition.get("blocks", []):
+        if block.get("type") == "markdown":
+            _add_markdown(document, str(block.get("content", "")), document_title=title)
+            continue
+        field = block["field"]
         label = str(field.get("label", field.get("id", "Réponse")))
         if field.get("type") == "teacher_validation":
             document.add_heading(label, level=2)
@@ -149,18 +212,15 @@ def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[st
                 for index, column in enumerate(columns, 1):
                     answer = _answer_text(cells.get(f"{row['id']}.{column['id']}"))
                     unit = column.get("unit")
-                    word_row[index].text = f"{answer} {unit}" if unit and answer != "Non répondu" else answer
+                    word_row[index].text = f"{answer} {unit}" if unit and answer else answer
             first, remaining = 2600, 6760
             _set_table_geometry(table, [first] + [remaining // max(len(columns), 1)] * len(columns))
         else:
             document.add_heading(label, level=2)
             answer = _answer_text(value)
-            if field.get("unit") and answer != "Non répondu":
+            if field.get("unit") and answer:
                 answer = f"{answer} {field['unit']}"
             paragraph = document.add_paragraph(answer)
-            if answer == "Non répondu":
-                for run in paragraph.runs:
-                    _font(run, color=MUTED)
 
     footer = section.footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT

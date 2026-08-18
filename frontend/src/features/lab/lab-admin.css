@@ -21,6 +21,8 @@
 .lab-validation-list .lab-review-summary > div { flex: 1; }
 .lab-validation-section { display: block; margin-bottom: 5px; color: #087e70; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .035em; }
 .lab-validation-list .lab-review-summary .lab-button { width: 100%; margin-top: 10px; }
+.lab-live-status { display: inline-flex; align-items: center; gap: 6px; margin-top: 7px; color: #527067; font-size: .72rem; font-weight: 700; }
+.lab-live-status > span { width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 3px #d1fae5; }
 
 @media (max-width: 700px) {
   .lab-version-upload { align-items: stretch; flex-direction: column; }

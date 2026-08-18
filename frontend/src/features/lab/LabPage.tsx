@@ -151,7 +151,7 @@ export default function LabPage() {
       </div>
     </header>
     <div className="lab-form-progress"><span style={{ width: `${completion}%` }} /><strong>{completion}%</strong></div>
-    {saveState === "saved" && <div className="lab-save-confirmation"><CheckCircle2 size={18} /><span><strong>Toutes vos réponses sont enregistrées.</strong>{lastSavedAt && ` Dernière sauvegarde à ${lastSavedAt.toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.`}</span></div>}
+    {saveState === "saved" && <div className="lab-save-confirmation" role="status"><CheckCircle2 size={16} /><strong>Enregistré</strong>{lastSavedAt && <span>· {lastSavedAt.toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}</div>}
     {locked && <div className="lab-submitted"><CheckCircle2 /> Tentative remise — les réponses sont verrouillées.</div>}
     {error && <div className="lab-inline-error">{error}</div>}
     <article className="lab-form-document">

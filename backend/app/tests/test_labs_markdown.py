@@ -49,6 +49,7 @@ def test_word_export_contains_current_answers() -> None:
     document = Document(BytesIO(content))
     text = "\n".join(paragraph.text for paragraph in document.paragraphs)
     assert "Étudiante Exemple" in text
+    assert "Consigne lisible." in text
     assert "Mesure stable" in text
     assert document.tables[0].cell(1, 1).text == "4,98"
 
