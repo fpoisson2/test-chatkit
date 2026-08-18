@@ -55,6 +55,9 @@
 .lab-editor-preview th, .lab-editor-preview td { padding: 10px 12px; border: 1px solid #aebfba; text-align: left; vertical-align: top; line-height: 1.45; }
 .lab-editor-preview th { background: #e8f1ef; color: #173f38; font-weight: 800; }
 .lab-editor-preview tbody tr:nth-child(even) { background: #f8faf9; }
+.lab-format-menu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.lab-format-menu button { border: 1px solid #cbd8d2; border-radius: 7px; padding: 6px 9px; background: #fff; color: #385344; font-size: .75rem; font-weight: 700; cursor: pointer; }
+.lab-format-menu button:hover { background: #eaf3e8; border-color: #087e70; }
 .lab-create-modal-backdrop { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 55%); }
 .lab-create-modal { width: min(560px, 100%); border-radius: var(--radius-xl, 16px); background: var(--color-surface, #fff); box-shadow: var(--shadow-soft, 0 24px 70px rgb(15 23 42 / 25%)); overflow: hidden; }
 .lab-create-modal header { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px; border-bottom: 1px solid var(--color-border-subtle, #e2e8f0); }
