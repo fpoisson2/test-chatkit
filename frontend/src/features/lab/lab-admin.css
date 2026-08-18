@@ -52,6 +52,7 @@
 .lab-document { display: none !important; }
 #root .lab-document, #root .lab-review-grid .lab-document { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; overflow: hidden !important; margin: 0 !important; padding: 0 !important; }
 .lab-feedback .lab-validation-list { display: none !important; }
+.lab-feedback__heading { display: none !important; }
 .lab-inline-validations { margin-top: 22px; padding-top: 16px; border-top: 1px solid #dce4e8; }
 .lab-inline-validations h3 { margin: 0 0 10px; }
 .lab-inline-validations > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #edf1f0; }
