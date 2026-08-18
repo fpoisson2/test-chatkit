@@ -32,7 +32,7 @@ type NavigationItem = {
   isActive?: boolean;
 };
 
-type ApplicationKey = "chat" | "workflows";
+type ApplicationKey = "chat" | "workflows" | "labs";
 
 type ApplicationDescriptor = {
   key: ApplicationKey;
@@ -86,11 +86,18 @@ const APPLICATIONS: ApplicationDescriptor[] = [
     path: "/workflows",
     requiresAdmin: true,
   },
+  {
+    key: "labs",
+    labelKey: "app.sidebar.applications.labs",
+    path: "/lab-review",
+    requiresAdmin: true,
+  },
 ];
 
 const APPLICATION_ICONS: Record<ApplicationKey, SidebarIconName> = {
   chat: "home",
   workflows: "workflow",
+  labs: "docs",
 };
 
 const buildNavigationItems = ({
@@ -197,6 +204,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
   const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
   const [hideSidebar, setHideSidebar] = useState(false);
+  const effectiveHideSidebar = hideSidebar || Boolean(user?.is_lti);
   const appSwitcherLabelId = useId();
 
   useEffect(() => {
@@ -361,11 +369,11 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         "chatkit-layout",
         isSidebarOpen ? "chatkit-layout--sidebar-open" : "",
         isDesktopLayout ? "chatkit-layout--desktop" : "",
-        hideSidebar ? "chatkit-layout--sidebar-hidden" : "",
+        effectiveHideSidebar ? "chatkit-layout--sidebar-hidden" : "",
       ]
         .filter(Boolean)
         .join(" "),
-    [isDesktopLayout, isSidebarOpen, hideSidebar],
+    [effectiveHideSidebar, isDesktopLayout, isSidebarOpen],
   );
 
   const sidebarClassName = useMemo(
@@ -387,10 +395,10 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       isDesktopLayout,
       isSidebarOpen,
       isSidebarCollapsed,
-      hideSidebar,
+      hideSidebar: effectiveHideSidebar,
       setHideSidebar,
     }),
-    [closeSidebar, hideSidebar, isDesktopLayout, isSidebarCollapsed, isSidebarOpen, openSidebar],
+    [closeSidebar, effectiveHideSidebar, isDesktopLayout, isSidebarCollapsed, isSidebarOpen, openSidebar],
   );
 
   const handleSetSidebarContent = useCallback((content: ReactNode | null) => {
@@ -486,7 +494,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     <SidebarPortalContext.Provider value={sidebarPortalValue}>
       <AppLayoutContext.Provider value={contextValue}>
         <div className={layoutClassName}>
-          {!hideSidebar && (
+          {!effectiveHideSidebar && (
             <aside
               className={sidebarClassName}
               aria-label={t("app.sidebar.ariaLabel")}
@@ -579,7 +587,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             )}
           </aside>
           )}
-          <button
+          {!effectiveHideSidebar && <button
             type="button"
             className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
             aria-hidden={!isSidebarOpen || isDesktopLayout}
@@ -591,7 +599,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               }
             }}
             tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
-          />
+          />}
           <div className="chatkit-layout__main" {...mainInteractionHandlers}>
             {children ?? <Outlet />}
           </div>

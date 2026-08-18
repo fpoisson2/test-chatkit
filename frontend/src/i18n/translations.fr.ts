@@ -6,6 +6,7 @@ export const fr: TranslationDictionary = {
   "language.switcher.label": "Changer de langue",
   "app.sidebar.applications.chat": "Chat",
   "app.sidebar.applications.workflows": "Builder",
+  "app.sidebar.applications.labs": "Laboratoires",
   "app.sidebar.applications.vectorStores": "Vector stores",
   "app.sidebar.applications.widgets": "Bibliothèque de widgets",
   "app.sidebar.applications.admin": "Administration",
