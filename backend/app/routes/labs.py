@@ -5,6 +5,7 @@ import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,7 @@ from ..config import get_settings
 from ..database import SessionLocal, get_session
 from ..dependencies import get_current_user, require_admin
 from ..labs import (
-    LabService, available_markdown_sources, parse_lab_markdown, resolve_markdown_path,
+    LabService, available_markdown_sources, build_lab_attempt_docx, parse_lab_markdown, resolve_markdown_path,
     validate_slug,
 )
 from ..models import LabActivity, LabAttempt, LabVersion, LTIUserSession, User
@@ -26,6 +27,10 @@ router = APIRouter(prefix="/api/labs", tags=["labs"])
 class LabSaveRequest(BaseModel):
     answers: dict[str, Any] = Field(default_factory=dict)
     revision: int = Field(ge=0)
+
+
+class LabExportRequest(BaseModel):
+    answers: dict[str, Any] = Field(default_factory=dict)
 
 
 class TeacherValidationRequest(BaseModel):
@@ -366,3 +371,33 @@ def submit_lab(
     attempt = _attempt(session, attempt_id, user)
     LabService(session).submit(attempt, payload.answers, payload.revision)
     return _attempt_payload(attempt)
+
+
+@router.post("/attempts/{attempt_id}/export.docx")
+def export_lab_attempt(
+    attempt_id: str,
+    payload: LabExportRequest,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    attempt = _attempt(session, attempt_id, user)
+    service = LabService(session)
+    version = service.version_for(attempt)
+    current = service.validate_answers(version.definition, payload.answers, final=False)
+    answers = {**attempt.payload.get("responses", {}), **current}
+    activity = session.get(LabActivity, attempt.activity_id)
+    content = build_lab_attempt_docx(
+        title=activity.title if activity else "Laboratoire",
+        student_name=user.display_name or user.email,
+        definition=version.definition,
+        answers=answers,
+        validations=attempt.payload.get("teacher_validations", {}),
+        status=attempt.status,
+        updated_at=attempt.updated_at,
+    )
+    filename = f"{activity.slug if activity else 'laboratoire'}-copie.docx"
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

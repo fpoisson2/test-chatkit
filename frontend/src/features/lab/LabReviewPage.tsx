@@ -3,6 +3,7 @@ import { CheckCircle2, ClipboardCheck, ExternalLink, Plus, RotateCcw, Send, Uplo
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth";
 import "./lab.css";
+import "./lab-buttons.css";
 import "./lab-admin.css";
 
 type Lab = { id: number; slug: string; title: string; description?: string; source_path?: string; version?: number; field_count: number; attempt_count: number };

@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.labs.parser import LabMarkdownError, parse_lab_markdown
+from app.labs.export import build_lab_attempt_docx
 from app.labs.service import LabService
 from app.labs.source import available_markdown_sources, resolve_markdown_path
 from app.lti.service import LTIService
@@ -32,6 +33,24 @@ def test_parser_preserves_markdown_and_compiles_fields() -> None:
     ]
     assert definition["blocks"][0]["type"] == "markdown"
     assert definition["fields"][2]["rows"] == [{"id": "r1", "label": "Ligne 1"}]
+
+
+def test_word_export_contains_current_answers() -> None:
+    from io import BytesIO
+    from docx import Document
+
+    definition = parse_lab_markdown(SOURCE, slug="test")
+    content = build_lab_attempt_docx(
+        title="Laboratoire test", student_name="Étudiante Exemple",
+        definition=definition,
+        answers={"tension": 4.98, "observation": "Mesure stable", "mesures": {"r1.valeur": "4,98"}},
+        validations={}, status="in_progress", updated_at=datetime.datetime.now(datetime.UTC),
+    )
+    document = Document(BytesIO(content))
+    text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+    assert "Étudiante Exemple" in text
+    assert "Mesure stable" in text
+    assert document.tables[0].cell(1, 1).text == "4,98"
 
 
 def test_parser_rejects_duplicate_ids() -> None:

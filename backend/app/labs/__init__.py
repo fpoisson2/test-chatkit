@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from .parser import LabMarkdownError, parse_lab_markdown
+from .export import build_lab_attempt_docx
 from .service import LabService
 from .source import available_markdown_sources, resolve_markdown_path, validate_slug
 
@@ -25,4 +26,4 @@ def sync_bundled_labs(session):
     )
     session.commit()
 
-__all__ = ["LabMarkdownError", "LabService", "available_markdown_sources", "load_lab_source", "parse_lab_markdown", "resolve_markdown_path", "sync_bundled_labs", "validate_slug"]
+__all__ = ["LabMarkdownError", "LabService", "available_markdown_sources", "build_lab_attempt_docx", "load_lab_source", "parse_lab_markdown", "resolve_markdown_path", "sync_bundled_labs", "validate_slug"]

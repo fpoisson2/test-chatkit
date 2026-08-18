@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CheckCircle2, Cloud, CloudOff, FileCheck2, Save } from "lucide-react";
+import { CheckCircle2, Cloud, CloudOff, Download, FileCheck2, Save } from "lucide-react";
 import { useAuth } from "../../auth";
 import "./lab.css";
+import "./lab-buttons.css";
+import "./lab-content.css";
 
 type Option = { id: string; label: string; input_type?: "text" | "number" | "select" | "color" | "readonly"; unit?: string; options?: string[] };
 type Field = {
@@ -25,6 +27,8 @@ export default function LabPage() {
   const [data, setData] = useState<LaunchPayload | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [saveState, setSaveState] = useState<"saved" | "saving" | "offline" | "error">("saved");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = useRef(false);
 
@@ -37,6 +41,7 @@ export default function LabPage() {
       return response.json() as Promise<LaunchPayload>;
     }).then((payload) => {
       setData(payload);
+      setLastSavedAt(new Date(payload.attempt.updated_at));
       const pending = localStorage.getItem(pendingKey(activityId));
       setAnswers(pending ? { ...payload.attempt.answers, ...JSON.parse(pending) } : payload.attempt.answers);
     }).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
@@ -58,6 +63,7 @@ export default function LabPage() {
       localStorage.removeItem(pendingKey(activityId));
       dirty.current = false;
       setSaveState("saved");
+      setLastSavedAt(new Date(attempt.updated_at));
     } catch (reason) {
       setSaveState(navigator.onLine ? "error" : "offline");
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -76,6 +82,7 @@ export default function LabPage() {
 
   const update = (id: string, value: unknown) => {
     dirty.current = true;
+    setSaveState("saving");
     setError(null);
     setAnswers((current) => ({ ...current, [id]: value }));
   };
@@ -98,6 +105,27 @@ export default function LabPage() {
     localStorage.removeItem(pendingKey(activityId));
     dirty.current = false;
     setSaveState("saved");
+    setLastSavedAt(new Date(attempt.updated_at));
+  };
+
+  const downloadWord = async () => {
+    if (!data || !token) return;
+    setExporting(true); setError(null);
+    try {
+      const response = await fetch(`/api/labs/attempts/${data.attempt.id}/export.docx`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ answers }),
+      });
+      if (!response.ok) throw new Error((await response.json()).detail ?? "Création du document impossible");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = `${data.activity.slug}-copie.docx`; anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally { setExporting(false); }
   };
 
   const completion = useMemo(() => {
@@ -123,6 +151,7 @@ export default function LabPage() {
       </div>
     </header>
     <div className="lab-form-progress"><span style={{ width: `${completion}%` }} /><strong>{completion}%</strong></div>
+    {saveState === "saved" && <div className="lab-save-confirmation"><CheckCircle2 size={18} /><span><strong>Toutes vos réponses sont enregistrées.</strong>{lastSavedAt && ` Dernière sauvegarde à ${lastSavedAt.toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.`}</span></div>}
     {locked && <div className="lab-submitted"><CheckCircle2 /> Tentative remise — les réponses sont verrouillées.</div>}
     {error && <div className="lab-inline-error">{error}</div>}
     <article className="lab-form-document">
@@ -130,6 +159,9 @@ export default function LabPage() {
         ? <ReactMarkdown key={index} remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
         : <FieldControl key={block.field.id} field={block.field} value={answers[block.field.id]} disabled={locked} onChange={update} teacherValidation={data.attempt.teacher_validations?.[block.field.id]} />)}
       <footer className="lab-submit-row">
+        <button className="lab-button" disabled={exporting} onClick={downloadWord}>
+          <Download size={18} /> {exporting ? "Création du document…" : "Télécharger ma copie Word"}
+        </button>
         <button className="lab-button lab-button--primary" disabled={locked || saveState === "saving"} onClick={submit}>
           <FileCheck2 size={18} /> Remettre définitivement
         </button>
