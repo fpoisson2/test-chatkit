@@ -28,5 +28,21 @@
   .lab-version-upload { align-items: stretch; flex-direction: column; }
   .lab-version-upload > div { margin-right: 0; }
 }
-.lab-ai-feedback-action, .lab-review-images { width: min(1200px, calc(100% - 32px)); box-sizing: border-box; margin: 14px auto; }
+.lab-ai-feedback-action, .lab-review-images, .lab-feedback-editor { width: min(1200px, calc(100% - 32px)); box-sizing: border-box; margin: 14px auto; }
 .lab-review-images { display: grid; gap: 12px; padding: 18px; border: 1px solid #dce4e8; border-radius: 14px; background: #fff; }
+.lab-review-section { display: none; }
+.lab-feedback > .lab-review-label { display: none; }
+.lab-feedback-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; padding: 14px; border: 1px solid #dce4e8; border-radius: 12px; background: #fff; }
+.lab-feedback-editor label { display: grid; gap: 5px; font-size: .76rem; font-weight: 700; }
+.lab-feedback-editor textarea { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid #cbd5e1; border-radius: 7px; resize: vertical; }
+@media (max-width: 700px) { .lab-feedback-editor { grid-template-columns: 1fr; } }
+.lab-create-card { display: none; }
+.lab-create-modal-backdrop { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 55%); }
+.lab-create-modal { width: min(560px, 100%); border-radius: var(--radius-xl, 16px); background: var(--color-surface, #fff); box-shadow: var(--shadow-soft, 0 24px 70px rgb(15 23 42 / 25%)); overflow: hidden; }
+.lab-create-modal header { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px; border-bottom: 1px solid var(--color-border-subtle, #e2e8f0); }
+.lab-create-modal header h2 { margin: 3px 0 0; }
+.lab-create-modal header button { border: 0; background: transparent; cursor: pointer; }
+.lab-create-modal form { display: grid; gap: 14px; padding: 22px; }
+.lab-create-modal label { display: grid; gap: 6px; font-size: .8rem; font-weight: 800; }
+.lab-create-modal input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid var(--color-border-subtle, #cbd5e1); border-radius: var(--radius-md, 8px); background: var(--color-surface, #fff); }
+.lab-create-modal small { color: var(--color-text-muted, #64748b); font-weight: 400; }

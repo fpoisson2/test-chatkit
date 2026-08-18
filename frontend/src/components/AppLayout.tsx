@@ -183,7 +183,7 @@ export const useSidebarPortal = () => {
 };
 
 export const AppLayout = ({ children }: { children?: ReactNode }) => {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
   const { t } = useI18n();
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
@@ -287,6 +287,10 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     const matchingApplication = availableApplications.find((application) => {
       if (application.path === "/") {
         return location.pathname === "/";
+      }
+
+      if (application.key === "labs") {
+        return location.pathname === application.path || location.pathname.startsWith("/lab/");
       }
 
       return (
@@ -536,6 +540,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                   {sidebarContent ? (
                     <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
                   ) : null}
+                  {activeApplication === "labs" && token ? <LabSidebarMenu token={token} tabIndex={sidebarTabIndex} collapsed={isSidebarCollapsed} /> : null}
                   {collapsedSidebarContent ? (
                     <div
                       className={`chatkit-sidebar__collapsed-preview${
@@ -620,3 +625,11 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 };
 
 export default AppLayout;
+
+function LabSidebarMenu({ token, tabIndex, collapsed }: { token: string; tabIndex: number; collapsed: boolean }) {
+  const navigate = useNavigate();
+  const [labs, setLabs] = useState<{ slug: string; title: string }[]>([]);
+  useEffect(() => { fetch("/api/labs", { headers: { Authorization: `Bearer ${token}` } }).then(response => response.ok ? response.json() : []).then(result => setLabs(result as { slug: string; title: string }[])).catch(() => setLabs([])); }, [token]);
+  if (collapsed) return null;
+  return <nav className="chatkit-sidebar__lab-menu" aria-label="Laboratoires"><div className="chatkit-sidebar__lab-menu-heading"><span>Laboratoires</span><button type="button" onClick={() => navigate("/lab-review?new=1")} tabIndex={tabIndex} aria-label="Nouveau laboratoire">+</button></div>{labs.map(lab => <button type="button" key={lab.slug} onClick={() => navigate(`/lab/${lab.slug}`)} tabIndex={tabIndex} className="chatkit-sidebar__lab-item">{lab.title}</button>)}<button type="button" onClick={() => navigate("/lab-review?new=1")} tabIndex={tabIndex} className="chatkit-sidebar__lab-new">+ Nouveau laboratoire</button></nav>;
+}

@@ -993,6 +993,14 @@
   z-index: 1050;
 }
 
+.chatkit-sidebar__lab-menu { display: grid; gap: 4px; margin: 12px var(--chatkit-sidebar-content-padding-x); padding-top: 10px; border-top: 1px solid var(--color-border-subtle); }
+.chatkit-sidebar__lab-menu-heading { display: flex; align-items: center; justify-content: space-between; padding: 3px 8px 6px; color: var(--color-text-muted); font-size: var(--font-text-xs-size); font-weight: var(--font-weight-semibold); text-transform: uppercase; letter-spacing: .04em; }
+.chatkit-sidebar__lab-menu-heading button, .chatkit-sidebar__lab-item, .chatkit-sidebar__lab-new { border: 0; border-radius: var(--radius-md, 8px); background: transparent; color: var(--color-text); font: inherit; cursor: pointer; text-align: left; }
+.chatkit-sidebar__lab-menu-heading button { width: 24px; height: 24px; text-align: center; font-size: 18px; }
+.chatkit-sidebar__lab-item, .chatkit-sidebar__lab-new { padding: 8px; font-size: var(--font-text-sm-size); }
+.chatkit-sidebar__lab-item:hover, .chatkit-sidebar__lab-item:focus-visible, .chatkit-sidebar__lab-new:hover, .chatkit-sidebar__lab-new:focus-visible, .chatkit-sidebar__lab-menu-heading button:hover { background: var(--alpha-06); color: var(--color-text-strong); outline: none; }
+.chatkit-sidebar__lab-new { color: var(--primary-color); font-weight: var(--font-weight-semibold); }
+
 .chatkit-sidebar__workflow-menu button {
   transition-duration: var(--transition-duration-basic);
   transition-property: background-color, color, opacity;
