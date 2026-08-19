@@ -1,22 +1,68 @@
+/**
+ * Lab buttons
+ * Aligned on the app design system tokens (see styles/tokens/*.css).
+ * No hard-coded colors: every value follows the active light/dark theme.
+ */
+
 .lab-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   box-sizing: border-box;
-  border: 1px solid #b8c8c4;
-  border-radius: 9px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg, 10px);
   padding: 10px 14px;
-  background: #fff;
-  color: #17483f;
-  font: 700 .86rem/1.2 Inter, system-ui, sans-serif;
+  background: var(--color-surface);
+  color: var(--text-color);
+  font: var(--font-weight-bold, 700) 0.86rem/1.2 var(--appearance-body-font, Inter, system-ui, sans-serif);
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(23, 33, 43, .06);
-  transition: background .15s, border-color .15s, transform .15s;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text) 8%, transparent);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
-.lab-button:hover { border-color: #087e70; background: #f0fdfa; }
-.lab-button:active { transform: translateY(1px); }
-.lab-button--primary { border-color: #087e70; background: #087e70; color: #fff; }
-.lab-button--primary:hover { border-color: #06675d; background: #06675d; }
-.lab-button:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.lab-button:hover {
+  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--color-surface));
+  color: var(--primary-hover);
+}
+
+.lab-button:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+
+.lab-button:active {
+  transform: translateY(1px);
+}
+
+.lab-button--primary {
+  border-color: var(--primary-color);
+  background: var(--primary-color);
+  color: #fff;
+}
+
+.lab-button--primary:hover {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+  color: #fff;
+}
+
+.lab-button--danger {
+  border-color: var(--danger-color);
+  background: var(--danger-color);
+  color: #fff;
+}
+
+.lab-button--danger:hover {
+  border-color: var(--danger-hover);
+  background: var(--danger-hover);
+  color: #fff;
+}
+
+.lab-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}

@@ -1,30 +1,35 @@
+/**
+ * Lab content: markdown tables, save toast and image controls.
+ * Design-system tokens only — dark-mode safe.
+ */
+
 /* Tables rendered from ordinary Markdown instructions (not form controls). */
 .lab-form-document > table {
   width: 100%;
   margin: 18px 0 26px;
-  border: 1px solid #aebfba;
+  border: 1px solid var(--color-border-subtle);
   border-collapse: collapse;
-  background: #fff;
-  font-size: .94rem;
+  background: var(--color-surface);
+  font-size: 0.94rem;
 }
 
 .lab-form-document > table th,
 .lab-form-document > table td {
   padding: 10px 12px;
-  border: 1px solid #aebfba;
+  border: 1px solid var(--color-border-subtle);
   text-align: left;
   vertical-align: top;
   line-height: 1.45;
 }
 
 .lab-form-document > table th {
-  background: #e8f1ef;
-  color: #173f38;
+  background: var(--color-surface-subtle);
+  color: var(--text-color);
   font-weight: 800;
 }
 
 .lab-form-document > table tbody tr:nth-child(even) {
-  background: #f8faf9;
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
 }
 
 .lab-save-confirmation {
@@ -36,18 +41,19 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid #a9d5c2;
-  border-radius: 999px;
-  background: #ecf8f3;
-  color: #096253;
-  font-size: .78rem;
-  box-shadow: 0 8px 24px rgba(23, 63, 56, .16);
+  border: 1px solid color-mix(in srgb, var(--status-success) 40%, transparent);
+  border-radius: var(--radius-full, 999px);
+  background: color-mix(in srgb, var(--status-success) 14%, var(--color-surface));
+  color: var(--text-color);
+  font-size: 0.78rem;
+  box-shadow: var(--shadow-soft);
 }
 
 .lab-submit-row { gap: 10px; flex-wrap: wrap; }
 
 @media (max-width: 700px) {
   .lab-save-confirmation { right: 12px; bottom: 12px; }
+
   .lab-form-document > table {
     display: block;
     overflow-x: auto;
@@ -55,12 +61,22 @@
   }
 
   .lab-form-document > table th,
-  .lab-form-document > table td {
-    min-width: 120px;
-  }
+  .lab-form-document > table td { min-width: 120px; }
 }
+
 .lab-image-control { display: grid; gap: 10px; }
 .lab-image-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .lab-image-actions input { display: none; }
-.lab-uploaded-image { display: block; max-width: min(100%, 760px); max-height: 520px; object-fit: contain; border: 1px solid #d7e2dd; border-radius: 10px; background: #f8faf9; }
-.lab-image-loading, .lab-image-control small { color: #64748b; font-size: .78rem; }
+
+.lab-uploaded-image {
+  display: block;
+  max-width: min(100%, 760px);
+  max-height: 520px;
+  object-fit: contain;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg, 10px);
+  background: var(--color-surface-subtle);
+}
+
+.lab-image-loading,
+.lab-image-control small { color: var(--text-muted); font-size: 0.78rem; }
