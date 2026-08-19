@@ -8,11 +8,11 @@ import "./lab.css";
 import "./lab-buttons.css";
 import "./lab-content.css";
 
-type Option = { id: string; label: string; input_type?: "text" | "number" | "select" | "color" | "readonly"; unit?: string; options?: string[] };
+type Option = { id: string; label: string; input_type?: "text" | "number" | "select" | "readonly"; unit?: string; options?: string[] };
 type Field = {
   id: string; type: string; label: string; required?: boolean; unit?: string;
   rows?: number; options?: Option[]; columns?: Option[]; min?: number;
-  max?: number; step?: number | "any"; visible_columns?: string[];
+  max?: number; step?: number | "any"; visible_columns?: string[]; defaults?: Record<string, string>;
 };
 type Block = { type: "markdown"; content: string } | { type: "field"; field: Field };
 type TeacherValidation = { approved: boolean; comment?: string; teacher_name?: string; validated_at?: string };
@@ -174,8 +174,8 @@ function FieldControl({ field, value, disabled, onChange, attemptId, teacherVali
   const label = <label htmlFor={`lab-${field.id}`}>{field.label}{field.unit ? ` (${field.unit})` : ""}{field.required && <em> *</em>}</label>;
   if (field.type === "table" || field.type === "matrix") {
     const cells = (value && typeof value === "object" ? value : {}) as Record<string, string>;
-    const columns = field.columns?.filter((column) => !field.visible_columns?.length || field.visible_columns.includes(column.id)) ?? [];
-    return <section className="lab-control lab-grid-control">{label}<div className="lab-table-wrap"><table><thead><tr><th />{columns.map((column) => <th key={column.id}>{column.label}{column.unit ? ` (${column.unit})` : ""}</th>)}</tr></thead><tbody>{field.rows?.map((row) => <tr key={row.id}><th>{row.label}</th>{columns.map((column) => { const key = `${row.id}.${column.id}`; const cellValue = cells[key] ?? ""; return <td key={key}>{column.input_type === "select" || column.input_type === "color" ? <select aria-label={`${row.label} — ${column.label}`} value={cellValue} disabled={disabled} onChange={(event) => onChange(field.id, { ...cells, [key]: event.target.value })}><option value="">Sélectionner…</option>{column.input_type === "color" ? ["noir", "brun", "rouge", "orange", "jaune", "vert", "bleu", "violet", "gris", "blanc", "or", "argent"].map((option) => <option key={option} value={option}>{option}</option>) : column.options?.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <input type={column.input_type === "number" ? "number" : "text"} step={column.input_type === "number" ? "any" : undefined} aria-label={`${row.label} — ${column.label}`} value={cellValue} disabled={disabled || column.input_type === "readonly"} onChange={(event) => onChange(field.id, { ...cells, [key]: event.target.value })} />}</td>; })}</tr>)}</tbody></table></div></section>;
+    const columns = field.columns?.filter((column) => column.input_type === "readonly" || !field.visible_columns?.length || field.visible_columns.includes(column.id)) ?? [];
+    return <section className="lab-control lab-grid-control">{label}<div className="lab-table-wrap"><table><thead><tr><th />{columns.map((column) => <th key={column.id}>{column.label}{column.unit ? ` (${column.unit})` : ""}</th>)}</tr></thead><tbody>{field.rows?.map((row) => <tr key={row.id}><th>{row.label}</th>{columns.map((column) => { const key = `${row.id}.${column.id}`; const cellValue = cells[key] ?? ""; return <td key={key}>{column.input_type === "select" ? <select aria-label={`${row.label} — ${column.label}`} value={cellValue} disabled={disabled} onChange={(event) => onChange(field.id, { ...cells, [key]: event.target.value })}><option value="">Sélectionner…</option>{column.options?.map((option) => <option key={option} value={option}>{option}</option>)}</select> : <input type={column.input_type === "number" ? "number" : "text"} step={column.input_type === "number" ? "any" : undefined} aria-label={`${row.label} — ${column.label}`} value={column.input_type === "readonly" ? (field.defaults?.[key] ?? "") : cellValue} disabled={disabled || column.input_type === "readonly"} onChange={(event) => onChange(field.id, { ...cells, [key]: event.target.value })} />}</td>; })}</tr>)}</tbody></table></div></section>;
   }
   if (field.type === "teacher_validation") return <section className={`lab-control lab-teacher-validation ${teacherValidation?.approved ? "is-approved" : ""}`}><strong>{field.label}</strong>{teacherValidation?.approved ? <p><CheckCircle2 size={18} /> Validée par {teacherValidation.teacher_name ?? "la personne enseignante"}{teacherValidation.comment ? ` — ${teacherValidation.comment}` : ""}</p> : <p>Validation à effectuer par la personne enseignante.</p>}</section>;
   if (field.type === "image") return <ImageField field={field} value={value} disabled={disabled} onChange={onChange} attemptId={attemptId} />;

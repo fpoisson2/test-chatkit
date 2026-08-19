@@ -24,7 +24,16 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Editable fields read as white in light mode instead of the muted
+     shared form-field token, so they stand out against the editor's cards. */
+  --lab-editable-bg: #ffffff;
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light" i]) .lab-visual-editor { --lab-editable-bg: var(--form-field-background); }
+}
+
+:root[data-theme="dark" i] .lab-visual-editor { --lab-editable-bg: var(--form-field-background); }
 
 .lab-visual-editor > header {
   display: flex;
@@ -87,6 +96,12 @@
   background: var(--color-border-subtle);
 }
 
+.lab-format-menu__combo {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1px;
+}
+
 .lab-format-menu button {
   display: inline-flex;
   align-items: center;
@@ -121,8 +136,14 @@
 }
 
 .lab-visual-canvas {
-  padding: 22px;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.lab-visual-canvas__blocks {
+  padding: 22px;
   display: grid;
   gap: 14px;
   align-content: start;
@@ -317,7 +338,7 @@
   padding: 4px 7px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm, 7px);
-  background: var(--form-field-background);
+  background: var(--lab-editable-bg, var(--form-field-background));
   color: var(--text-color);
   font: inherit;
 }
@@ -361,7 +382,7 @@
   padding: 8px 10px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md, 8px);
-  background: var(--form-field-background);
+  background: var(--lab-editable-bg, var(--form-field-background));
   color: var(--text-color);
   font: inherit;
 }
@@ -440,6 +461,18 @@
   width: auto !important;
   margin-left: 6px;
   padding: 1px 4px !important;
+  font-size: 0.7rem;
+}
+
+.lab-preview-grid__column-options {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 2px 5px !important;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--lab-editable-bg, var(--form-field-background));
+  color: var(--text-color);
   font-size: 0.7rem;
 }
 

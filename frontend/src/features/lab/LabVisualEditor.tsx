@@ -4,9 +4,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  AlignLeft, BadgeCheck, Bold, CheckSquare, ChevronDown, ChevronUp, Download, ExternalLink,
+  AlignLeft, BadgeCheck, Bold, CheckSquare, ChevronDown, ChevronUp, Columns3, Download, ExternalLink,
   Hash, Heading2, Heading3, Highlighter, Image as ImageIcon, ImagePlus, Italic, List, ListOrdered,
-  Plus, Save, Table as TableIcon, Trash2, Type, Upload, X,
+  Minus, Plus, Rows3, Save, Table as TableIcon, Trash2, Type, Upload, X,
 } from "lucide-react";
 import "./lab-editor.css";
 
@@ -128,7 +128,8 @@ const quote = (value: unknown) => `"${String(value).replaceAll("\\", "\\\\").rep
 
 function directive(field: Field) {
   const attributes = Object.entries(field)
-    .filter(([key, value]) => key !== "type" && key !== "section" && value !== undefined && value !== null && value !== "")
+    .filter(([key, value]) => key !== "type" && key !== "section" && value !== undefined && value !== null && value !== ""
+      && !(key === "defaults" && typeof value === "object" && Object.keys(value as object).length === 0))
     .map(([key, value]) => {
       if (key === "options" && Array.isArray(value)) {
         return `${key}=${quote((value as Option[]).map((item) => `${item.id}:${item.label}`).join("|"))}`;
@@ -143,6 +144,10 @@ function directive(field: Field) {
             : (item.unit ? `:${item.unit}` : "");
           return `${item.id}:${item.label}:${item.input_type ?? "text"}${extra}`;
         }).join("|"))}`;
+      }
+      if (key === "defaults" && typeof value === "object" && !Array.isArray(value)) {
+        const entries = Object.entries(value as Record<string, string>).filter(([, cell]) => cell !== "" && cell != null);
+        return `${key}=${quote(entries.map(([cellKey, cell]) => `${cellKey}:${cell}`).join("|"))}`;
       }
       if (Array.isArray(value)) return `${key}=${quote(value.join(","))}`;
       return `${key}=${typeof value === "boolean" || typeof value === "number" ? value : quote(value)}`;
@@ -169,7 +174,6 @@ const COLUMN_TYPES: { type: string; label: string }[] = [
   { type: "text", label: "Texte" },
   { type: "number", label: "Nombre" },
   { type: "select", label: "Liste déroulante" },
-  { type: "color", label: "Couleur" },
   { type: "readonly", label: "Lecture seule" },
 ];
 
@@ -204,7 +208,7 @@ function retype(field: Field, type: string): Field {
   const needsGrid = type === "table" || type === "matrix";
   if (!needsOptions) delete next.options;
   else if (!Array.isArray(next.options)) next.options = newField("select").options;
-  if (!needsGrid) { if (Array.isArray(next.rows)) delete next.rows; delete next.columns; delete next.visible_columns; }
+  if (!needsGrid) { if (Array.isArray(next.rows)) delete next.rows; delete next.columns; delete next.visible_columns; delete next.defaults; }
   else {
     if (!Array.isArray(next.rows)) next.rows = newField("table").rows;
     if (!Array.isArray(next.columns)) next.columns = newField("table").columns;
@@ -291,6 +295,16 @@ type ToolbarProps = {
   onInsertImage: () => void;
 };
 
+/** Find the table cell/row/table containing the current selection, if any. */
+function tableCellAtSelection(): { cell: HTMLTableCellElement; row: HTMLTableRowElement; table: HTMLTableElement } | null {
+  const node = window.getSelection()?.anchorNode;
+  const element = node instanceof Element ? node : node?.parentElement;
+  const cell = element?.closest("td, th") as HTMLTableCellElement | null;
+  const row = cell?.closest("tr") as HTMLTableRowElement | null;
+  const table = cell?.closest("table") as HTMLTableElement | null;
+  return cell && row && table ? { cell, row, table } : null;
+}
+
 function FormatToolbar({ onCommand, onInsertField, onInsertImage }: ToolbarProps) {
   const exec = (command: string, value?: string) => onCommand(() => {
     document.execCommand("styleWithCSS", false, "false");
@@ -300,6 +314,30 @@ function FormatToolbar({ onCommand, onInsertField, onInsertImage }: ToolbarProps
     "insertHTML", false,
     "<table><tbody><tr><th>Colonne 1</th><th>Colonne 2</th></tr><tr><td>Valeur</td><td>Valeur</td></tr></tbody></table><p><br></p>",
   ));
+  const insertRow = () => onCommand(() => {
+    const found = tableCellAtSelection();
+    if (!found) return;
+    const rowIndex = Array.from(found.table.rows).indexOf(found.row);
+    const newRow = found.table.insertRow(rowIndex + 1);
+    for (let i = 0; i < found.row.cells.length; i += 1) newRow.insertCell(-1).innerHTML = "<br>";
+  });
+  const removeRow = () => onCommand(() => {
+    const found = tableCellAtSelection();
+    if (!found || found.table.rows.length <= 1) return;
+    found.table.deleteRow(Array.from(found.table.rows).indexOf(found.row));
+  });
+  const insertColumn = () => onCommand(() => {
+    const found = tableCellAtSelection();
+    if (!found) return;
+    const cellIndex = Array.from(found.row.cells).indexOf(found.cell);
+    Array.from(found.table.rows).forEach((row) => { row.insertCell(cellIndex + 1).innerHTML = "<br>"; });
+  });
+  const removeColumn = () => onCommand(() => {
+    const found = tableCellAtSelection();
+    if (!found || found.row.cells.length <= 1) return;
+    const cellIndex = Array.from(found.row.cells).indexOf(found.cell);
+    Array.from(found.table.rows).forEach((row) => row.cells[cellIndex] && row.deleteCell(cellIndex));
+  });
   const button = (key: string, title: string, icon: ReactNode, action: () => void) => (
     <button key={key} type="button" title={title} aria-label={title} onMouseDown={(event) => event.preventDefault()} onClick={action}>
       {icon}
@@ -317,6 +355,13 @@ function FormatToolbar({ onCommand, onInsertField, onInsertImage }: ToolbarProps
         {button("ol", "Liste numérotée", <ListOrdered size={15} />, () => exec("insertOrderedList"))}
         {button("table", "Tableau", <TableIcon size={15} />, insertTable)}
         {button("image", "Insérer une image", <ImagePlus size={15} />, onInsertImage)}
+      </div>
+      <span className="lab-format-menu__separator" aria-hidden="true" />
+      <div className="lab-format-menu__group">
+        {button("row-add", "Ajouter une ligne (curseur dans le tableau)", <span className="lab-format-menu__combo"><Rows3 size={14} /><Plus size={10} /></span>, insertRow)}
+        {button("row-remove", "Retirer la ligne (curseur dans le tableau)", <span className="lab-format-menu__combo"><Rows3 size={14} /><Minus size={10} /></span>, removeRow)}
+        {button("col-add", "Ajouter une colonne (curseur dans le tableau)", <span className="lab-format-menu__combo"><Columns3 size={14} /><Plus size={10} /></span>, insertColumn)}
+        {button("col-remove", "Retirer la colonne (curseur dans le tableau)", <span className="lab-format-menu__combo"><Columns3 size={14} /><Minus size={10} /></span>, removeColumn)}
       </div>
       <span className="lab-format-menu__separator" aria-hidden="true" />
       <div className="lab-format-menu__group">
@@ -344,6 +389,7 @@ function FieldCard({ field, onChange }: { field: Field; onChange: (field: Field)
   const rows = (Array.isArray(field.rows) ? field.rows : []) as Option[];
   const columns = (Array.isArray(field.columns) ? field.columns : []) as Option[];
   const unit = typeof field.unit === "string" ? field.unit : "";
+  const defaults = (field.defaults && typeof field.defaults === "object" ? field.defaults : {}) as Record<string, string>;
 
   const label = (
     <span className="lab-field-card__label">
@@ -442,6 +488,16 @@ function FieldCard({ field, onChange }: { field: Field; onChange: (field: Field)
                       >
                         {COLUMN_TYPES.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}
                       </select>
+                      {column.input_type === "select" && (
+                        <input
+                          className="lab-preview-grid__column-options"
+                          aria-label={`Choix de la colonne ${column.label}`}
+                          placeholder="Choix séparés par une virgule"
+                          defaultValue={(column.options ?? []).join(", ")}
+                          onBlur={(event) => set("columns", columns.map((item, position) => position === index
+                            ? { ...item, options: event.target.value.split(",").map((opt) => opt.trim()).filter(Boolean) } : item))}
+                        />
+                      )}
                       <button type="button" title="Retirer la colonne" onClick={() => set("columns", columns.filter((_, position) => position !== index))}>
                         <Trash2 size={12} />
                       </button>
@@ -468,7 +524,22 @@ function FieldCard({ field, onChange }: { field: Field; onChange: (field: Field)
                         <Trash2 size={12} />
                       </button>
                     </th>
-                    {columns.map((column, position) => <td key={column.id || position}><input disabled /></td>)}
+                    {columns.map((column, position) => {
+                      const cellKey = `${row.id}.${column.id}`;
+                      if (column.input_type === "readonly") {
+                        return (
+                          <td key={column.id || position}>
+                            <input
+                              value={defaults[cellKey] ?? ""}
+                              placeholder="Valeur affichée"
+                              aria-label={`Valeur affichée — ${row.label} / ${column.label}`}
+                              onChange={(event) => set("defaults", { ...defaults, [cellKey]: event.target.value })}
+                            />
+                          </td>
+                        );
+                      }
+                      return <td key={column.id || position}><input disabled /></td>;
+                    })}
                     <td />
                   </tr>
                 ))}
@@ -627,8 +698,6 @@ export default function LabVisualEditor({ slug, token, onClose, onPublished }: {
           <button onClick={onClose} aria-label="Fermer"><X /></button>
         </header>
 
-        <FormatToolbar onCommand={runOnSurface} onInsertField={insertField} onInsertImage={() => imageInput.current?.click()} />
-
         <div className="lab-visual-toolbar">
           <button className="lab-button" onClick={addMarkdown}><Plus size={17} /> Ajouter du texte</button>
           <button className="lab-button lab-button--primary" disabled={busy} onClick={() => void publish()}><Save size={17} /> Publier la version</button>
@@ -652,6 +721,8 @@ export default function LabVisualEditor({ slug, token, onClose, onPublished }: {
         </div>
 
         <div className="lab-visual-canvas">
+          <FormatToolbar onCommand={runOnSurface} onInsertField={insertField} onInsertImage={() => imageInput.current?.click()} />
+          <div className="lab-visual-canvas__blocks">
           {busy && !blocks.length ? <p>Chargement…</p> : blocks.map((block) => (
             <article
               className={`lab-editor-block ${activeKey === block.key ? "is-active" : ""}`}
@@ -678,6 +749,7 @@ export default function LabVisualEditor({ slug, token, onClose, onPublished }: {
               )}
             </article>
           ))}
+          </div>
         </div>
 
         <input

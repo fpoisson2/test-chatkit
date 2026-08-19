@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Minus, X } from "lucide-react";
 import "./lab-response-review.css";
 
-type Field = { id: string; label: string; type: string; unit?: string; points?: number; rows?: { id: string; label: string }[]; columns?: { id: string; label: string; unit?: string }[]; visible_columns?: string[] };
+type Field = { id: string; label: string; type: string; unit?: string; points?: number; rows?: { id: string; label: string }[]; columns?: { id: string; label: string; unit?: string; input_type?: string }[]; visible_columns?: string[] };
 type Grade = { rating: "correct" | "partial" | "incorrect" | "ungraded"; comment?: string };
 type Attempt = { id: string; answers: Record<string, unknown>; response_fields: Field[]; field_grades: Record<string, Grade>; score?: number };
 type Validation = { id: string; label: string; section?: string; approved?: boolean; teacher_name?: string };
@@ -15,7 +15,7 @@ export default function LabResponseReview({ attempt, onGrade, validations = [], 
 }
 
 function Answer({ field, value }: { field: Field; value: unknown }) {
-  if (field.type === "table" || field.type === "matrix") { const cells = value && typeof value === "object" ? value as Record<string, unknown> : {}; const visible = new Set(field.visible_columns ?? []); const columns = (field.columns ?? []).filter(column => !visible.size || visible.has(column.id)); return <div className="lab-review-table-wrap"><table><thead><tr><th />{columns.map(column => <th key={column.id}>{column.label}{column.unit ? ` (${column.unit})` : ""}</th>)}</tr></thead><tbody>{field.rows?.map(row => <tr key={row.id}><th>{row.label}</th>{columns.map(column => <td key={column.id}>{String(cells[`${row.id}.${column.id}`] ?? "")}</td>)}</tr>)}</tbody></table></div>; }
+  if (field.type === "table" || field.type === "matrix") { const cells = value && typeof value === "object" ? value as Record<string, unknown> : {}; const visible = new Set(field.visible_columns ?? []); const columns = (field.columns ?? []).filter(column => column.input_type === "readonly" || !visible.size || visible.has(column.id)); return <div className="lab-review-table-wrap"><table><thead><tr><th />{columns.map(column => <th key={column.id}>{column.label}{column.unit ? ` (${column.unit})` : ""}</th>)}</tr></thead><tbody>{field.rows?.map(row => <tr key={row.id}><th>{row.label}</th>{columns.map(column => <td key={column.id}>{String(cells[`${row.id}.${column.id}`] ?? "")}</td>)}</tr>)}</tbody></table></div>; }
   if (field.type === "checkbox") return <div className="lab-review-value">{value === true ? "Oui" : "Non"}</div>;
   if (field.type === "image" && value && typeof value === "object") return <div className="lab-review-value">Image téléversée : {String((value as Record<string, unknown>).name ?? "image")}</div>;
   return <div className="lab-review-value">{value === undefined || value === null || value === "" ? <span className="lab-empty-answer">Aucune réponse</span> : String(value)}{field.unit && value !== "" ? ` ${field.unit}` : ""}</div>;

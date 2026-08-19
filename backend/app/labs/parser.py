@@ -71,6 +71,22 @@ def _columns(value: str) -> list[dict[str, Any]]:
     return result
 
 
+def _cell_values(value: str) -> dict[str, str]:
+    """Parse ``row_id.column_id:value`` pairs used as reference values for read-only cells."""
+    result: dict[str, str] = {}
+    for entry in value.split("|"):
+        if not entry:
+            continue
+        key, separator, cell_value = entry.partition(":")
+        if not separator:
+            raise LabMarkdownError(f"Entrée invalide dans defaults: {entry}")
+        row_id, dot, column_id = key.partition(".")
+        if not dot or not _ID.fullmatch(row_id) or not _ID.fullmatch(column_id):
+            raise LabMarkdownError(f"Clé de cellule invalide dans defaults: {key}")
+        result[key] = cell_value
+    return result
+
+
 def parse_lab_markdown(source: str, *, slug: str) -> dict[str, Any]:
     """Compile readable Markdown directives into deterministic form blocks."""
 
@@ -122,6 +138,16 @@ def parse_lab_markdown(source: str, *, slug: str) -> dict[str, Any]:
                 if unknown:
                     raise LabMarkdownError(f"Colonnes visibles inconnues: {', '.join(sorted(unknown))}")
                 field["visible_columns"] = sorted(visible)
+            defaults = attrs.get("defaults")
+            if isinstance(defaults, str) and defaults:
+                parsed_defaults = _cell_values(defaults)
+                row_ids = {row["id"] for row in field["rows"]}
+                column_ids = {column["id"] for column in field["columns"]}
+                for key in parsed_defaults:
+                    row_id, _, column_id = key.partition(".")
+                    if row_id not in row_ids or column_id not in column_ids:
+                        raise LabMarkdownError(f"Cellule inconnue dans defaults: {key}")
+                field["defaults"] = parsed_defaults
         fields.append(field)
         blocks.append({"type": "field", "field": field})
         cursor = match.end()
