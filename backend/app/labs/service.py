@@ -109,7 +109,7 @@ class LabService:
             )
             self.session.add(attempt)
             self.session.flush()
-        elif attempt.status == "in_progress" and attempt.version_id != version.id:
+        elif attempt.status in {"in_progress", "submitted"} and attempt.version_id != version.id:
             old_version = self.version_for(attempt)
             old_responses = dict(attempt.payload.get("responses", {}))
             compatible_ids = {field["id"] for field in version.definition["fields"]}
