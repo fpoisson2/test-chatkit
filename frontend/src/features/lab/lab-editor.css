@@ -1,5 +1,5 @@
 /**
- * Lab visual editor (block-based modal editor).
+ * Lab visual editor (block-based WYSIWYG editor).
  * Design-system tokens only — dark-mode safe.
  */
 
@@ -48,6 +48,70 @@
 .lab-visual-editor > header button:hover,
 .lab-editor-block__actions button:hover { color: var(--text-color); }
 
+/* ------------------------------------------------------------------ *
+ * Formatting toolbar — always on top of the editing area
+ * ------------------------------------------------------------------ */
+
+.lab-format-menu {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 22px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.lab-format-menu__group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.lab-format-menu__caption {
+  margin-right: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.lab-format-menu__separator {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--color-border-subtle);
+}
+
+.lab-format-menu button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 7px);
+  background: transparent;
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.lab-format-menu button:hover {
+  background: var(--color-surface-subtle, rgb(127 127 127 / 12%));
+  border-color: var(--color-border-subtle);
+}
+
+.lab-format-menu button:focus-visible {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 22%, transparent);
+}
+
 .lab-visual-toolbar {
   display: flex;
   gap: 8px;
@@ -61,14 +125,20 @@
   overflow: auto;
   display: grid;
   gap: 14px;
+  align-content: start;
 }
 
 .lab-editor-block {
   position: relative;
-  padding: 18px;
+  padding: 18px 90px 18px 18px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl, 12px);
   background: var(--color-surface);
+}
+
+.lab-editor-block.is-active {
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--color-border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 12%, transparent);
 }
 
 .lab-editor-block__actions {
@@ -78,42 +148,173 @@
   display: flex;
 }
 
-.lab-editor-preview { padding-right: 80px; }
+/* ------------------------------------------------------------------ *
+ * Rich-text surface
+ * ------------------------------------------------------------------ */
 
-.lab-editor-block details { margin-top: 12px; }
-
-.lab-editor-block summary {
-  cursor: pointer;
-  color: var(--primary-color);
-  font-weight: 700;
+.lab-editor-surface {
+  min-height: 1.6em;
+  outline: none;
+  line-height: 1.6;
 }
 
-.lab-editor-block textarea {
-  box-sizing: border-box;
+.lab-editor-surface:focus-visible { outline: none; }
+
+.lab-editor-surface > :first-child { margin-top: 0; }
+.lab-editor-surface > :last-child { margin-bottom: 0; }
+
+.lab-editor-surface h1,
+.lab-editor-surface h2,
+.lab-editor-surface h3,
+.lab-editor-surface h4 { margin: 1.1rem 0 0.6rem; line-height: 1.25; }
+
+.lab-editor-surface h1 { font-size: 1.55rem; }
+.lab-editor-surface h2 { font-size: 1.3rem; }
+.lab-editor-surface h3 { font-size: 1.1rem; }
+
+.lab-editor-surface p { margin: 0.7rem 0; }
+
+/* The design-system reset sets `list-style: none` on every ol/ul — restore it
+   here so bullets and numbers are visible while editing. */
+.lab-editor-surface ul,
+.lab-editor-surface ol {
+  display: block;
+  margin: 0.8rem 0;
+  padding-left: 1.75rem;
+}
+
+.lab-editor-surface ul { list-style: disc outside; }
+.lab-editor-surface ol { list-style: decimal outside; }
+.lab-editor-surface ul ul { list-style-type: circle; margin: 0.3rem 0; }
+.lab-editor-surface ul ul ul { list-style-type: square; }
+.lab-editor-surface ol ol { list-style-type: lower-alpha; margin: 0.3rem 0; }
+.lab-editor-surface ol ol ol { list-style-type: lower-roman; }
+
+.lab-editor-surface li {
+  display: list-item;
+  margin: 0.3rem 0;
+  padding-left: 0.2rem;
+}
+
+.lab-editor-surface li::marker { color: var(--text-muted); }
+
+.lab-editor-surface blockquote {
+  margin: 0.8rem 0;
+  padding: 0.2rem 0 0.2rem 0.9rem;
+  border-left: 3px solid var(--color-border-subtle);
+  color: var(--text-muted);
+}
+
+.lab-editor-surface table {
   width: 100%;
-  margin: 10px 0;
-  padding: 10px;
+  margin: 0.9rem 0;
+  border-collapse: collapse;
+}
+
+.lab-editor-surface th,
+.lab-editor-surface td {
+  padding: 7px 9px;
   border: 1px solid var(--color-border-subtle);
+  text-align: left;
+}
+
+.lab-editor-surface th { background: var(--color-surface-subtle, rgb(127 127 127 / 10%)); }
+
+.lab-editor-surface img {
+  max-width: 100%;
+  height: auto;
+  margin: 0.7rem 0;
   border-radius: var(--radius-md, 8px);
-  background: var(--form-field-background);
-  color: var(--text-color);
-  font: 14px/1.5 var(--font-mono, ui-monospace, monospace);
 }
 
-.lab-field-editor { display: grid; gap: 12px; }
+.lab-editor-surface code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--color-surface-subtle, rgb(127 127 127 / 14%));
+  font: 0.9em/1.4 var(--font-mono, ui-monospace, monospace);
+}
 
-.lab-field-editor__grid {
+.lab-editor-surface pre {
+  margin: 0.8rem 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface-subtle, rgb(127 127 127 / 14%));
+}
+
+/* ------------------------------------------------------------------ *
+ * Inline editable text (labels, options, table headers)
+ * ------------------------------------------------------------------ */
+
+.lab-inline-text {
+  display: inline-block;
+  min-width: 2ch;
+  padding: 1px 4px;
+  border-bottom: 1px dashed transparent;
+  border-radius: 4px;
+  outline: none;
+  cursor: text;
+}
+
+.lab-inline-text:hover { border-bottom-color: var(--color-border-subtle); }
+
+.lab-inline-text:focus {
+  border-bottom-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+
+.lab-inline-text:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+}
+
+.lab-inline-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: var(--radius-sm, 7px);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.lab-inline-add:hover { color: var(--text-color); border-color: var(--primary-color); }
+
+/* ------------------------------------------------------------------ *
+ * Interactive field cards
+ * ------------------------------------------------------------------ */
+
+.lab-field-card {
   display: grid;
-  grid-template-columns: 1fr 1fr 2fr auto;
-  gap: 10px;
-  align-items: end;
+  gap: 12px;
 }
 
-.lab-field-editor label { display: grid; gap: 5px; font-size: 0.78rem; font-weight: 700; }
+.lab-field-card__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--color-border-subtle);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
 
-.lab-field-editor input,
-.lab-field-editor select {
-  padding: 9px;
+.lab-field-card__kind {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primary-color);
+}
+
+.lab-field-card__bar select,
+.lab-field-card__bar input[type="text"],
+.lab-field-card__bar input:not([type]) {
+  padding: 4px 7px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm, 7px);
   background: var(--form-field-background);
@@ -121,19 +322,152 @@
   font: inherit;
 }
 
-.lab-field-editor input:focus,
-.lab-field-editor select:focus,
-.lab-editor-block textarea:focus {
-  outline: none;
-  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 18%, transparent);
+.lab-field-card__id,
+.lab-field-card__unit-input,
+.lab-field-card__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
-.lab-field-required {
-  display: flex !important;
-  align-items: center;
-  padding-bottom: 9px;
+.lab-field-card__id input { width: 15ch; }
+.lab-field-card__unit-input input { width: 8ch; }
+.lab-field-card__toggle input { accent-color: var(--primary-color); }
+
+.lab-field-card__preview { display: grid; gap: 8px; }
+
+.lab-field-card__label {
+  font-weight: 700;
+  font-size: 0.95rem;
 }
+
+.lab-field-card__unit,
+.lab-field-card__required { font-style: normal; color: var(--text-muted); }
+.lab-field-card__required { color: var(--danger-color, #dc2626); }
+
+.lab-field-card__preview input:not([type="checkbox"]),
+.lab-field-card__preview textarea,
+.lab-field-card__preview select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md, 8px);
+  background: var(--form-field-background);
+  color: var(--text-color);
+  font: inherit;
+}
+
+.lab-field-card__preview input:disabled,
+.lab-field-card__preview textarea:disabled { opacity: 0.72; cursor: default; }
+
+.lab-preview-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lab-preview-check input { width: auto !important; }
+
+.lab-preview-image,
+.lab-preview-validation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--color-border-subtle);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.lab-preview-options {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lab-preview-options li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.lab-preview-options__marker { color: var(--text-muted); }
+
+.lab-preview-options button:not(.lab-inline-add) {
+  display: inline-flex;
+  padding: 3px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.lab-preview-options li:hover button:not(.lab-inline-add) { opacity: 1; }
+.lab-preview-options button:not(.lab-inline-add):hover { color: var(--danger-color, #dc2626); }
+
+.lab-preview-grid { display: grid; gap: 8px; justify-items: start; overflow-x: auto; }
+
+.lab-preview-grid table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lab-preview-grid th,
+.lab-preview-grid td {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-subtle);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.lab-preview-grid thead th { background: var(--color-surface-subtle, rgb(127 127 127 / 10%)); }
+
+.lab-preview-grid th select {
+  width: auto !important;
+  margin-left: 6px;
+  padding: 1px 4px !important;
+  font-size: 0.7rem;
+}
+
+.lab-preview-grid th button {
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.lab-preview-grid th:hover button { opacity: 1; }
+.lab-preview-grid th button:hover { color: var(--danger-color, #dc2626); }
+.lab-preview-grid__add { width: 38px; text-align: center !important; }
+.lab-preview-grid__add button { opacity: 1 !important; }
+
+/* ------------------------------------------------------------------ *
+ * Upload row
+ * ------------------------------------------------------------------ */
+
+.lab-editor-publish {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: 0.82rem;
+}
+
+.lab-editor-publish > div { display: grid; margin-right: auto; }
+.lab-editor-publish span { color: var(--text-muted); }
+.lab-editor-publish input[type="file"] { display: none; }
+.lab-editor-publish__file { font-style: italic; }
 
 .lab-editor-note { color: var(--text-muted); font-size: 0.8rem; }
 
@@ -141,5 +475,6 @@
   .lab-visual-backdrop { padding: 0; }
   .lab-visual-editor { height: 100%; border-radius: 0; border: 0; }
   .lab-visual-toolbar { flex-wrap: wrap; }
-  .lab-field-editor__grid { grid-template-columns: 1fr; }
+  .lab-editor-block { padding-right: 18px; padding-top: 44px; }
+  .lab-field-card__bar { font-size: 0.72rem; }
 }

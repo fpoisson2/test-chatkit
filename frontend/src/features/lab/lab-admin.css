@@ -146,9 +146,7 @@
 
 .lab-feedback-editor {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: end;
   padding: 14px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl, 12px);
@@ -157,10 +155,13 @@
 
 .lab-feedback-editor label { display: grid; gap: 5px; font-size: 0.76rem; font-weight: 700; }
 
+.lab-feedback-editor__field { position: relative; display: grid; }
+
 .lab-feedback-editor textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 9px;
+  padding-right: 42px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm, 7px);
   background: var(--form-field-background);
@@ -169,9 +170,40 @@
   resize: vertical;
 }
 
-@media (max-width: 700px) {
-  .lab-feedback-editor { grid-template-columns: 1fr; }
+.lab-feedback-editor__wand {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 7px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
+
+.lab-feedback-editor__wand:hover:not(:disabled) {
+  border-color: var(--color-border-subtle);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--primary-color);
+}
+
+.lab-feedback-editor__wand:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
+.lab-feedback-editor__wand:disabled { cursor: default; opacity: 0.65; }
+
+.lab-feedback-editor__spin { animation: lab-feedback-spin 1s linear infinite; }
+
+@keyframes lab-feedback-spin { to { transform: rotate(360deg); } }
 
 .lab-create-card { display: none; }
 .lab-document { display: none !important; }
