@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -163,6 +164,14 @@ const FIELD_TYPES: { type: string; label: string }[] = [
 ];
 
 const FIELD_LABEL = (type: string) => FIELD_TYPES.find((item) => item.type === type)?.label ?? type;
+
+const COLUMN_TYPES: { type: string; label: string }[] = [
+  { type: "text", label: "Texte" },
+  { type: "number", label: "Nombre" },
+  { type: "select", label: "Liste déroulante" },
+  { type: "color", label: "Couleur" },
+  { type: "readonly", label: "Lecture seule" },
+];
 
 const slugify = (value: string, fallback: string) => {
   const slug = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -348,8 +357,8 @@ function FieldCard({ field, onChange }: { field: Field; onChange: (field: Field)
         <select value={field.type} aria-label="Type de champ" onChange={(event) => onChange(retype(field, event.target.value))}>
           {FIELD_TYPES.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}
         </select>
-        <label className="lab-field-card__id">
-          id
+        <label className="lab-field-card__id" title="Identifiant unique du champ, utilisé dans les réponses enregistrées et le Markdown">
+          <span className="lab-field-card__field-caption">Identifiant</span>
           <input
             value={field.id}
             aria-label="Identifiant du champ"
@@ -357,9 +366,9 @@ function FieldCard({ field, onChange }: { field: Field; onChange: (field: Field)
           />
         </label>
         {field.type !== "teacher_validation" && (
-          <label className="lab-field-card__unit-input">
-            unité
-            <input value={unit} aria-label="Unité" onChange={(event) => set("unit", event.target.value)} />
+          <label className="lab-field-card__unit-input" title="Unité affichée à côté du champ, par exemple V, Ω ou kHz">
+            <span className="lab-field-card__field-caption">Unité</span>
+            <input value={unit} aria-label="Unité" placeholder="ex. V" onChange={(event) => set("unit", event.target.value)} />
           </label>
         )}
         {field.type !== "teacher_validation" && (
@@ -423,7 +432,7 @@ function FieldCard({ field, onChange }: { field: Field; onChange: (field: Field)
                         onChange={(event) => set("columns", columns.map((item, position) => position === index
                           ? { ...item, input_type: event.target.value } : item))}
                       >
-                        {["text", "number", "select", "color", "readonly"].map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+                        {COLUMN_TYPES.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}
                       </select>
                       <button type="button" title="Retirer la colonne" onClick={() => set("columns", columns.filter((_, position) => position !== index))}>
                         <Trash2 size={12} />
@@ -602,7 +611,7 @@ export default function LabVisualEditor({ slug, token, onClose, onPublished }: {
     URL.revokeObjectURL(url);
   };
 
-  return (
+  return createPortal(
     <div className="lab-visual-backdrop">
       <section className="lab-visual-editor">
         <header>
@@ -671,6 +680,7 @@ export default function LabVisualEditor({ slug, token, onClose, onPublished }: {
           onChange={(event) => { void uploadImage(event.target.files?.[0]); event.currentTarget.value = ""; }}
         />
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

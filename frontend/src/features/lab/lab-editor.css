@@ -327,11 +327,19 @@
 .lab-field-card__toggle {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
-.lab-field-card__id input { width: 15ch; }
-.lab-field-card__unit-input input { width: 8ch; }
+.lab-field-card__field-caption {
+  font-weight: 700;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.lab-field-card__id input { width: 16ch; }
+.lab-field-card__unit-input input { width: 10ch; }
 .lab-field-card__toggle input { accent-color: var(--primary-color); }
 
 .lab-field-card__preview { display: grid; gap: 8px; }
