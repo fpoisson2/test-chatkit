@@ -255,8 +255,17 @@ function RichTextSurface({ content, onChange, registerSurface, onFocus }: {
   registerSurface: (element: HTMLDivElement | null) => void;
   onFocus: () => void;
 }) {
-  // Frozen initial HTML: React never rewrites the DOM the user is editing.
-  const [html] = useState(() => markdownToHtml(content));
+  // Set once, imperatively, on mount: React re-renders this component whenever any
+  // sibling state changes (e.g. which block is focused). A declarative
+  // dangerouslySetInnerHTML gets re-applied on those renders even when the markup
+  // string is unchanged, and reassigning innerHTML always reparses the DOM — wiping
+  // the caret back to the start and any edits not yet reflected in `content`.
+  const initialHtml = useRef<string>(undefined);
+  if (initialHtml.current === undefined) initialHtml.current = markdownToHtml(content);
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (elementRef.current) elementRef.current.innerHTML = initialHtml.current!;
+  }, []);
   return (
     <div
       className="lab-editor-surface"
@@ -265,10 +274,9 @@ function RichTextSurface({ content, onChange, registerSurface, onFocus }: {
       role="textbox"
       aria-multiline="true"
       aria-label="Contenu du laboratoire"
-      ref={registerSurface}
+      ref={(element) => { elementRef.current = element; registerSurface(element); }}
       onFocus={onFocus}
       onInput={(event) => onChange(htmlToMarkdown(event.currentTarget))}
-      dangerouslySetInnerHTML={{ __html: html }}
     />
   );
 }
