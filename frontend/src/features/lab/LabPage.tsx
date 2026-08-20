@@ -165,7 +165,7 @@ export default function LabPage() {
       </footer>
     </article>
     <button className="lab-floating-download" disabled={exporting} onClick={downloadWord} title="Télécharger ma copie Word">
-      <Download size={18} /> {exporting ? "Création du document…" : "Télécharger ma copie Word"}
+      <Download size={18} /> {exporting ? "Création…" : "Copie Word"}
     </button>
   </main>;
 }
