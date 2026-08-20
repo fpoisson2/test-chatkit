@@ -70,13 +70,13 @@ class LabService:
         return activity
 
     def latest_version(self, activity: LabActivity) -> LabVersion | None:
-        query = select(LabVersion).where(LabVersion.activity_id == activity.id)
-        current_hash = (activity.definition or {}).get("content_hash")
-        if current_hash:
-            current = self.session.scalar(query.where(LabVersion.content_hash == current_hash))
-            if current is not None:
-                return current
-        return self.session.scalar(query.order_by(desc(LabVersion.version)).limit(1))
+        # The highest version number is always the true latest publish. Looking this up via
+        # activity.definition's cached content_hash instead (as a prior "idempotency fix" did)
+        # made it depend on that cache staying in sync — when it didn't, admins kept editing an
+        # old version and republishing never reached students.
+        return self.session.scalar(select(LabVersion).where(
+            LabVersion.activity_id == activity.id
+        ).order_by(desc(LabVersion.version)).limit(1))
 
     def _resource_link_id(self, user: User, activity: LabActivity) -> int | None:
         lti_session = self.session.scalar(select(LTIUserSession).where(
