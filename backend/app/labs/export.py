@@ -216,7 +216,8 @@ def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[st
         if field.get("type") in {"table", "matrix"}:
             document.add_heading(label, level=2)
             visible = set(field.get("visible_columns", []))
-            columns = [column for column in field.get("columns", []) if not visible or column["id"] in visible]
+            columns = [column for column in field.get("columns", [])
+                       if column.get("input_type") == "readonly" or not visible or column["id"] in visible]
             table = document.add_table(rows=1, cols=len(columns) + 1)
             table.style = "Table Grid"
             header = table.rows[0].cells
@@ -228,11 +229,14 @@ def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[st
                 for run in cell.paragraphs[0].runs:
                     _font(run, size=9.5, bold=True, color=INK)
             cells = value if isinstance(value, dict) else {}
+            defaults = field.get("defaults", {}) if isinstance(field.get("defaults"), dict) else {}
             for row in field.get("rows", []):
                 word_row = table.add_row().cells
                 word_row[0].text = row.get("label", row["id"])
                 for index, column in enumerate(columns, 1):
-                    answer = _answer_text(cells.get(f"{row['id']}.{column['id']}"))
+                    key = f"{row['id']}.{column['id']}"
+                    raw = defaults.get(key) if column.get("input_type") == "readonly" else cells.get(key)
+                    answer = _answer_text(raw)
                     unit = column.get("unit")
                     word_row[index].text = f"{answer} {unit}" if unit and answer else answer
             first, remaining = 2600, 6760
@@ -242,7 +246,16 @@ def build_lab_attempt_docx(*, title: str, student_name: str, definition: dict[st
             answer = _answer_text(value)
             if field.get("unit") and answer:
                 answer = f"{answer} {field['unit']}"
-            paragraph = document.add_paragraph(answer)
+            box = document.add_table(rows=1, cols=1)
+            box.style = "Table Grid"
+            box.autofit = True
+            cell = box.rows[0].cells[0]
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            _shade(cell, "FAFAF9")
+            cell.text = answer or "—"
+            for run in cell.paragraphs[0].runs:
+                _font(run, size=11, color=INK if answer else MUTED)
+            document.add_paragraph()
 
     footer = section.footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT

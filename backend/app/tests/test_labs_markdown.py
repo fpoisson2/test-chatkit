@@ -86,10 +86,13 @@ def test_word_export_contains_current_answers() -> None:
     )
     document = Document(BytesIO(content))
     text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+    table_text = "\n".join(cell.text for table in document.tables for row in table.rows for cell in row.cells)
     assert "Étudiante Exemple" in text
     assert "Consigne lisible." in text
-    assert "Mesure stable" in text
-    assert document.tables[0].cell(1, 1).text == "4,98"
+    # Open-ended answers render inside a bordered box (a table), not a bare paragraph.
+    assert "Mesure stable" in table_text
+    grid_table = next(table for table in document.tables if len(table.columns) > 1)
+    assert grid_table.cell(1, 1).text == "4,98"
 
 
 def test_parser_rejects_duplicate_ids() -> None:
