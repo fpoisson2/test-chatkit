@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from sqlalchemy import select
+
 from .parser import LabMarkdownError, parse_lab_markdown
 from .export import build_lab_attempt_docx
 from .service import LabService
@@ -17,6 +19,17 @@ def load_lab_source() -> tuple[str, Path]:
 
 
 def sync_bundled_labs(session):
+    """Seed the bundled "laboratoire-1" activity on first boot only.
+
+    This used to run unconditionally on every startup, which re-synced the
+    activity from the bundled file every time — silently overwriting
+    whatever an admin had since published through the visual editor,
+    including on every dev-server reload.
+    """
+    from ..models import LabActivity
+
+    if session.scalar(select(LabActivity).where(LabActivity.slug == "laboratoire-1")) is not None:
+        return
     source, source_path = load_lab_source()
     LabService(session).sync(
         slug="laboratoire-1",
