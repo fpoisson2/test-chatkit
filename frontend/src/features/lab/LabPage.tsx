@@ -159,14 +159,14 @@ export default function LabPage() {
         ? <ReactMarkdown key={index} remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
         : <FieldControl key={block.field.id} field={block.field} value={answers[block.field.id]} disabled={locked} onChange={update} attemptId={data.attempt.id} teacherValidation={data.attempt.teacher_validations?.[block.field.id]} />)}
       <footer className="lab-submit-row">
-        <button className="lab-button" disabled={exporting} onClick={downloadWord}>
-          <Download size={18} /> {exporting ? "Création du document…" : "Télécharger ma copie Word"}
-        </button>
         <button className="lab-button lab-button--primary" disabled={locked || saveState === "saving"} onClick={submit}>
           <FileCheck2 size={18} /> Remettre définitivement
         </button>
       </footer>
     </article>
+    <button className="lab-floating-download" disabled={exporting} onClick={downloadWord} title="Télécharger ma copie Word">
+      <Download size={18} /> {exporting ? "Création du document…" : "Télécharger ma copie Word"}
+    </button>
   </main>;
 }
 

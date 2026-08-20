@@ -547,6 +547,32 @@
   border-top: 1px solid var(--color-border-subtle);
 }
 
+.lab-floating-download {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-full, 999px);
+  background: var(--color-surface);
+  color: var(--text-color);
+  font: inherit;
+  font-weight: 600;
+  box-shadow: var(--shadow-card, 0 8px 24px rgb(15 23 42 / 18%));
+  cursor: pointer;
+}
+
+.lab-floating-download:hover { background: var(--color-surface-subtle); }
+.lab-floating-download:disabled { opacity: 0.65; cursor: default; }
+
+@media (max-width: 700px) {
+  .lab-floating-download { right: 16px; bottom: 16px; padding: 10px 14px; font-size: 0.9rem; }
+}
+
 .lab-submitted,
 .lab-inline-error {
   max-width: 960px;
